@@ -1,5 +1,6 @@
 import type { ModelAdapter } from "../providers/types";
 import type { PromptDefinition } from "../types";
+import { withRetry } from "../util/retry";
 import { buildJudgeSystemPrompt, buildJudgeUserPrompt } from "./buildJudgePrompt";
 
 export interface JudgeResult {
@@ -11,6 +12,13 @@ export interface JudgeOutcome {
   result: JudgeResult | null;
   rawJudgeText: string;
   error?: string;
+}
+
+export interface RunJudgeOptions {
+  retry?: {
+    attempts?: number;
+    baseDelayMs?: number;
+  };
 }
 
 const CORRECTIVE_MESSAGE =
@@ -77,6 +85,7 @@ export async function runJudge(
   judgeAdapter: ModelAdapter,
   prompt: PromptDefinition,
   candidateOutput: string,
+  options: RunJudgeOptions = {},
 ): Promise<JudgeOutcome> {
   const systemPrompt = buildJudgeSystemPrompt();
   const userPrompt = buildJudgeUserPrompt(prompt, candidateOutput);
@@ -87,11 +96,15 @@ export async function runJudge(
     const effectiveUserPrompt = attempt === 0 ? userPrompt : `${userPrompt}\n\n${CORRECTIVE_MESSAGE}`;
 
     try {
-      const response = await judgeAdapter.call({
-        systemPrompt,
-        userPrompt: effectiveUserPrompt,
-        temperature: 0,
-      });
+      const response = await withRetry(
+        () =>
+          judgeAdapter.call({
+            systemPrompt,
+            userPrompt: effectiveUserPrompt,
+            temperature: 0,
+          }),
+        options.retry ?? {},
+      );
       lastText = response.text;
 
       const parsed = extractFirstJsonObject(response.text);
@@ -101,7 +114,12 @@ export async function runJudge(
         return { result: validated, rawJudgeText: response.text };
       }
     } catch (err) {
-      lastText = err instanceof Error ? err.message : String(err);
+      const message = err instanceof Error ? err.message : String(err);
+      return {
+        result: null,
+        rawJudgeText: "",
+        error: `judge request failed: ${message}`,
+      };
     }
   }
 
