@@ -62,6 +62,19 @@ bun run bench models add-openai-compatible \
   --max-concurrent 1
 ```
 
+For providers that require extra headers, repeat `--header Name=Value`:
+
+```
+bun run bench models add-openai-compatible \
+  --id openrouter:custom \
+  --provider openrouter \
+  --model provider/model-name \
+  --base-url https://openrouter.ai/api/v1 \
+  --api-key-env OPENROUTER_API_KEY \
+  --header HTTP-Referer=https://github.com/model-prompt-tests \
+  --header X-Title="model-prompt-tests bench"
+```
+
 Add an Anthropic model:
 
 ```

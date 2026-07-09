@@ -47,6 +47,31 @@ function requireFlag(values: Record<string, unknown>, key: string): string {
   return value;
 }
 
+function parseHeaders(value: unknown): Record<string, string> | undefined {
+  if (value === undefined) return undefined;
+  const entries = Array.isArray(value) ? value : [value];
+  const headers: Record<string, string> = {};
+  for (const entry of entries) {
+    if (typeof entry !== "string") {
+      throw new Error("--header must be provided as Name=Value");
+    }
+    const separatorIndex = entry.indexOf("=");
+    if (separatorIndex <= 0 || separatorIndex === entry.length - 1) {
+      throw new Error(`invalid --header "${entry}"; expected Name=Value`);
+    }
+    const name = entry.slice(0, separatorIndex).trim();
+    const headerValue = entry.slice(separatorIndex + 1).trim();
+    if (!name || !headerValue) {
+      throw new Error(`invalid --header "${entry}"; expected non-empty Name=Value`);
+    }
+    if (headers[name] !== undefined) {
+      throw new Error(`duplicate --header "${name}"`);
+    }
+    headers[name] = headerValue;
+  }
+  return Object.keys(headers).length > 0 ? headers : undefined;
+}
+
 function resolveMatrix(config: BenchModelsConfig, modelsFlag: string | undefined): ModelMatrixEntry[] {
   const candidateModels = enabledModelMatrix(config);
   if (!modelsFlag) return candidateModels;
@@ -234,6 +259,7 @@ async function cmdModels(rest: string[]): Promise<void> {
           model: { type: "string" },
           "base-url": { type: "string" },
           "api-key-env": { type: "string" },
+          header: { type: "string", multiple: true },
           "max-concurrent": { type: "string" },
           "max-tokens": { type: "string" },
           "timeout-ms": { type: "string" },
@@ -251,6 +277,7 @@ async function cmdModels(rest: string[]): Promise<void> {
         modelName: requireFlag(values, "model"),
         baseUrl: requireFlag(values, "base-url"),
         apiKeyEnvVar: values["api-key-env"] as string | undefined,
+        extraHeaders: parseHeaders(values.header),
         maxConcurrent: parsePositiveInteger(values["max-concurrent"], "--max-concurrent"),
         maxTokens: parsePositiveInteger(values["max-tokens"], "--max-tokens"),
         timeoutMs: parsePositiveInteger(values["timeout-ms"], "--timeout-ms"),
@@ -300,7 +327,7 @@ async function cmdModels(rest: string[]): Promise<void> {
   bun bench/src/cli.ts models init
   bun bench/src/cli.ts models validate
   bun bench/src/cli.ts models set-judge <model-id>
-  bun bench/src/cli.ts models add-openai-compatible --id <id> --provider <provider-id> --model <name> --base-url <url> [--api-key-env <ENV>] [--max-concurrent <n>] [--max-tokens <n>] [--timeout-ms <n>] [--disabled]
+  bun bench/src/cli.ts models add-openai-compatible --id <id> --provider <provider-id> --model <name> --base-url <url> [--api-key-env <ENV>] [--header Name=Value]... [--max-concurrent <n>] [--max-tokens <n>] [--timeout-ms <n>] [--disabled]
   bun bench/src/cli.ts models add-anthropic --id <id> --model <name> --api-key-env <ENV> [--base-url <url>] [--max-concurrent <n>] [--max-tokens <n>] [--timeout-ms <n>] [--disabled]
   bun bench/src/cli.ts models remove <model-id>`);
       if (subcommand) process.exit(1);
