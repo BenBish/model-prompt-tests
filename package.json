@@ -1,0 +1,12 @@
+{
+  "name": "model-prompt-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "bench": "bun bench/src/cli.ts",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}
