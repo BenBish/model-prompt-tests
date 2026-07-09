@@ -1,0 +1,5 @@
+node_modules/
+.env
+bench/data/*.sqlite
+bench/data/*.sqlite-*
+bench/reports/*.html
