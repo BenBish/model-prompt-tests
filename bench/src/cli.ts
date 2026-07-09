@@ -103,7 +103,11 @@ async function cmdRun(positionals: string[], values: Record<string, unknown>): P
     runners,
     defaultConcurrency: concurrency,
     judge: judgeEntry
-      ? { adapter: createAdapter(judgeEntry), modelId: judgeEntry.id }
+      ? {
+          adapter: createAdapter(judgeEntry),
+          modelId: judgeEntry.id,
+          maxConcurrent: judgeEntry.maxConcurrent,
+        }
       : undefined,
   });
 }

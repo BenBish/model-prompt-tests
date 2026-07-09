@@ -16,6 +16,7 @@ export interface RunBatchOptions {
   judge?: {
     adapter: ModelAdapter;
     modelId: string;
+    maxConcurrent?: number;
   };
 }
 
@@ -45,13 +46,22 @@ export async function runBatch(options: RunBatchOptions): Promise<RunBatchSummar
     );
   }
 
-  const limiters = new Map<string, Limiter>();
-  function limiterFor(runner: CandidateRunner): Limiter {
-    const key = runner.id;
-    let limiter = limiters.get(key);
+  const providerLimiters = new Map<string, Limiter>();
+  const runnerLimiters = new Map<string, Limiter>();
+  function providerLimiterFor(runner: CandidateRunner): Limiter {
+    let limiter = providerLimiters.get(runner.providerId);
     if (!limiter) {
-      limiter = createLimiter(runner.maxConcurrent ?? defaultConcurrency);
-      limiters.set(key, limiter);
+      limiter = createLimiter(defaultConcurrency);
+      providerLimiters.set(runner.providerId, limiter);
+    }
+    return limiter;
+  }
+  function runnerLimiterFor(runner: CandidateRunner): Limiter | undefined {
+    if (runner.maxConcurrent === undefined) return undefined;
+    let limiter = runnerLimiters.get(runner.id);
+    if (!limiter) {
+      limiter = createLimiter(runner.maxConcurrent);
+      runnerLimiters.set(runner.id, limiter);
     }
     return limiter;
   }
@@ -63,48 +73,60 @@ export async function runBatch(options: RunBatchOptions): Promise<RunBatchSummar
   const candidateTasks: Promise<void>[] = [];
   for (const prompt of prompts) {
     for (const runner of runners) {
-      const limiter = limiterFor(runner);
-      candidateTasks.push(
-        limiter(async () => {
-          const startedAt = new Date().toISOString();
-          const label = `${prompt.id} x ${runner.id}`;
-          try {
-            const result = await withRetry(() => runner.run(prompt));
-            const record: RunRecord = {
-              runBatchId,
-              promptId: prompt.id,
-              providerId: runner.providerId,
-              modelId: runner.id,
-              modelName: runner.modelName,
-              startedAt,
-              latencyMs: Math.round(result.latencyMs),
-              inputTokens: result.inputTokens,
-              outputTokens: result.outputTokens,
-              outputText: result.outputText,
-              rawResponse: JSON.stringify(result.raw),
-              status: "ok",
-            };
-            const runId = insertRun(db, record);
-            ok++;
-            okRunIds.push({ runId, modelId: runner.id, outputText: result.outputText, promptId: prompt.id });
-            console.log(`[ok] ${label} (${Math.round(result.latencyMs)}ms)`);
-          } catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
-            insertRun(db, {
-              runBatchId,
-              promptId: prompt.id,
-              providerId: runner.providerId,
-              modelId: runner.id,
-              modelName: runner.modelName,
-              startedAt,
-              status: "error",
-              error: message,
-            });
-            errored++;
-            console.log(`[error] ${label}: ${message}`);
-          }
-        }),
-      );
+      const providerLimiter = providerLimiterFor(runner);
+      const runnerLimiter = runnerLimiterFor(runner);
+      const run = async () => {
+        await providerLimiter(() => executeCandidate(prompt, runner));
+      };
+      candidateTasks.push(runnerLimiter ? runnerLimiter(run) : run());
+    }
+  }
+
+  async function executeCandidate(
+    prompt: PromptDefinition,
+    runner: CandidateRunner,
+  ): Promise<void> {
+    const startedAt = new Date().toISOString();
+    const label = `${prompt.id} x ${runner.id}`;
+    try {
+      const result = await withRetry(() => runner.run(prompt));
+      const record: RunRecord = {
+        runBatchId,
+        promptId: prompt.id,
+        providerId: runner.providerId,
+        modelId: runner.id,
+        modelName: runner.modelName,
+        startedAt,
+        latencyMs: Math.round(result.latencyMs),
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        outputText: result.outputText,
+        rawResponse: JSON.stringify(result.raw),
+        status: "ok",
+      };
+      const runId = insertRun(db, record);
+      ok++;
+      okRunIds.push({
+        runId,
+        modelId: runner.id,
+        outputText: result.outputText,
+        promptId: prompt.id,
+      });
+      console.log(`[ok] ${label} (${Math.round(result.latencyMs)}ms)`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      insertRun(db, {
+        runBatchId,
+        promptId: prompt.id,
+        providerId: runner.providerId,
+        modelId: runner.id,
+        modelName: runner.modelName,
+        startedAt,
+        status: "error",
+        error: message,
+      });
+      errored++;
+      console.log(`[error] ${label}: ${message}`);
     }
   }
 
@@ -113,7 +135,7 @@ export async function runBatch(options: RunBatchOptions): Promise<RunBatchSummar
   const avgScoreByModel: Record<string, number> = {};
 
   if (judge) {
-    const judgeLimiter = createLimiter(defaultConcurrency);
+    const judgeLimiter = createLimiter(judge.maxConcurrent ?? defaultConcurrency);
     const scoresByModel = new Map<string, number[]>();
 
     const judgeTasks = okRunIds.map(({ runId, modelId, outputText, promptId }) =>
