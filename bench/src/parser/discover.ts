@@ -1,4 +1,4 @@
-import { join, relative } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { parsePromptFile } from "./promptTemplate";
 import type { PromptDefinition } from "../types";
 
@@ -8,6 +8,20 @@ const EXCLUDED_FILES = new Set(["README.md"]);
 function isExcluded(relPath: string): boolean {
   if (EXCLUDED_FILES.has(relPath)) return true;
   return EXCLUDED_PREFIXES.some((prefix) => relPath.startsWith(prefix));
+}
+
+function isUnsafeSelector(selector: string): boolean {
+  return isAbsolute(selector) || selector.split(/[\\/]+/).includes("..");
+}
+
+function repoRelativePath(repoRoot: string, filePath: string): string | undefined {
+  const root = resolve(repoRoot);
+  const absolutePath = resolve(filePath);
+  const relPath = relative(root, absolutePath).replaceAll("\\", "/");
+  if (relPath === "" || relPath.startsWith("../") || relPath === ".." || isAbsolute(relPath)) {
+    return undefined;
+  }
+  return relPath;
 }
 
 export async function discoverPromptFiles(repoRoot: string): Promise<string[]> {
@@ -27,6 +41,9 @@ export async function resolvePromptSelector(
   if (selector === "all") {
     return discoverPromptFiles(repoRoot);
   }
+  if (isUnsafeSelector(selector)) {
+    return [];
+  }
 
   const glob = new Bun.Glob(selector.endsWith(".md") ? selector : `${selector}`);
   const matches: string[] = [];
@@ -38,7 +55,8 @@ export async function resolvePromptSelector(
   // Selector may be an exact relative file path rather than a glob pattern.
   if (matches.length === 0) {
     const direct = join(repoRoot, selector.endsWith(".md") ? selector : `${selector}.md`);
-    if (await Bun.file(direct).exists()) {
+    const relPath = repoRelativePath(repoRoot, direct);
+    if (relPath && !isExcluded(relPath) && (await Bun.file(direct).exists())) {
       matches.push(direct);
     }
   }
