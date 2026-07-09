@@ -22,9 +22,27 @@ function extractFirstJsonObject(text: string): unknown | undefined {
   if (start === -1) return undefined;
 
   let depth = 0;
+  let inString = false;
+  let escaped = false;
   for (let i = start; i < text.length; i++) {
-    if (text[i] === "{") depth++;
-    else if (text[i] === "}") {
+    const char = text[i]!;
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      inString = true;
+    } else if (char === "{") {
+      depth++;
+    } else if (char === "}") {
       depth--;
       if (depth === 0) {
         const candidate = text.slice(start, i + 1);
