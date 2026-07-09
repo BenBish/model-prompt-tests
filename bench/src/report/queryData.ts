@@ -17,6 +17,9 @@ export interface ReportRow {
   score?: number;
   rationale?: string;
   judgeModelId?: string;
+  judgeError?: string;
+  judgeStatus?: "ok" | "error";
+  scoredAt?: string;
 }
 
 export interface ReportData {
@@ -49,12 +52,17 @@ function rowToReportRow(row: any): ReportRow {
     score: row.score ?? undefined,
     rationale: row.rationale ?? undefined,
     judgeModelId: row.judge_model_id ?? undefined,
+    judgeError: row.judge_error ?? undefined,
+    judgeStatus: row.judge_status ?? undefined,
+    scoredAt: row.scored_at ?? undefined,
   };
 }
 
 export function queryReportData(db: Database, options: QueryOptions = {}): ReportData {
   let sql = `
-    SELECT runs.*, scores.score, scores.rationale, scores.judge_model_id
+    SELECT runs.*, scores.score, scores.rationale, scores.judge_model_id,
+           scores.error AS judge_error, scores.status AS judge_status,
+           scores.scored_at
     FROM runs
     LEFT JOIN scores ON scores.run_id = runs.id
   `;

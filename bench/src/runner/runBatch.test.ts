@@ -101,4 +101,36 @@ describe("runBatch concurrency", () => {
     expect(peak).toBe(1);
     db.close();
   });
+
+  test("reports judge failures in the batch summary", async () => {
+    spyOn(console, "log").mockImplementation(() => {});
+    const db = createDb();
+    const judge: ModelAdapter = {
+      providerId: "judge",
+      modelName: "judge",
+      async call() {
+        const error = new Error("unauthorized") as Error & { status?: number };
+        error.status = 401;
+        throw error;
+      },
+    };
+
+    const summary = await runBatch({
+      db,
+      prompts: [prompts[0]!],
+      runners: [
+        candidate("candidate", "candidate", async () => ({
+          outputText: "ok",
+          raw: {},
+          latencyMs: 1,
+        })),
+      ],
+      defaultConcurrency: 1,
+      judge: { adapter: judge, modelId: "judge" },
+    });
+
+    expect(summary.errored).toBe(0);
+    expect(summary.judgeErrored).toBe(1);
+    db.close();
+  });
 });

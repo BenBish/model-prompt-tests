@@ -24,6 +24,7 @@ export interface RunBatchSummary {
   runBatchId: string;
   ok: number;
   errored: number;
+  judgeErrored: number;
   avgScoreByModel: Record<string, number>;
   wallClockMs: number;
 }
@@ -68,6 +69,7 @@ export async function runBatch(options: RunBatchOptions): Promise<RunBatchSummar
 
   let ok = 0;
   let errored = 0;
+  let judgeErrored = 0;
   const okRunIds: { runId: number; modelId: string; outputText: string; promptId: string }[] = [];
 
   const candidateTasks: Promise<void>[] = [];
@@ -157,6 +159,7 @@ export async function runBatch(options: RunBatchOptions): Promise<RunBatchSummar
           list.push(outcome.result.score);
           scoresByModel.set(modelId, list);
         } else {
+          judgeErrored++;
           console.log(`[judge-error] ${promptId} x ${modelId}: ${outcome.error}`);
         }
       }),
@@ -171,10 +174,13 @@ export async function runBatch(options: RunBatchOptions): Promise<RunBatchSummar
 
   const wallClockMs = performance.now() - started;
 
-  console.log(`\nBatch ${runBatchId}: ${ok} ok, ${errored} errored, ${Math.round(wallClockMs)}ms`);
+  console.log(
+    `\nBatch ${runBatchId}: ${ok} ok, ${errored} run errors, ` +
+      `${judgeErrored} judge errors, ${Math.round(wallClockMs)}ms`,
+  );
   for (const [modelId, avg] of Object.entries(avgScoreByModel)) {
     console.log(`  ${modelId}: avg score ${avg.toFixed(2)}`);
   }
 
-  return { runBatchId, ok, errored, avgScoreByModel, wallClockMs };
+  return { runBatchId, ok, errored, judgeErrored, avgScoreByModel, wallClockMs };
 }

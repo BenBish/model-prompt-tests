@@ -29,6 +29,7 @@ export interface AnthropicAdapterConfig {
   anthropicVersion?: string;
   maxTokens?: number;
   maxConcurrent?: number;
+  timeoutMs?: number;
 }
 
 export interface OpenAICompatibleAdapterConfig {
@@ -41,6 +42,7 @@ export interface OpenAICompatibleAdapterConfig {
   extraHeaders?: Record<string, string>;
   maxTokens?: number;
   maxConcurrent?: number;
+  timeoutMs?: number;
 }
 
 export type ModelMatrixEntry = AnthropicAdapterConfig | OpenAICompatibleAdapterConfig;

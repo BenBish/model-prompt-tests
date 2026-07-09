@@ -44,6 +44,7 @@ export const modelMatrix: ModelMatrixEntry[] = [
     providerId: "llama-swap",
     modelName: "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
     baseUrl: "https://fedora.taile952db.ts.net:8080/v1",
+    apiKeyEnvVar: "LOCAL_LLAMACPP_API_KEY",
     maxConcurrent: 1,
   },
   {

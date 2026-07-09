@@ -8,6 +8,7 @@ import type {
 const DEFAULT_BASE_URL = "https://api.anthropic.com";
 const DEFAULT_ANTHROPIC_VERSION = "2023-06-01";
 const DEFAULT_MAX_TOKENS = 4096;
+const DEFAULT_TIMEOUT_MS = 120_000;
 
 export function createAnthropicAdapter(config: AnthropicAdapterConfig): ModelAdapter {
   const baseUrl = config.baseUrl ?? DEFAULT_BASE_URL;
@@ -26,6 +27,7 @@ export function createAnthropicAdapter(config: AnthropicAdapterConfig): ModelAda
       const started = performance.now();
       const response = await fetch(`${baseUrl}/v1/messages`, {
         method: "POST",
+        signal: AbortSignal.timeout(config.timeoutMs ?? DEFAULT_TIMEOUT_MS),
         headers: {
           "x-api-key": apiKey,
           "anthropic-version": anthropicVersion,
@@ -46,20 +48,35 @@ export function createAnthropicAdapter(config: AnthropicAdapterConfig): ModelAda
       });
       const latencyMs = performance.now() - started;
 
-      const body: any = await response.json();
+      const responseText = await response.text();
+      let body: any;
+      try {
+        body = JSON.parse(responseText);
+      } catch {
+        body = undefined;
+      }
 
       if (!response.ok) {
-        throw new Error(
-          `anthropic API error ${response.status}: ${JSON.stringify(body).slice(0, 500)}`,
-        );
+        const detail = body === undefined ? responseText : JSON.stringify(body);
+        const error = new Error(
+          `anthropic API error ${response.status}: ${detail.slice(0, 500)}`,
+        ) as Error & { status?: number };
+        error.status = response.status;
+        throw error;
+      }
+      if (body === undefined) {
+        throw new Error("anthropic API returned a non-JSON success response");
       }
 
       const textBlock = Array.isArray(body.content)
         ? body.content.find((block: { type: string }) => block.type === "text")
         : undefined;
+      if (typeof textBlock?.text !== "string") {
+        throw new Error("anthropic API response did not contain a text block");
+      }
 
       return {
-        text: textBlock?.text ?? "",
+        text: textBlock.text,
         raw: body,
         inputTokens: body.usage?.input_tokens,
         outputTokens: body.usage?.output_tokens,

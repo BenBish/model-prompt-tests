@@ -34,7 +34,7 @@ function extractPromptText(filePath: string, sectionBody: string | undefined): s
   if (!sectionBody) {
     throw new PromptParseError(filePath, "missing required '## Prompt' section");
   }
-  const fenceMatch = sectionBody.match(/```text\n([\s\S]*?)\n```/);
+  const fenceMatch = sectionBody.match(/```text\r?\n([\s\S]*?)\r?\n```/);
   if (!fenceMatch) {
     throw new PromptParseError(filePath, "'## Prompt' section has no ```text fenced block");
   }
@@ -51,6 +51,16 @@ function extractRubric(filePath: string, sectionBody: string | undefined): Rubri
     description: m[2]!.trim(),
   }));
 
+  const invalidScores = entries.filter((entry) => entry.score < 1 || entry.score > 5);
+  if (invalidScores.length > 0) {
+    throw new PromptParseError(
+      filePath,
+      `'## Scoring Rubric' contains invalid score(s): ${invalidScores
+        .map((entry) => entry.score)
+        .join(", ")}`,
+    );
+  }
+
   const scoresPresent = new Set(entries.map((e) => e.score));
   for (const required of [1, 2, 3, 4, 5]) {
     if (!scoresPresent.has(required as RubricEntry["score"])) {
@@ -59,6 +69,9 @@ function extractRubric(filePath: string, sectionBody: string | undefined): Rubri
         `'## Scoring Rubric' is missing an entry for score ${required}`,
       );
     }
+  }
+  if (entries.length !== scoresPresent.size) {
+    throw new PromptParseError(filePath, "'## Scoring Rubric' contains duplicate scores");
   }
 
   return entries.sort((a, b) => b.score - a.score);

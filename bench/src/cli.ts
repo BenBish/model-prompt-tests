@@ -97,7 +97,7 @@ async function cmdRun(positionals: string[], values: Record<string, unknown>): P
   const db = openDb(DB_PATH);
   const concurrency = values.concurrency ? Number(values.concurrency) : DEFAULT_CONCURRENCY;
 
-  await runBatch({
+  const summary = await runBatch({
     db,
     prompts,
     runners,
@@ -110,6 +110,9 @@ async function cmdRun(positionals: string[], values: Record<string, unknown>): P
         }
       : undefined,
   });
+  if (summary.errored > 0 || summary.judgeErrored > 0) {
+    process.exitCode = 1;
+  }
 }
 
 async function cmdReport(values: Record<string, unknown>): Promise<void> {

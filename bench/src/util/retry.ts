@@ -15,9 +15,14 @@ function isRetriable(err: unknown): boolean {
     const code = Number(match[1]);
     return code === 429 || code >= 500;
   }
-  // Network-level failures (fetch throwing TypeError, connection refused, etc.)
-  // are also worth retrying.
-  return true;
+  // Fetch uses TypeError for network failures and DOMException-style names for
+  // aborted/timed-out requests. Other errors are configuration or programming
+  // failures unless explicitly classified above.
+  return (
+    err instanceof TypeError ||
+    err.name === "AbortError" ||
+    err.name === "TimeoutError"
+  );
 }
 
 export async function withRetry<T>(

@@ -18,6 +18,8 @@ function renderRunDetails(row: ReportRow): string {
   const badgeColor = scoreBadgeColor(row.score);
   const summaryLabel = row.score !== undefined ? String(row.score) : "?";
   const meta = [
+    row.startedAt,
+    `batch ${row.runBatchId}`,
     row.latencyMs !== undefined ? `${row.latencyMs}ms` : undefined,
     row.inputTokens !== undefined || row.outputTokens !== undefined
       ? `${row.inputTokens ?? "?"} in / ${row.outputTokens ?? "?"} out tokens`
@@ -35,6 +37,11 @@ function renderRunDetails(row: ReportRow): string {
         ${
           row.rationale
             ? `<h4>Judge rationale (${escapeHtml(row.judgeModelId)})</h4><pre>${escapeHtml(row.rationale)}</pre>`
+            : ""
+        }
+        ${
+          row.judgeError
+            ? `<h4 style="color:#c62828">Judge error (${escapeHtml(row.judgeModelId)})</h4><pre>${escapeHtml(row.judgeError)}</pre>`
             : ""
         }
       </div>

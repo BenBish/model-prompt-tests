@@ -6,6 +6,7 @@ import type {
 } from "./types";
 
 const DEFAULT_MAX_TOKENS = 4096;
+const DEFAULT_TIMEOUT_MS = 120_000;
 
 export function createOpenAICompatibleAdapter(
   config: OpenAICompatibleAdapterConfig,
@@ -36,6 +37,7 @@ export function createOpenAICompatibleAdapter(
       const started = performance.now();
       const response = await fetch(`${config.baseUrl}/chat/completions`, {
         method: "POST",
+        signal: AbortSignal.timeout(config.timeoutMs ?? DEFAULT_TIMEOUT_MS),
         headers,
         body: JSON.stringify({
           model: config.modelName,
@@ -46,18 +48,33 @@ export function createOpenAICompatibleAdapter(
       });
       const latencyMs = performance.now() - started;
 
-      const body: any = await response.json();
+      const responseText = await response.text();
+      let body: any;
+      try {
+        body = JSON.parse(responseText);
+      } catch {
+        body = undefined;
+      }
 
       if (!response.ok) {
-        throw new Error(
-          `${config.providerId} API error ${response.status}: ${JSON.stringify(body).slice(0, 500)}`,
-        );
+        const detail = body === undefined ? responseText : JSON.stringify(body);
+        const error = new Error(
+          `${config.providerId} API error ${response.status}: ${detail.slice(0, 500)}`,
+        ) as Error & { status?: number };
+        error.status = response.status;
+        throw error;
+      }
+      if (body === undefined) {
+        throw new Error(`${config.providerId} API returned a non-JSON success response`);
       }
 
       const choice = body.choices?.[0];
+      if (typeof choice?.message?.content !== "string") {
+        throw new Error(`${config.providerId} API response did not contain message content`);
+      }
 
       return {
-        text: choice?.message?.content ?? "",
+        text: choice.message.content,
         raw: body,
         inputTokens: body.usage?.prompt_tokens,
         outputTokens: body.usage?.completion_tokens,

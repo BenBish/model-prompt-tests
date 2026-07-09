@@ -35,6 +35,10 @@ Or via the package script alias: `bun run bench <subcommand> ...`.
 - `--dry-run` — resolve and print the prompt x model matrix with zero network calls.
 - `--no-judge` — skip LLM-judge scoring.
 
+Provider calls time out after 120 seconds by default. Matrix entries can override this
+with `timeoutMs`. A completed batch exits nonzero if any candidate or judge request
+failed, while still storing successful and failed results for reporting.
+
 ### `report`
 
 - `--out <path>` — write to a specific path (default: `bench/reports/<timestamp>.html`, always also mirrored to `bench/reports/latest.html`).
