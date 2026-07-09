@@ -30,6 +30,7 @@ export interface AnthropicAdapterConfig {
   maxTokens?: number;
   maxConcurrent?: number;
   timeoutMs?: number;
+  enabled?: boolean;
 }
 
 export interface OpenAICompatibleAdapterConfig {
@@ -43,6 +44,7 @@ export interface OpenAICompatibleAdapterConfig {
   maxTokens?: number;
   maxConcurrent?: number;
   timeoutMs?: number;
+  enabled?: boolean;
 }
 
 export type ModelMatrixEntry = AnthropicAdapterConfig | OpenAICompatibleAdapterConfig;

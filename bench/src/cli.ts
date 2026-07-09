@@ -1,7 +1,14 @@
 import { parseArgs } from "node:util";
 import { discoverPromptFiles, loadPrompts } from "./parser/discover";
 import { parsePromptFile } from "./parser/promptTemplate";
-import { modelMatrix, judgeModel as defaultJudgeModel } from "./config/models.config";
+import {
+  enabledModelMatrix,
+  ensureLocalModelsConfig,
+  findModel,
+  loadModelsConfig,
+  saveLocalModelsConfig,
+  type BenchModelsConfig,
+} from "./config/modelConfig";
 import { createAdapter } from "./providers/registry";
 import { candidateRunnerFromAdapter } from "./runner/candidateRunner";
 import { runBatch } from "./runner/runBatch";
@@ -19,13 +26,32 @@ function usage(): void {
   console.log(`Usage:
   bun bench/src/cli.ts run <prompt-glob-or-all> [--models id1,id2] [--judge <id>] [--concurrency <n>] [--dry-run] [--no-judge]
   bun bench/src/cli.ts report [--out <path>] [--batch <run_batch_id>] [--all-runs]
+  bun bench/src/cli.ts models <list|init|validate|set-judge|add-openai-compatible|add-anthropic|remove>
   bun bench/src/cli.ts list`);
 }
 
-function resolveMatrix(modelsFlag: string | undefined): ModelMatrixEntry[] {
-  if (!modelsFlag) return modelMatrix;
+function parsePositiveInteger(value: unknown, label: string): number | undefined {
+  if (value === undefined) return undefined;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new Error(`${label} must be a positive integer`);
+  }
+  return parsed;
+}
+
+function requireFlag(values: Record<string, unknown>, key: string): string {
+  const value = values[key];
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new Error(`missing required --${key}`);
+  }
+  return value;
+}
+
+function resolveMatrix(config: BenchModelsConfig, modelsFlag: string | undefined): ModelMatrixEntry[] {
+  const candidateModels = enabledModelMatrix(config);
+  if (!modelsFlag) return candidateModels;
   const ids = new Set(modelsFlag.split(",").map((s) => s.trim()));
-  const resolved = modelMatrix.filter((entry) => ids.has(entry.id));
+  const resolved = config.models.filter((entry) => ids.has(entry.id));
   const missing = [...ids].filter((id) => !resolved.some((e) => e.id === id));
   if (missing.length > 0) {
     throw new Error(`unknown model id(s) in --models: ${missing.join(", ")}`);
@@ -33,10 +59,9 @@ function resolveMatrix(modelsFlag: string | undefined): ModelMatrixEntry[] {
   return resolved;
 }
 
-function resolveJudge(judgeFlag: string | undefined): ModelMatrixEntry {
-  const judgeId = judgeFlag ?? process.env.BENCH_JUDGE_MODEL_ID ?? defaultJudgeModel.id;
-  if (judgeId === defaultJudgeModel.id) return defaultJudgeModel;
-  const found = modelMatrix.find((entry) => entry.id === judgeId);
+function resolveJudge(config: BenchModelsConfig, judgeFlag: string | undefined): ModelMatrixEntry {
+  const judgeId = judgeFlag ?? process.env.BENCH_JUDGE_MODEL_ID ?? config.judge.modelId;
+  const found = findModel(config, judgeId);
   if (!found) {
     throw new Error(`unknown judge model id: ${judgeId}`);
   }
@@ -44,6 +69,7 @@ function resolveJudge(judgeFlag: string | undefined): ModelMatrixEntry {
 }
 
 async function cmdList(): Promise<void> {
+  const { config } = await loadModelsConfig(REPO_ROOT);
   const promptFiles = await discoverPromptFiles(REPO_ROOT);
   console.log(`Prompts (${promptFiles.length}):`);
   for (const file of promptFiles) {
@@ -51,15 +77,21 @@ async function cmdList(): Promise<void> {
     console.log(`  ${prompt.id}`);
   }
 
-  console.log(`\nModel matrix (${modelMatrix.length}):`);
-  for (const entry of modelMatrix) {
-    console.log(`  ${entry.id}  (${entry.kind === "anthropic" ? "anthropic" : entry.providerId}: ${entry.modelName})`);
+  const candidateModels = enabledModelMatrix(config);
+  console.log(`\nModel matrix (${candidateModels.length} enabled, ${config.models.length} configured):`);
+  for (const entry of config.models) {
+    const enabledSuffix = entry.enabled === false ? " [disabled]" : "";
+    console.log(
+      `  ${entry.id}  (${entry.kind === "anthropic" ? "anthropic" : entry.providerId}: ${entry.modelName})${enabledSuffix}`,
+    );
   }
 
-  console.log(`\nDefault judge: ${defaultJudgeModel.id} (${defaultJudgeModel.modelName})`);
+  const judge = resolveJudge(config, undefined);
+  console.log(`\nDefault judge: ${judge.id} (${judge.modelName})`);
 }
 
 async function cmdRun(positionals: string[], values: Record<string, unknown>): Promise<void> {
+  const { config } = await loadModelsConfig(REPO_ROOT);
   const selector = positionals[0];
   if (!selector) {
     usage();
@@ -72,14 +104,14 @@ async function cmdRun(positionals: string[], values: Record<string, unknown>): P
     process.exit(1);
   }
 
-  const matrix = resolveMatrix(values.models as string | undefined);
+  const matrix = resolveMatrix(config, values.models as string | undefined);
   if (matrix.length === 0) {
     console.error("No models resolved from --models filter.");
     process.exit(1);
   }
 
   const useJudge = values["no-judge"] !== true;
-  const judgeEntry = useJudge ? resolveJudge(values.judge as string | undefined) : undefined;
+  const judgeEntry = useJudge ? resolveJudge(config, values.judge as string | undefined) : undefined;
 
   if (values["dry-run"]) {
     console.log(`Would run ${prompts.length} prompt(s) x ${matrix.length} model(s):`);
@@ -133,6 +165,148 @@ async function cmdReport(values: Record<string, unknown>): Promise<void> {
   console.log(`Also mirrored to ${REPORTS_DIR}/latest.html`);
 }
 
+async function cmdModels(rest: string[]): Promise<void> {
+  const subcommand = rest[0];
+  const args = rest.slice(1);
+
+  switch (subcommand) {
+    case "list": {
+      const { config, sourcePath, isLocal } = await loadModelsConfig(REPO_ROOT);
+      console.log(`Config: ${sourcePath}${isLocal ? "" : " (example fallback)"}`);
+      console.log(`\nModels (${config.models.length}):`);
+      for (const entry of config.models) {
+        const enabled = entry.enabled === false ? "disabled" : "enabled";
+        console.log(
+          `  ${entry.id}  (${entry.kind === "anthropic" ? "anthropic" : entry.providerId}: ${entry.modelName}, ${enabled})`,
+        );
+      }
+      const judge = resolveJudge(config, undefined);
+      console.log(`\nDefault judge: ${judge.id} (${judge.modelName})`);
+      break;
+    }
+    case "init": {
+      const path = ensureLocalModelsConfig(REPO_ROOT);
+      await loadModelsConfig(REPO_ROOT);
+      console.log(`Models config ready at ${path}`);
+      break;
+    }
+    case "validate": {
+      const { sourcePath } = await loadModelsConfig(REPO_ROOT);
+      console.log(`Models config is valid: ${sourcePath}`);
+      break;
+    }
+    case "set-judge": {
+      const modelId = args[0];
+      if (!modelId) throw new Error("usage: bun run bench models set-judge <model-id>");
+      ensureLocalModelsConfig(REPO_ROOT);
+      const { config } = await loadModelsConfig(REPO_ROOT);
+      if (!findModel(config, modelId)) {
+        throw new Error(`unknown model id: ${modelId}`);
+      }
+      config.judge.modelId = modelId;
+      const path = saveLocalModelsConfig(REPO_ROOT, config);
+      console.log(`Default judge set to ${modelId} in ${path}`);
+      break;
+    }
+    case "remove": {
+      const modelId = args[0];
+      if (!modelId) throw new Error("usage: bun run bench models remove <model-id>");
+      ensureLocalModelsConfig(REPO_ROOT);
+      const { config } = await loadModelsConfig(REPO_ROOT);
+      if (!findModel(config, modelId)) {
+        throw new Error(`unknown model id: ${modelId}`);
+      }
+      if (config.judge.modelId === modelId) {
+        throw new Error(`cannot remove "${modelId}" because it is the configured judge`);
+      }
+      config.models = config.models.filter((model) => model.id !== modelId);
+      const path = saveLocalModelsConfig(REPO_ROOT, config);
+      console.log(`Removed ${modelId} from ${path}`);
+      break;
+    }
+    case "add-openai-compatible": {
+      const { values } = parseArgs({
+        args,
+        allowPositionals: false,
+        options: {
+          id: { type: "string" },
+          provider: { type: "string" },
+          model: { type: "string" },
+          "base-url": { type: "string" },
+          "api-key-env": { type: "string" },
+          "max-concurrent": { type: "string" },
+          "max-tokens": { type: "string" },
+          "timeout-ms": { type: "string" },
+          disabled: { type: "boolean" },
+        },
+      });
+      ensureLocalModelsConfig(REPO_ROOT);
+      const { config } = await loadModelsConfig(REPO_ROOT);
+      const id = requireFlag(values, "id");
+      if (findModel(config, id)) throw new Error(`model id already exists: ${id}`);
+      config.models.push({
+        id,
+        kind: "openai-compatible",
+        providerId: requireFlag(values, "provider"),
+        modelName: requireFlag(values, "model"),
+        baseUrl: requireFlag(values, "base-url"),
+        apiKeyEnvVar: values["api-key-env"] as string | undefined,
+        maxConcurrent: parsePositiveInteger(values["max-concurrent"], "--max-concurrent"),
+        maxTokens: parsePositiveInteger(values["max-tokens"], "--max-tokens"),
+        timeoutMs: parsePositiveInteger(values["timeout-ms"], "--timeout-ms"),
+        enabled: values.disabled === true ? false : undefined,
+      });
+      const path = saveLocalModelsConfig(REPO_ROOT, config);
+      console.log(`Added ${id} to ${path}`);
+      break;
+    }
+    case "add-anthropic": {
+      const { values } = parseArgs({
+        args,
+        allowPositionals: false,
+        options: {
+          id: { type: "string" },
+          model: { type: "string" },
+          "api-key-env": { type: "string" },
+          "base-url": { type: "string" },
+          "max-concurrent": { type: "string" },
+          "max-tokens": { type: "string" },
+          "timeout-ms": { type: "string" },
+          disabled: { type: "boolean" },
+        },
+      });
+      ensureLocalModelsConfig(REPO_ROOT);
+      const { config } = await loadModelsConfig(REPO_ROOT);
+      const id = requireFlag(values, "id");
+      if (findModel(config, id)) throw new Error(`model id already exists: ${id}`);
+      config.models.push({
+        id,
+        kind: "anthropic",
+        modelName: requireFlag(values, "model"),
+        apiKeyEnvVar: requireFlag(values, "api-key-env"),
+        baseUrl: values["base-url"] as string | undefined,
+        maxConcurrent: parsePositiveInteger(values["max-concurrent"], "--max-concurrent"),
+        maxTokens: parsePositiveInteger(values["max-tokens"], "--max-tokens"),
+        timeoutMs: parsePositiveInteger(values["timeout-ms"], "--timeout-ms"),
+        enabled: values.disabled === true ? false : undefined,
+      });
+      const path = saveLocalModelsConfig(REPO_ROOT, config);
+      console.log(`Added ${id} to ${path}`);
+      break;
+    }
+    default:
+      console.log(`Usage:
+  bun bench/src/cli.ts models list
+  bun bench/src/cli.ts models init
+  bun bench/src/cli.ts models validate
+  bun bench/src/cli.ts models set-judge <model-id>
+  bun bench/src/cli.ts models add-openai-compatible --id <id> --provider <provider-id> --model <name> --base-url <url> [--api-key-env <ENV>] [--max-concurrent <n>] [--max-tokens <n>] [--timeout-ms <n>] [--disabled]
+  bun bench/src/cli.ts models add-anthropic --id <id> --model <name> --api-key-env <ENV> [--base-url <url>] [--max-concurrent <n>] [--max-tokens <n>] [--timeout-ms <n>] [--disabled]
+  bun bench/src/cli.ts models remove <model-id>`);
+      if (subcommand) process.exit(1);
+  }
+}
+
 async function main(): Promise<void> {
   const subcommand = process.argv[2];
 
@@ -174,6 +348,10 @@ async function main(): Promise<void> {
         },
       });
       await cmdReport(values);
+      break;
+    }
+    case "models": {
+      await cmdModels(rest);
       break;
     }
     default:
