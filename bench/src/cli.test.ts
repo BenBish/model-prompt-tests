@@ -68,6 +68,8 @@ describe("bench models CLI", () => {
       "HTTP-Referer=https://github.com/model-prompt-tests",
       "--header",
       "X-Title=model-prompt-tests bench",
+      "--reasoning-effort",
+      "medium",
     ]);
 
     expect(result.exitCode).toBe(0);
@@ -77,5 +79,6 @@ describe("bench models CLI", () => {
       "HTTP-Referer": "https://github.com/model-prompt-tests",
       "X-Title": "model-prompt-tests bench",
     });
+    expect(model.reasoningEffort).toBe("medium");
   });
 });

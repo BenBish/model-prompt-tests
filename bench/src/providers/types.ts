@@ -41,6 +41,7 @@ export interface OpenAICompatibleAdapterConfig {
   baseUrl: string;
   apiKeyEnvVar?: string;
   extraHeaders?: Record<string, string>;
+  reasoningEffort?: string;
   maxTokens?: number;
   maxConcurrent?: number;
   timeoutMs?: number;

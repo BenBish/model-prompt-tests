@@ -14,6 +14,7 @@ export interface ReportRow {
   outputText?: string;
   error?: string;
   runStatus: "ok" | "error";
+  judgeResults: JudgeReportRow[];
   score?: number;
   rationale?: string;
   judgeModelId?: string;
@@ -22,11 +23,33 @@ export interface ReportRow {
   scoredAt?: string;
 }
 
+export interface JudgeReportRow {
+  judgeModelId: string;
+  score?: number;
+  rationale?: string;
+  judgeError?: string;
+  judgeStatus: "ok" | "error";
+  scoredAt: string;
+}
+
+export interface ModelSummary {
+  modelId: string;
+  okRuns: number;
+  errorRuns: number;
+  avgScore?: number;
+  avgLatencyMs?: number;
+  medianLatencyMs?: number;
+  avgOutputTokens?: number;
+  avgJudgeSpread?: number;
+  qualityPerSecond?: number;
+}
+
 export interface ReportData {
   promptIds: string[];
   modelIds: string[];
   // rows[promptId][modelId] -> ReportRow[] (sorted oldest -> newest)
   rows: Map<string, Map<string, ReportRow[]>>;
+  summaries: ModelSummary[];
 }
 
 export interface QueryOptions {
@@ -49,23 +72,64 @@ function rowToReportRow(row: any): ReportRow {
     outputText: row.output_text ?? undefined,
     error: row.error ?? undefined,
     runStatus: row.status,
-    score: row.score ?? undefined,
-    rationale: row.rationale ?? undefined,
-    judgeModelId: row.judge_model_id ?? undefined,
-    judgeError: row.judge_error ?? undefined,
-    judgeStatus: row.judge_status ?? undefined,
-    scoredAt: row.scored_at ?? undefined,
+    judgeResults: [],
   };
 }
 
+function average(values: number[]): number | undefined {
+  if (values.length === 0) return undefined;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function median(values: number[]): number | undefined {
+  if (values.length === 0) return undefined;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) return sorted[middle];
+  return (sorted[middle - 1]! + sorted[middle]!) / 2;
+}
+
+function summarize(modelIds: string[], rows: ReportRow[]): ModelSummary[] {
+  return modelIds.map((modelId) => {
+    const modelRows = rows.filter((row) => row.modelId === modelId);
+    const okRows = modelRows.filter((row) => row.runStatus === "ok");
+    const scores = okRows.flatMap((row) =>
+      row.judgeResults.flatMap((judge) => (judge.score === undefined ? [] : [judge.score])),
+    );
+    const latencies = okRows.flatMap((row) =>
+      row.latencyMs === undefined ? [] : [row.latencyMs],
+    );
+    const outputTokens = okRows.flatMap((row) =>
+      row.outputTokens === undefined ? [] : [row.outputTokens],
+    );
+    const spreads = okRows.flatMap((row) => {
+      const rowScores = row.judgeResults.flatMap((judge) =>
+        judge.score === undefined ? [] : [judge.score],
+      );
+      if (rowScores.length < 2) return [];
+      return [Math.max(...rowScores) - Math.min(...rowScores)];
+    });
+    const avgScore = average(scores);
+    const avgLatencyMs = average(latencies);
+    return {
+      modelId,
+      okRuns: okRows.length,
+      errorRuns: modelRows.length - okRows.length,
+      avgScore,
+      avgLatencyMs,
+      medianLatencyMs: median(latencies),
+      avgOutputTokens: average(outputTokens),
+      avgJudgeSpread: average(spreads),
+      qualityPerSecond:
+        avgScore !== undefined && avgLatencyMs !== undefined && avgLatencyMs > 0
+          ? avgScore / (avgLatencyMs / 1000)
+          : undefined,
+    };
+  });
+}
+
 export function queryReportData(db: Database, options: QueryOptions = {}): ReportData {
-  let sql = `
-    SELECT runs.*, scores.score, scores.rationale, scores.judge_model_id,
-           scores.error AS judge_error, scores.status AS judge_status,
-           scores.scored_at
-    FROM runs
-    LEFT JOIN scores ON scores.run_id = runs.id
-  `;
+  let sql = "SELECT runs.* FROM runs";
   const params: Record<string, string> = {};
   if (options.runBatchId) {
     sql += " WHERE runs.run_batch_id = $runBatchId";
@@ -74,6 +138,39 @@ export function queryReportData(db: Database, options: QueryOptions = {}): Repor
   sql += " ORDER BY runs.prompt_id, runs.model_id, runs.started_at ASC";
 
   const allRows = (db.query(sql).all(params) as any[]).map(rowToReportRow);
+  const scoreRows = db
+    .query(
+      `
+        SELECT run_id, judge_model_id, score, rationale,
+               error AS judge_error, status AS judge_status, scored_at
+        FROM scores
+        ORDER BY judge_model_id ASC, scored_at ASC
+      `,
+    )
+    .all() as any[];
+  const scoresByRun = new Map<number, JudgeReportRow[]>();
+  for (const scoreRow of scoreRows) {
+    const list = scoresByRun.get(scoreRow.run_id) ?? [];
+    list.push({
+      judgeModelId: scoreRow.judge_model_id,
+      score: scoreRow.score ?? undefined,
+      rationale: scoreRow.rationale ?? undefined,
+      judgeError: scoreRow.judge_error ?? undefined,
+      judgeStatus: scoreRow.judge_status,
+      scoredAt: scoreRow.scored_at,
+    });
+    scoresByRun.set(scoreRow.run_id, list);
+  }
+  for (const row of allRows) {
+    row.judgeResults = scoresByRun.get(row.runId) ?? [];
+    const firstJudge = row.judgeResults[0];
+    row.score = firstJudge?.score;
+    row.rationale = firstJudge?.rationale;
+    row.judgeModelId = firstJudge?.judgeModelId;
+    row.judgeError = firstJudge?.judgeError;
+    row.judgeStatus = firstJudge?.judgeStatus;
+    row.scoredAt = firstJudge?.scoredAt;
+  }
 
   const grouped = new Map<string, Map<string, ReportRow[]>>();
   for (const row of allRows) {
@@ -101,5 +198,10 @@ export function queryReportData(db: Database, options: QueryOptions = {}): Repor
     for (const modelId of byModel.keys()) modelIdSet.add(modelId);
   }
 
-  return { promptIds, modelIds: [...modelIdSet].sort(), rows: grouped };
+  const modelIds = [...modelIdSet].sort();
+  const latestRows = [...grouped.values()].flatMap((byModel) =>
+    [...byModel.values()].flatMap((rows) => rows),
+  );
+
+  return { promptIds, modelIds, rows: grouped, summaries: summarize(modelIds, latestRows) };
 }

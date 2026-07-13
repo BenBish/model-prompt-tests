@@ -92,4 +92,30 @@ describe("provider adapters", () => {
       expect((error as Error).message).toContain("upstream unavailable");
     }
   });
+
+  test("passes configured OpenAI-compatible reasoning effort", async () => {
+    let requestBody: any;
+    globalThis.fetch = (async (_input, init) => {
+      requestBody = JSON.parse(String(init?.body));
+      return new Response(
+        JSON.stringify({
+          choices: [{ message: { content: "ok" }, finish_reason: "stop" }],
+          usage: {},
+        }),
+        { status: 200 },
+      );
+    }) as unknown as typeof fetch;
+    const adapter = createOpenAICompatibleAdapter({
+      kind: "openai-compatible",
+      id: "openrouter:test",
+      providerId: "openrouter",
+      modelName: "provider/model",
+      baseUrl: "https://openrouter.ai/api/v1",
+      reasoningEffort: "medium",
+    });
+
+    await adapter.call({ userPrompt: "test" });
+
+    expect(requestBody.reasoning).toEqual({ effort: "medium" });
+  });
 });
