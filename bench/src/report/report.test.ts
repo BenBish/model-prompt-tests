@@ -85,7 +85,72 @@ test("summarizes multiple judge scores without duplicating run rows", () => {
   expect(rows).toHaveLength(1);
   expect(rows?.[0]?.judgeResults).toHaveLength(2);
   expect(data.summaries[0]?.avgScore).toBe(3);
+  expect(data.summaries[0]?.missingJudgeScores).toBe(0);
   expect(data.summaries[0]?.avgJudgeSpread).toBe(2);
   expect(data.summaries[0]?.qualityPerSecond).toBe(1.5);
+  db.close();
+});
+
+test("averages model scores per run before averaging across runs", () => {
+  const db = createDb();
+  const startedAt = "2026-07-08T12:00:00.000Z";
+  const firstRunId = insertRun(db, {
+    runBatchId: "batch-123",
+    promptId: "test/prompt-a",
+    providerId: "test",
+    modelId: "test:model",
+    modelName: "model",
+    startedAt,
+    latencyMs: 1000,
+    outputText: "output",
+    status: "ok",
+  });
+  const secondRunId = insertRun(db, {
+    runBatchId: "batch-123",
+    promptId: "test/prompt-b",
+    providerId: "test",
+    modelId: "test:model",
+    modelName: "model",
+    startedAt,
+    latencyMs: 1000,
+    outputText: "output",
+    status: "ok",
+  });
+  insertScore(db, {
+    runId: firstRunId,
+    judgeModelId: "judge-a",
+    score: 5,
+    rationale: "excellent",
+    scoredAt: startedAt,
+    status: "ok",
+  });
+  insertScore(db, {
+    runId: firstRunId,
+    judgeModelId: "judge-b",
+    error: "judge did not return JSON",
+    scoredAt: startedAt,
+    status: "error",
+  });
+  insertScore(db, {
+    runId: secondRunId,
+    judgeModelId: "judge-a",
+    score: 1,
+    rationale: "poor",
+    scoredAt: startedAt,
+    status: "ok",
+  });
+  insertScore(db, {
+    runId: secondRunId,
+    judgeModelId: "judge-b",
+    score: 1,
+    rationale: "poor",
+    scoredAt: startedAt,
+    status: "ok",
+  });
+
+  const data = queryReportData(db, { allRuns: true });
+
+  expect(data.summaries[0]?.avgScore).toBe(3);
+  expect(data.summaries[0]?.missingJudgeScores).toBe(1);
   db.close();
 });

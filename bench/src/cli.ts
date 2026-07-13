@@ -208,7 +208,9 @@ async function cmdReport(values: Record<string, unknown>): Promise<void> {
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const outPath = (values.out as string | undefined) ?? `${REPORTS_DIR}/${timestamp}.html`;
-  const summaryPath = outPath.replace(/\.html?$/i, ".summary.json");
+  const summaryPath = /\.html?$/i.test(outPath)
+    ? outPath.replace(/\.html?$/i, ".summary.json")
+    : `${outPath}.summary.json`;
   await Bun.write(outPath, html);
   await Bun.write(summaryPath, `${JSON.stringify(data.summaries, null, 2)}\n`);
   await Bun.write(`${REPORTS_DIR}/latest.html`, html);

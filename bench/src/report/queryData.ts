@@ -36,6 +36,7 @@ export interface ModelSummary {
   modelId: string;
   okRuns: number;
   errorRuns: number;
+  missingJudgeScores: number;
   avgScore?: number;
   avgLatencyMs?: number;
   medianLatencyMs?: number;
@@ -93,8 +94,17 @@ function summarize(modelIds: string[], rows: ReportRow[]): ModelSummary[] {
   return modelIds.map((modelId) => {
     const modelRows = rows.filter((row) => row.modelId === modelId);
     const okRows = modelRows.filter((row) => row.runStatus === "ok");
-    const scores = okRows.flatMap((row) =>
-      row.judgeResults.flatMap((judge) => (judge.score === undefined ? [] : [judge.score])),
+    const runScores = okRows.flatMap((row) => {
+      const scores = row.judgeResults.flatMap((judge) =>
+        judge.score === undefined ? [] : [judge.score],
+      );
+      const runAverage = average(scores);
+      return runAverage === undefined ? [] : [runAverage];
+    });
+    const missingJudgeScores = okRows.reduce(
+      (sum, row) =>
+        sum + row.judgeResults.filter((judge) => judge.judgeStatus !== "ok" || judge.score === undefined).length,
+      0,
     );
     const latencies = okRows.flatMap((row) =>
       row.latencyMs === undefined ? [] : [row.latencyMs],
@@ -109,12 +119,13 @@ function summarize(modelIds: string[], rows: ReportRow[]): ModelSummary[] {
       if (rowScores.length < 2) return [];
       return [Math.max(...rowScores) - Math.min(...rowScores)];
     });
-    const avgScore = average(scores);
+    const avgScore = average(runScores);
     const avgLatencyMs = average(latencies);
     return {
       modelId,
       okRuns: okRows.length,
       errorRuns: modelRows.length - okRows.length,
+      missingJudgeScores,
       avgScore,
       avgLatencyMs,
       medianLatencyMs: median(latencies),

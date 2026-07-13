@@ -73,6 +73,7 @@ function renderSummaryRows(summaries: ModelSummary[]): string {
           <th>${escapeHtml(summary.modelId)}</th>
           <td>${summary.okRuns}</td>
           <td>${summary.errorRuns}</td>
+          <td>${summary.missingJudgeScores}</td>
           <td>${formatNumber(summary.avgScore)}</td>
           <td>${formatNumber(summary.avgLatencyMs, 0)}</td>
           <td>${formatNumber(summary.medianLatencyMs, 0)}</td>
@@ -132,6 +133,7 @@ export function renderReportHtml(data: ReportData, generatedAt: string): string 
         <th>Model</th>
         <th>OK</th>
         <th>Errors</th>
+        <th>Missing judge scores</th>
         <th>Avg score</th>
         <th>Avg latency ms</th>
         <th>Median latency ms</th>
