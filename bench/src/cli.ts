@@ -109,6 +109,10 @@ function resolveJudges(
   if (ids.length === 0) {
     throw new Error("--judges must contain at least one model id");
   }
+  const duplicate = ids.find((id, index) => ids.indexOf(id) !== index);
+  if (duplicate) {
+    throw new Error(`duplicate judge model id: ${duplicate}`);
+  }
   return ids.map((id) => {
     const found = findModel(config, id);
     if (!found) {

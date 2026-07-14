@@ -31,6 +31,37 @@ function makeTempRepo(): string {
       2,
     )}\n`,
   );
+  writeFileSync(
+    join(root, "test-prompt.md"),
+    `# Test Prompt
+
+## Prompt
+
+\`\`\`text
+Answer briefly.
+\`\`\`
+
+## What This Tests
+
+- Basic behavior.
+
+## Strong Answer Signals
+
+- Clear answer.
+
+## Weak Answer Signals
+
+- Missing answer.
+
+## Scoring Rubric
+
+- \`5\`: Excellent.
+- \`4\`: Good.
+- \`3\`: Adequate.
+- \`2\`: Weak.
+- \`1\`: Poor.
+`,
+  );
   return root;
 }
 
@@ -100,5 +131,22 @@ describe("bench models CLI", () => {
     expect(result.exitCode).toBe(0);
     expect(readFileSync(outPath, "utf8")).toContain("<!doctype html>");
     expect(JSON.parse(readFileSync(`${outPath}.summary.json`, "utf8"))).toEqual([]);
+  });
+
+  test("rejects duplicate judge ids", () => {
+    const repoRoot = makeTempRepo();
+
+    const result = runCli(repoRoot, [
+      "run",
+      "test-prompt",
+      "--models",
+      "local:test",
+      "--judges",
+      "local:test,local:test",
+      "--dry-run",
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr.toString()).toContain("duplicate judge model id: local:test");
   });
 });
