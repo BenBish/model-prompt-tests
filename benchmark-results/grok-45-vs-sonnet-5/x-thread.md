@@ -37,4 +37,4 @@ Sonnet 5 was still solid on many engineering and reasoning prompts, but lost gro
 
 7. Full write-up, methodology, caveats, and raw artifacts:
 
-[link]
+https://bshp.io/articles/grok-45-vs-sonnet-5-benchmark/
