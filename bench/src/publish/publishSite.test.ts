@@ -97,6 +97,27 @@ describe("publishSite", () => {
     expect(second.published).toEqual(["run-a"]);
   });
 
+  test("refuses to publish when data.json's name doesn't match its directory (path-traversal guard)", async () => {
+    const resultsDir = makeResultsDir();
+    const outParent = mkdtempSync(join(tmpdir(), "bench-publish-out-"));
+    tempRoots.push(outParent);
+    const outDir = join(outParent, "docs");
+
+    // Simulates a hand-edited or malicious data.json trying to escape docs/runs/.
+    await writeRun(resultsDir, "legit-dir", payload("../../../escaped", "2026-07-01T00:00:00.000Z"));
+
+    const result = await publishSite({ resultsDir, outDir });
+
+    expect(result.published).toEqual([]);
+    expect(result.skipped).toHaveLength(1);
+    expect(result.skipped[0]!.name).toBe("legit-dir");
+    expect(result.skipped[0]!.reason).toContain("does not match");
+
+    // Nothing should have been written outside outParent/docs.
+    const { readdirSync } = await import("node:fs");
+    expect(readdirSync(outParent)).toEqual(["docs"]);
+  });
+
   test("renders an empty-state index when nothing is published", async () => {
     const resultsDir = makeResultsDir();
     const outDir = join(mkdtempSync(join(tmpdir(), "bench-publish-out-")), "docs");

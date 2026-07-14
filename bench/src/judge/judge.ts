@@ -47,7 +47,12 @@ function looksLikeUnsupportedStructuredOutput(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   const status = (err as { status?: number }).status;
   if (status === 400 || status === 404 || status === 422) return true;
-  return /response_format|json_schema|tool_choice|tool_use|\btools\b/i.test(err.message);
+  // Deliberately specific API-parameter-name terms only. A bare "tools" was
+  // dropped from this list: it's a common enough English word that it could
+  // false-positive on an unrelated error (network/5xx/rate-limit message
+  // that happens to mention tools) and misroute it into the legacy-contract
+  // fallback instead of surfacing the real error immediately.
+  return /response_format|json_schema|tool_choice|tool_use/i.test(err.message);
 }
 
 function extractFirstJsonObject(text: string): unknown | undefined {

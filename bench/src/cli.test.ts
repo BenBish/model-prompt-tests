@@ -71,6 +71,21 @@ function createBenchDb(repoRoot: string): void {
   db.close();
 }
 
+function seedBatch(repoRoot: string, runBatchId: string, startedAt: string, score: number): void {
+  const db = new Database(join(repoRoot, "bench", "data", "bench.sqlite"));
+  db.exec(readFileSync(new URL("./db/schema.sql", import.meta.url), "utf8"));
+  db.prepare(
+    `INSERT INTO runs (run_batch_id, prompt_id, provider_id, model_id, model_name, started_at, status, output_text)
+     VALUES ($runBatchId, 'test-prompt', 'local', 'local:test', 'test-model', $startedAt, 'ok', 'output')`,
+  ).run({ $runBatchId: runBatchId, $startedAt: startedAt });
+  const runId = db.query("SELECT id FROM runs WHERE run_batch_id = $b").get({ $b: runBatchId }) as { id: number };
+  db.prepare(
+    `INSERT INTO scores (run_id, judge_model_id, score, rationale, scored_at, status)
+     VALUES ($runId, 'local:judge', $score, 'good', $startedAt, 'ok')`,
+  ).run({ $runId: runId.id, $score: score, $startedAt: startedAt });
+  db.close();
+}
+
 function runCli(repoRoot: string, args: string[]) {
   return Bun.spawnSync({
     cmd: ["bun", cliPath, ...args],
@@ -148,5 +163,98 @@ describe("bench models CLI", () => {
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr.toString()).toContain("duplicate judge model id: local:test");
+  });
+});
+
+describe("bench export CLI", () => {
+  test("exports a batch by --batch id", () => {
+    const repoRoot = makeTempRepo();
+    seedBatch(repoRoot, "batch-1", "2026-07-14T00:00:00.000Z", 4);
+
+    const result = runCli(repoRoot, ["export", "--name", "my-export", "--batch", "batch-1"]);
+
+    expect(result.exitCode).toBe(0);
+    const outDir = join(repoRoot, "benchmark-results", "my-export");
+    expect(readFileSync(join(outDir, "report.html"), "utf8")).toContain("<!doctype html>");
+    const summary = JSON.parse(readFileSync(join(outDir, "summary.json"), "utf8"));
+    expect(summary[0].modelId).toBe("local:test");
+    expect(summary[0].avgScore).toBe(4);
+  });
+
+  test("--latest resolves the most recent batch without an explicit --batch", () => {
+    const repoRoot = makeTempRepo();
+    seedBatch(repoRoot, "batch-old", "2026-07-13T00:00:00.000Z", 2);
+    seedBatch(repoRoot, "batch-new", "2026-07-14T00:00:00.000Z", 5);
+
+    const result = runCli(repoRoot, ["export", "--name", "latest-export", "--latest"]);
+
+    expect(result.exitCode).toBe(0);
+    const summary = JSON.parse(
+      readFileSync(join(repoRoot, "benchmark-results", "latest-export", "summary.json"), "utf8"),
+    );
+    expect(summary[0].avgScore).toBe(5);
+  });
+
+  test("rejects --batch and --latest together", () => {
+    const repoRoot = makeTempRepo();
+    seedBatch(repoRoot, "batch-1", "2026-07-14T00:00:00.000Z", 4);
+
+    const result = runCli(repoRoot, ["export", "--name", "x", "--batch", "batch-1", "--latest"]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr.toString()).toContain("use either --batch or --latest");
+  });
+
+  test("requires --batch or --latest when the flag is omitted", () => {
+    const repoRoot = makeTempRepo();
+    createBenchDb(repoRoot);
+
+    const result = runCli(repoRoot, ["export", "--name", "x"]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr.toString()).toContain("missing --batch");
+  });
+});
+
+describe("bench publish CLI", () => {
+  test("publishes an exported batch to --out", () => {
+    const repoRoot = makeTempRepo();
+    seedBatch(repoRoot, "batch-1", "2026-07-14T00:00:00.000Z", 4);
+    expect(runCli(repoRoot, ["export", "--name", "pub-test", "--batch", "batch-1"]).exitCode).toBe(0);
+
+    const result = runCli(repoRoot, ["publish"]);
+
+    expect(result.exitCode).toBe(0);
+    const index = readFileSync(join(repoRoot, "docs", "index.html"), "utf8");
+    expect(index).toContain("pub-test");
+    expect(readFileSync(join(repoRoot, "docs", "runs", "pub-test", "index.html"), "utf8")).toContain(
+      'property="og:title"',
+    );
+  });
+});
+
+describe("bench report --compare CLI", () => {
+  test("renders a delta page comparing two batches", () => {
+    const repoRoot = makeTempRepo();
+    seedBatch(repoRoot, "batch-a", "2026-07-13T00:00:00.000Z", 2);
+    seedBatch(repoRoot, "batch-b", "2026-07-14T00:00:00.000Z", 5);
+    const outPath = join(repoRoot, "compare.html");
+
+    const result = runCli(repoRoot, ["report", "--compare", "batch-a", "--compare", "batch-b", "--out", outPath]);
+
+    expect(result.exitCode).toBe(0);
+    const html = readFileSync(outPath, "utf8");
+    expect(html).toContain("Compare:");
+    expect(html).toContain("+3.00");
+  });
+
+  test("rejects --compare with only one value", () => {
+    const repoRoot = makeTempRepo();
+    seedBatch(repoRoot, "batch-a", "2026-07-13T00:00:00.000Z", 2);
+
+    const result = runCli(repoRoot, ["report", "--compare", "batch-a"]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr.toString()).toContain("--compare requires exactly two batch ids");
   });
 });

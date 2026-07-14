@@ -176,4 +176,25 @@ describe("structured output", () => {
     expect(outcome.error).toBe("judge request failed: API error 401: unauthorized");
     expect(calls).toBe(1);
   });
+
+  test("does not fall back on a non-retriable, non-400 error that merely mentions 'tools'", async () => {
+    let calls = 0;
+    const adapter: ModelAdapter = {
+      providerId: "test",
+      modelName: "test-judge",
+      async call() {
+        calls++;
+        const error = new Error("API error 403: forbidden, contact support about your tools access") as Error & {
+          status?: number;
+        };
+        error.status = 403;
+        throw error;
+      },
+    };
+
+    const outcome = await runJudge(adapter, prompt, "candidate output");
+
+    expect(outcome.error).toContain("forbidden");
+    expect(calls).toBe(1);
+  });
 });

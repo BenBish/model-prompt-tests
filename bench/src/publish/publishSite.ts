@@ -48,10 +48,16 @@ function runDescription(payload: SitePayload): string {
   return parts.join(" · ");
 }
 
-function renderRunCard(payload: SitePayload): string {
+interface DiscoveredRun {
+  /** Directory name verified to exist on disk under resultsDir -- always used for filesystem paths, never payload.name (untrusted JSON content). */
+  dir: string;
+  payload: SitePayload;
+}
+
+function renderRunCard(dir: string, payload: SitePayload): string {
   const best = topScore(payload.summaries);
   return `
-    <a class="run-card" href="runs/${escapeHtml(payload.name)}/index.html">
+    <a class="run-card" href="runs/${escapeHtml(dir)}/index.html">
       <h3>${escapeHtml(titleCase(payload.name))}</h3>
       <div class="run-date">${escapeHtml(formatDate(payload.generatedAt))} · ${payload.promptCount} prompts · ${payload.modelIds.length} models</div>
       <div class="run-models">${escapeHtml(payload.modelIds.join(", "))}</div>
@@ -64,8 +70,8 @@ function renderRunCard(payload: SitePayload): string {
   `;
 }
 
-function renderIndexHtml(payloads: SitePayload[], generatedAt: string): string {
-  const cards = payloads.map(renderRunCard).join("");
+function renderIndexHtml(runs: DiscoveredRun[], generatedAt: string): string {
+  const cards = runs.map(({ dir, payload }) => renderRunCard(dir, payload)).join("");
   return `<!doctype html>
 <html>
 <head>
@@ -87,7 +93,7 @@ ${paletteStyleBlock()}
       </div>
     </header>
     <p class="site-intro">Model-vs-model benchmark runs: prompt-level LLM-judged scores, cost, latency, and full raw outputs. Each run below is independently reproducible from the config and prompt set committed alongside it.</p>
-    ${payloads.length === 0 ? `<p class="chart-empty">No published runs yet -- run <code>bench export</code> then <code>bench publish</code>.</p>` : `<div class="run-grid">${cards}</div>`}
+    ${runs.length === 0 ? `<p class="chart-empty">No published runs yet -- run <code>bench export</code> then <code>bench publish</code>.</p>` : `<div class="run-grid">${cards}</div>`}
   </div>
 </body>
 </html>`;
@@ -108,10 +114,14 @@ export interface PublishResult {
 export async function publishSite(options: PublishOptions): Promise<PublishResult> {
   const generatedAt = options.generatedAt ?? new Date().toISOString();
   const glob = new Bun.Glob("*/data.json");
-  const payloads: SitePayload[] = [];
+  const discovered: DiscoveredRun[] = [];
   const skipped: { name: string; reason: string }[] = [];
 
   for await (const relPath of glob.scan({ cwd: options.resultsDir })) {
+    // dir comes straight from a real directory entry on disk (Bun.Glob only
+    // matches one path segment per "*"), so it's safe to use in output paths
+    // below. payload.name is untrusted JSON content and must never be used
+    // for filesystem paths -- see the mismatch check.
     const dir = relPath.replace(/\/data\.json$/, "");
     const dataPath = `${options.resultsDir}/${relPath}`;
     const reportPath = `${options.resultsDir}/${dir}/report.html`;
@@ -123,28 +133,35 @@ export async function publishSite(options: PublishOptions): Promise<PublishResul
       skipped.push({ name: dir, reason: `invalid data.json: ${err instanceof Error ? err.message : String(err)}` });
       continue;
     }
+    if (payload.name !== dir) {
+      skipped.push({
+        name: dir,
+        reason: `data.json "name" ("${payload.name}") does not match its directory ("${dir}"); refusing to publish to avoid writing outside the intended output path`,
+      });
+      continue;
+    }
     if (!(await Bun.file(reportPath).exists())) {
       skipped.push({ name: dir, reason: "missing report.html (run `bench export` for this batch first)" });
       continue;
     }
-    payloads.push(payload);
+    discovered.push({ dir, payload });
   }
 
-  payloads.sort((a, b) => b.generatedAt.localeCompare(a.generatedAt));
+  discovered.sort((a, b) => b.payload.generatedAt.localeCompare(a.payload.generatedAt));
 
   mkdirSync(options.outDir, { recursive: true });
   mkdirSync(`${options.outDir}/runs`, { recursive: true });
 
-  for (const payload of payloads) {
-    const reportPath = `${options.resultsDir}/${payload.name}/report.html`;
+  for (const { dir, payload } of discovered) {
+    const reportPath = `${options.resultsDir}/${dir}/report.html`;
     const html = await Bun.file(reportPath).text();
     const tagged = injectMetaTags(html, `${titleCase(payload.name)} — model-prompt-tests bench`, runDescription(payload));
-    const runOutDir = `${options.outDir}/runs/${payload.name}`;
+    const runOutDir = `${options.outDir}/runs/${dir}`;
     mkdirSync(runOutDir, { recursive: true });
     await Bun.write(`${runOutDir}/index.html`, tagged);
   }
 
-  await Bun.write(`${options.outDir}/index.html`, renderIndexHtml(payloads, generatedAt));
+  await Bun.write(`${options.outDir}/index.html`, renderIndexHtml(discovered, generatedAt));
 
-  return { outDir: options.outDir, published: payloads.map((p) => p.name), skipped };
+  return { outDir: options.outDir, published: discovered.map((r) => r.dir), skipped };
 }
