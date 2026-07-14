@@ -114,6 +114,7 @@ function normalizeModel(raw: unknown, index: number): ModelMatrixEntry {
       baseUrl: requireString(obj, "baseUrl", context),
       apiKeyEnvVar: optionalString(obj, "apiKeyEnvVar", context),
       extraHeaders: optionalStringRecord(obj, "extraHeaders", context),
+      reasoningEffort: optionalString(obj, "reasoningEffort", context),
     };
   }
 

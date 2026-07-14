@@ -4,3 +4,5 @@ bench/data/*.sqlite
 bench/data/*.sqlite-*
 bench/models.json
 bench/reports/*.html
+bench/reports/*.summary.json
+bench/reports/*.assessment.md

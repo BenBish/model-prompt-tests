@@ -35,16 +35,21 @@ export function createOpenAICompatibleAdapter(
       messages.push({ role: "user", content: input.userPrompt });
 
       const started = performance.now();
+      const requestBody: Record<string, unknown> = {
+        model: config.modelName,
+        messages,
+        max_tokens: input.maxTokens ?? config.maxTokens ?? DEFAULT_MAX_TOKENS,
+        temperature: input.temperature,
+      };
+      if (config.reasoningEffort) {
+        requestBody.reasoning = { effort: config.reasoningEffort };
+      }
+
       const response = await fetch(`${config.baseUrl}/chat/completions`, {
         method: "POST",
         signal: AbortSignal.timeout(config.timeoutMs ?? DEFAULT_TIMEOUT_MS),
         headers,
-        body: JSON.stringify({
-          model: config.modelName,
-          messages,
-          max_tokens: input.maxTokens ?? config.maxTokens ?? DEFAULT_MAX_TOKENS,
-          temperature: input.temperature,
-        }),
+        body: JSON.stringify(requestBody),
       });
       const latencyMs = performance.now() - started;
 

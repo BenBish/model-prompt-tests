@@ -1,5 +1,5 @@
 import { escapeHtml } from "../util/html";
-import type { ReportData, ReportRow } from "./queryData";
+import type { JudgeReportRow, ModelSummary, ReportData, ReportRow } from "./queryData";
 
 function scoreBadgeColor(score: number | undefined): string {
   if (score === undefined) return "#888";
@@ -15,8 +15,13 @@ function renderRunDetails(row: ReportRow): string {
     return `<details><summary style="color:#c62828">error</summary><pre>${escapeHtml(row.error)}</pre></details>`;
   }
 
-  const badgeColor = scoreBadgeColor(row.score);
-  const summaryLabel = row.score !== undefined ? String(row.score) : "?";
+  const scores = row.judgeResults.flatMap((judge) =>
+    judge.score === undefined ? [] : [judge.score],
+  );
+  const avgScore =
+    scores.length > 0 ? scores.reduce((sum, score) => sum + score, 0) / scores.length : undefined;
+  const badgeColor = scoreBadgeColor(avgScore);
+  const summaryLabel = avgScore !== undefined ? avgScore.toFixed(2) : "?";
   const meta = [
     row.startedAt,
     `batch ${row.runBatchId}`,
@@ -34,24 +39,51 @@ function renderRunDetails(row: ReportRow): string {
       <div class="run-detail">
         <h4>Output</h4>
         <pre>${escapeHtml(row.outputText)}</pre>
-        ${
-          row.rationale
-            ? `<h4>Judge rationale (${escapeHtml(row.judgeModelId)})</h4><pre>${escapeHtml(row.rationale)}</pre>`
-            : ""
-        }
-        ${
-          row.judgeError
-            ? `<h4 style="color:#c62828">Judge error (${escapeHtml(row.judgeModelId)})</h4><pre>${escapeHtml(row.judgeError)}</pre>`
-            : ""
-        }
+        ${row.judgeResults.map((judge) => renderJudgeResult(judge, row.modelId)).join("")}
       </div>
     </details>
+  `;
+}
+
+function renderJudgeResult(judge: JudgeReportRow, modelId: string): string {
+  const selfJudgeSuffix = judge.judgeModelId === modelId ? " self-judge" : "";
+  if (judge.judgeStatus === "error") {
+    return `<h4 style="color:#c62828">Judge error (${escapeHtml(judge.judgeModelId)}${selfJudgeSuffix})</h4><pre>${escapeHtml(judge.judgeError)}</pre>`;
+  }
+  return `
+    <h4>Judge ${escapeHtml(judge.judgeModelId)}${selfJudgeSuffix}: ${judge.score ?? "?"}</h4>
+    <pre>${escapeHtml(judge.rationale)}</pre>
   `;
 }
 
 function renderCell(rows: ReportRow[] | undefined): string {
   if (!rows || rows.length === 0) return `<td class="empty">—</td>`;
   return `<td>${rows.map(renderRunDetails).join("<hr/>")}</td>`;
+}
+
+function formatNumber(value: number | undefined, digits = 2): string {
+  return value === undefined ? "—" : value.toFixed(digits);
+}
+
+function renderSummaryRows(summaries: ModelSummary[]): string {
+  return summaries
+    .map(
+      (summary) => `
+        <tr>
+          <th>${escapeHtml(summary.modelId)}</th>
+          <td>${summary.okRuns}</td>
+          <td>${summary.errorRuns}</td>
+          <td>${summary.missingJudgeScores}</td>
+          <td>${formatNumber(summary.avgScore)}</td>
+          <td>${formatNumber(summary.avgLatencyMs, 0)}</td>
+          <td>${formatNumber(summary.medianLatencyMs, 0)}</td>
+          <td>${formatNumber(summary.avgOutputTokens, 0)}</td>
+          <td>${formatNumber(summary.avgJudgeSpread)}</td>
+          <td>${formatNumber(summary.qualityPerSecond, 3)}</td>
+        </tr>
+      `,
+    )
+    .join("");
 }
 
 export function renderReportHtml(data: ReportData, generatedAt: string): string {
@@ -88,11 +120,31 @@ export function renderReportHtml(data: ReportData, generatedAt: string): string 
   .run-detail h4 { margin-bottom: 0.25rem; }
   hr { border: none; border-top: 1px dashed #ccc; margin: 0.5rem 0; }
   .generated-at { color: #666; font-size: 0.85rem; }
+  .summary-table { margin-bottom: 2rem; }
 </style>
 </head>
 <body>
   <h1>model-prompt-tests bench report</h1>
   <p class="generated-at">Generated ${escapeHtml(generatedAt)}</p>
+  <h2>Summary</h2>
+  <table class="summary-table">
+    <thead>
+      <tr>
+        <th>Model</th>
+        <th>OK</th>
+        <th>Errors</th>
+        <th>Missing judge scores</th>
+        <th>Avg score</th>
+        <th>Avg latency ms</th>
+        <th>Median latency ms</th>
+        <th>Avg output tokens</th>
+        <th>Avg judge spread</th>
+        <th>Quality / sec</th>
+      </tr>
+    </thead>
+    <tbody>${renderSummaryRows(data.summaries)}</tbody>
+  </table>
+  <h2>Prompt Details</h2>
   <table>
     <thead><tr><th>Prompt</th>${headerCells}</tr></thead>
     <tbody>${bodyRows}</tbody>

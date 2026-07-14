@@ -133,4 +133,48 @@ describe("runBatch concurrency", () => {
     expect(summary.judgeErrored).toBe(1);
     db.close();
   });
+
+  test("scores each candidate with multiple judges", async () => {
+    spyOn(console, "log").mockImplementation(() => {});
+    const db = createDb();
+    const makeJudge = (score: number): ModelAdapter => ({
+      providerId: "judge",
+      modelName: `judge-${score}`,
+      async call() {
+        return {
+          text: `{"score":${score},"rationale":"score ${score}"}`,
+          raw: {},
+          latencyMs: 1,
+        };
+      },
+    });
+
+    const summary = await runBatch({
+      db,
+      prompts: [prompts[0]!],
+      runners: [
+        candidate("candidate", "candidate", async () => ({
+          outputText: "ok",
+          raw: {},
+          latencyMs: 1,
+        })),
+      ],
+      defaultConcurrency: 1,
+      judges: [
+        { adapter: makeJudge(4), modelId: "judge-a" },
+        { adapter: makeJudge(5), modelId: "judge-b" },
+      ],
+    });
+
+    const scores = db.query("SELECT judge_model_id, score FROM scores ORDER BY judge_model_id").all() as {
+      judge_model_id: string;
+      score: number;
+    }[];
+    expect(scores).toEqual([
+      { judge_model_id: "judge-a", score: 4 },
+      { judge_model_id: "judge-b", score: 5 },
+    ]);
+    expect(summary.avgScoreByModel.candidate).toBe(4.5);
+    db.close();
+  });
 });

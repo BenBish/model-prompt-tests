@@ -18,6 +18,11 @@ export interface RunBatchOptions {
     modelId: string;
     maxConcurrent?: number;
   };
+  judges?: {
+    adapter: ModelAdapter;
+    modelId: string;
+    maxConcurrent?: number;
+  }[];
 }
 
 export interface RunBatchSummary {
@@ -36,15 +41,18 @@ function makeRunBatchId(): string {
 }
 
 export async function runBatch(options: RunBatchOptions): Promise<RunBatchSummary> {
-  const { db, prompts, runners, defaultConcurrency, judge } = options;
+  const { db, prompts, runners, defaultConcurrency } = options;
+  const judges = options.judges ?? (options.judge ? [options.judge] : []);
   const started = performance.now();
   const runBatchId = makeRunBatchId();
 
-  if (judge && runners.some((r) => r.id === judge.modelId)) {
-    console.warn(
-      `[warn] judge model "${judge.modelId}" is also present in the active --models selection; ` +
-        "its own outputs will be judged by itself for this run.",
-    );
+  for (const judge of judges) {
+    if (runners.some((r) => r.id === judge.modelId)) {
+      console.warn(
+        `[warn] judge model "${judge.modelId}" is also present in the active --models selection; ` +
+          "its own outputs will be judged by itself for this run.",
+      );
+    }
   }
 
   const providerLimiters = new Map<string, Limiter>();
@@ -136,33 +144,37 @@ export async function runBatch(options: RunBatchOptions): Promise<RunBatchSummar
 
   const avgScoreByModel: Record<string, number> = {};
 
-  if (judge) {
-    const judgeLimiter = createLimiter(judge.maxConcurrent ?? defaultConcurrency);
+  if (judges.length > 0) {
     const scoresByModel = new Map<string, number[]>();
 
-    const judgeTasks = okRunIds.map(({ runId, modelId, outputText, promptId }) =>
-      judgeLimiter(async () => {
-        const prompt = prompts.find((p) => p.id === promptId)!;
-        const outcome = await runJudge(judge.adapter, prompt, outputText);
-        insertScore(db, {
-          runId,
-          judgeModelId: judge.modelId,
-          score: outcome.result?.score,
-          rationale: outcome.result?.rationale,
-          rawJudgeOutput: outcome.rawJudgeText,
-          scoredAt: new Date().toISOString(),
-          error: outcome.error,
-          status: outcome.result ? "ok" : "error",
-        });
-        if (outcome.result) {
-          const list = scoresByModel.get(modelId) ?? [];
-          list.push(outcome.result.score);
-          scoresByModel.set(modelId, list);
-        } else {
-          judgeErrored++;
-          console.log(`[judge-error] ${promptId} x ${modelId}: ${outcome.error}`);
-        }
-      }),
+    const judgeLimiters = new Map(
+      judges.map((judge) => [judge.modelId, createLimiter(judge.maxConcurrent ?? defaultConcurrency)]),
+    );
+    const judgeTasks = okRunIds.flatMap(({ runId, modelId, outputText, promptId }) =>
+      judges.map((judge) =>
+        judgeLimiters.get(judge.modelId)!(async () => {
+          const prompt = prompts.find((p) => p.id === promptId)!;
+          const outcome = await runJudge(judge.adapter, prompt, outputText);
+          insertScore(db, {
+            runId,
+            judgeModelId: judge.modelId,
+            score: outcome.result?.score,
+            rationale: outcome.result?.rationale,
+            rawJudgeOutput: outcome.rawJudgeText,
+            scoredAt: new Date().toISOString(),
+            error: outcome.error,
+            status: outcome.result ? "ok" : "error",
+          });
+          if (outcome.result) {
+            const list = scoresByModel.get(modelId) ?? [];
+            list.push(outcome.result.score);
+            scoresByModel.set(modelId, list);
+          } else {
+            judgeErrored++;
+            console.log(`[judge-error] ${promptId} x ${modelId} judged by ${judge.modelId}: ${outcome.error}`);
+          }
+        }),
+      ),
     );
 
     await Promise.all(judgeTasks);

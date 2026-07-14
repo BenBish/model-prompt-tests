@@ -24,7 +24,7 @@ const DEFAULT_CONCURRENCY = 3;
 
 function usage(): void {
   console.log(`Usage:
-  bun bench/src/cli.ts run <prompt-glob-or-all> [--models id1,id2] [--judge <id>] [--concurrency <n>] [--dry-run] [--no-judge]
+  bun bench/src/cli.ts run <prompt-glob-or-all> [--models id1,id2] [--judge <id>] [--judges id1,id2] [--concurrency <n>] [--dry-run] [--no-judge]
   bun bench/src/cli.ts report [--out <path>] [--batch <run_batch_id>] [--all-runs]
   bun bench/src/cli.ts models <list|init|validate|set-judge|add-openai-compatible|add-anthropic|remove>
   bun bench/src/cli.ts list`);
@@ -93,6 +93,35 @@ function resolveJudge(config: BenchModelsConfig, judgeFlag: string | undefined):
   return found;
 }
 
+function resolveJudges(
+  config: BenchModelsConfig,
+  judgeFlag: string | undefined,
+  judgesFlag: string | undefined,
+): ModelMatrixEntry[] {
+  if (!judgesFlag) return [resolveJudge(config, judgeFlag)];
+  if (judgeFlag) {
+    throw new Error("use either --judge or --judges, not both");
+  }
+  const ids = judgesFlag
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+  if (ids.length === 0) {
+    throw new Error("--judges must contain at least one model id");
+  }
+  const duplicate = ids.find((id, index) => ids.indexOf(id) !== index);
+  if (duplicate) {
+    throw new Error(`duplicate judge model id: ${duplicate}`);
+  }
+  return ids.map((id) => {
+    const found = findModel(config, id);
+    if (!found) {
+      throw new Error(`unknown judge model id: ${id}`);
+    }
+    return found;
+  });
+}
+
 async function cmdList(): Promise<void> {
   const { config } = await loadModelsConfig(REPO_ROOT);
   const promptFiles = await discoverPromptFiles(REPO_ROOT);
@@ -136,13 +165,15 @@ async function cmdRun(positionals: string[], values: Record<string, unknown>): P
   }
 
   const useJudge = values["no-judge"] !== true;
-  const judgeEntry = useJudge ? resolveJudge(config, values.judge as string | undefined) : undefined;
+  const judgeEntries = useJudge
+    ? resolveJudges(config, values.judge as string | undefined, values.judges as string | undefined)
+    : [];
 
   if (values["dry-run"]) {
     console.log(`Would run ${prompts.length} prompt(s) x ${matrix.length} model(s):`);
     for (const prompt of prompts) console.log(`  prompt: ${prompt.id}`);
     for (const entry of matrix) console.log(`  model:  ${entry.id}`);
-    if (judgeEntry) console.log(`  judge:  ${judgeEntry.id}`);
+    for (const entry of judgeEntries) console.log(`  judge:  ${entry.id}`);
     console.log("(dry run — no network calls made)");
     return;
   }
@@ -159,13 +190,11 @@ async function cmdRun(positionals: string[], values: Record<string, unknown>): P
     prompts,
     runners,
     defaultConcurrency: concurrency,
-    judge: judgeEntry
-      ? {
-          adapter: createAdapter(judgeEntry),
-          modelId: judgeEntry.id,
-          maxConcurrent: judgeEntry.maxConcurrent,
-        }
-      : undefined,
+    judges: judgeEntries.map((entry) => ({
+      adapter: createAdapter(entry),
+      modelId: entry.id,
+      maxConcurrent: entry.maxConcurrent,
+    })),
   });
   if (summary.errored > 0 || summary.judgeErrored > 0) {
     process.exitCode = 1;
@@ -183,11 +212,18 @@ async function cmdReport(values: Record<string, unknown>): Promise<void> {
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const outPath = (values.out as string | undefined) ?? `${REPORTS_DIR}/${timestamp}.html`;
+  const summaryPath = /\.html?$/i.test(outPath)
+    ? outPath.replace(/\.html?$/i, ".summary.json")
+    : `${outPath}.summary.json`;
   await Bun.write(outPath, html);
+  await Bun.write(summaryPath, `${JSON.stringify(data.summaries, null, 2)}\n`);
   await Bun.write(`${REPORTS_DIR}/latest.html`, html);
+  await Bun.write(`${REPORTS_DIR}/latest.summary.json`, `${JSON.stringify(data.summaries, null, 2)}\n`);
 
   console.log(`Report written to ${outPath}`);
+  console.log(`Summary written to ${summaryPath}`);
   console.log(`Also mirrored to ${REPORTS_DIR}/latest.html`);
+  console.log(`Also mirrored to ${REPORTS_DIR}/latest.summary.json`);
 }
 
 async function cmdModels(rest: string[]): Promise<void> {
@@ -263,6 +299,7 @@ async function cmdModels(rest: string[]): Promise<void> {
           "max-concurrent": { type: "string" },
           "max-tokens": { type: "string" },
           "timeout-ms": { type: "string" },
+          "reasoning-effort": { type: "string" },
           disabled: { type: "boolean" },
         },
       });
@@ -278,6 +315,7 @@ async function cmdModels(rest: string[]): Promise<void> {
         baseUrl: requireFlag(values, "base-url"),
         apiKeyEnvVar: values["api-key-env"] as string | undefined,
         extraHeaders: parseHeaders(values.header),
+        reasoningEffort: values["reasoning-effort"] as string | undefined,
         maxConcurrent: parsePositiveInteger(values["max-concurrent"], "--max-concurrent"),
         maxTokens: parsePositiveInteger(values["max-tokens"], "--max-tokens"),
         timeoutMs: parsePositiveInteger(values["timeout-ms"], "--timeout-ms"),
@@ -327,7 +365,7 @@ async function cmdModels(rest: string[]): Promise<void> {
   bun bench/src/cli.ts models init
   bun bench/src/cli.ts models validate
   bun bench/src/cli.ts models set-judge <model-id>
-  bun bench/src/cli.ts models add-openai-compatible --id <id> --provider <provider-id> --model <name> --base-url <url> [--api-key-env <ENV>] [--header Name=Value]... [--max-concurrent <n>] [--max-tokens <n>] [--timeout-ms <n>] [--disabled]
+  bun bench/src/cli.ts models add-openai-compatible --id <id> --provider <provider-id> --model <name> --base-url <url> [--api-key-env <ENV>] [--header Name=Value]... [--reasoning-effort <effort>] [--max-concurrent <n>] [--max-tokens <n>] [--timeout-ms <n>] [--disabled]
   bun bench/src/cli.ts models add-anthropic --id <id> --model <name> --api-key-env <ENV> [--base-url <url>] [--max-concurrent <n>] [--max-tokens <n>] [--timeout-ms <n>] [--disabled]
   bun bench/src/cli.ts models remove <model-id>`);
       if (subcommand) process.exit(1);
@@ -356,6 +394,7 @@ async function main(): Promise<void> {
         options: {
           models: { type: "string" },
           judge: { type: "string" },
+          judges: { type: "string" },
           concurrency: { type: "string" },
           "dry-run": { type: "boolean" },
           "no-judge": { type: "boolean" },
