@@ -1,0 +1,35 @@
+[
+  {
+    "modelId": "openrouter:gpt-5.5",
+    "okRuns": 13,
+    "errorRuns": 0,
+    "avgScore": 4.648648648648648,
+    "avgLatencyMs": 324.84615384615387,
+    "medianLatencyMs": 289,
+    "avgOutputTokens": 1585.5384615384614,
+    "avgJudgeSpread": 0.46153846153846156,
+    "qualityPerSecond": 14.310308414026148
+  },
+  {
+    "modelId": "openrouter:grok-4.5",
+    "okRuns": 13,
+    "errorRuns": 0,
+    "avgScore": 4.578947368421052,
+    "avgLatencyMs": 317.84615384615387,
+    "medianLatencyMs": 327,
+    "avgOutputTokens": 2433,
+    "avgJudgeSpread": 0.5384615384615384,
+    "qualityPerSecond": 14.406175166861972
+  },
+  {
+    "modelId": "openrouter:sonnet",
+    "okRuns": 13,
+    "errorRuns": 0,
+    "avgScore": 4.230769230769231,
+    "avgLatencyMs": 2409.769230769231,
+    "medianLatencyMs": 1782,
+    "avgOutputTokens": 1500.6153846153845,
+    "avgJudgeSpread": 0.3076923076923077,
+    "qualityPerSecond": 1.75567401921665
+  }
+]
