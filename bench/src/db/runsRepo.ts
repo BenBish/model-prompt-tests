@@ -14,6 +14,9 @@ export interface RunRecord {
   rawResponse?: string;
   error?: string;
   status: "ok" | "error";
+  stopReason?: string;
+  costUsd?: number;
+  attempt?: number;
 }
 
 export interface RunRow extends RunRecord {
@@ -24,10 +27,12 @@ export function insertRun(db: Database, record: RunRecord): number {
   const stmt = db.prepare(`
     INSERT INTO runs (
       run_batch_id, prompt_id, provider_id, model_id, model_name, started_at,
-      latency_ms, input_tokens, output_tokens, output_text, raw_response, error, status
+      latency_ms, input_tokens, output_tokens, output_text, raw_response, error, status,
+      stop_reason, cost_usd, attempt
     ) VALUES (
       $runBatchId, $promptId, $providerId, $modelId, $modelName, $startedAt,
-      $latencyMs, $inputTokens, $outputTokens, $outputText, $rawResponse, $error, $status
+      $latencyMs, $inputTokens, $outputTokens, $outputText, $rawResponse, $error, $status,
+      $stopReason, $costUsd, $attempt
     )
   `);
 
@@ -45,9 +50,19 @@ export function insertRun(db: Database, record: RunRecord): number {
     $rawResponse: record.rawResponse ?? null,
     $error: record.error ?? null,
     $status: record.status,
+    $stopReason: record.stopReason ?? null,
+    $costUsd: record.costUsd ?? null,
+    $attempt: record.attempt ?? 1,
   });
 
   return Number(result.lastInsertRowid);
+}
+
+export function getLatestRunBatchId(db: Database): string | undefined {
+  const row = db.query("SELECT run_batch_id FROM runs ORDER BY started_at DESC LIMIT 1").get() as
+    | { run_batch_id: string }
+    | undefined;
+  return row?.run_batch_id;
 }
 
 export function getRunsForBatch(db: Database, runBatchId: string): RunRow[] {
@@ -73,5 +88,8 @@ function rowToRunRow(row: any): RunRow {
     rawResponse: row.raw_response ?? undefined,
     error: row.error ?? undefined,
     status: row.status,
+    stopReason: row.stop_reason ?? undefined,
+    costUsd: row.cost_usd ?? undefined,
+    attempt: row.attempt,
   };
 }

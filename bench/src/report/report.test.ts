@@ -154,3 +154,92 @@ test("averages model scores per run before averaging across runs", () => {
   expect(data.summaries[0]?.missingJudgeScores).toBe(1);
   db.close();
 });
+
+test("excludes self-judging from the headline average but reports it separately", () => {
+  const db = createDb();
+  const startedAt = "2026-07-08T12:00:00.000Z";
+  const runId = insertRun(db, {
+    runBatchId: "batch-123",
+    promptId: "test/prompt",
+    providerId: "test",
+    modelId: "same-model",
+    modelName: "model",
+    startedAt,
+    outputText: "output",
+    status: "ok",
+  });
+  insertScore(db, {
+    runId,
+    judgeModelId: "same-model",
+    score: 5,
+    rationale: "self-praise",
+    scoredAt: startedAt,
+    status: "ok",
+  });
+  insertScore(db, {
+    runId,
+    judgeModelId: "other-judge",
+    score: 2,
+    rationale: "peer view",
+    scoredAt: startedAt,
+    status: "ok",
+  });
+
+  const data = queryReportData(db, { allRuns: true });
+  const summary = data.summaries[0]!;
+  expect(summary.avgScore).toBe(2);
+  expect(summary.peerScoreAvg).toBe(2);
+  expect(summary.selfScoreAvg).toBe(5);
+  db.close();
+});
+
+test("computes cost, truncation and per-prompt aggregation", () => {
+  const db = createDb();
+  const startedAt = "2026-07-08T12:00:00.000Z";
+  insertRun(db, {
+    runBatchId: "batch-123",
+    promptId: "test/prompt-a",
+    providerId: "test",
+    modelId: "test:model",
+    modelName: "model",
+    startedAt,
+    inputTokens: 1000,
+    outputTokens: 500,
+    outputText: "output",
+    status: "ok",
+    costUsd: 0.02,
+    stopReason: "length",
+  });
+  const okRunId = insertRun(db, {
+    runBatchId: "batch-123",
+    promptId: "test/prompt-b",
+    providerId: "test",
+    modelId: "test:model",
+    modelName: "model",
+    startedAt,
+    inputTokens: 500,
+    outputTokens: 200,
+    outputText: "output",
+    status: "ok",
+    costUsd: 0.01,
+    stopReason: "stop",
+  });
+  insertScore(db, {
+    runId: okRunId,
+    judgeModelId: "judge",
+    score: 4,
+    rationale: "good",
+    scoredAt: startedAt,
+    status: "ok",
+  });
+
+  const data = queryReportData(db, { allRuns: true });
+  const summary = data.summaries[0]!;
+  expect(summary.totalCostUsd).toBeCloseTo(0.03);
+  expect(summary.avgCostUsd).toBeCloseTo(0.015);
+  expect(summary.truncatedRuns).toBe(1);
+  expect(summary.avgInputTokens).toBe(750);
+  expect(data.promptSummaries).toHaveLength(2);
+  expect(data.promptSummaries.find((p) => p.promptId === "test/prompt-b")?.avgScore).toBe(4);
+  db.close();
+});

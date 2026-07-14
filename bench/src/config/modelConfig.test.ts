@@ -98,6 +98,35 @@ describe("model config", () => {
     );
   });
 
+  test("accepts and round-trips model pricing", async () => {
+    const repoRoot = makeTempRepo();
+    const config = validConfig();
+    config.models[0]!.pricing = { inputPerMTok: 3, outputPerMTok: 15 };
+
+    saveLocalModelsConfig(repoRoot, config);
+    const loaded = await loadModelsConfig(repoRoot);
+
+    expect(loaded.config.models[0]!.pricing).toEqual({ inputPerMTok: 3, outputPerMTok: 15 });
+  });
+
+  test("rejects pricing missing a required key", () => {
+    const config = validConfig();
+    (config.models[0]! as any).pricing = { inputPerMTok: 3 };
+
+    expect(() => validateModelsConfig(config)).toThrow(
+      'models[0]: "pricing" must specify both "inputPerMTok" and "outputPerMTok"',
+    );
+  });
+
+  test("rejects negative pricing values", () => {
+    const config = validConfig();
+    (config.models[0]! as any).pricing = { inputPerMTok: -1, outputPerMTok: 5 };
+
+    expect(() => validateModelsConfig(config)).toThrow(
+      'models[0].pricing: "inputPerMTok" must be a non-negative number when present',
+    );
+  });
+
   test("saves a valid local config", async () => {
     const repoRoot = makeTempRepo();
     const config = validConfig();

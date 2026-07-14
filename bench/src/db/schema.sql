@@ -12,7 +12,10 @@ CREATE TABLE IF NOT EXISTS runs (
   output_text   TEXT,
   raw_response  TEXT,
   error         TEXT,
-  status        TEXT NOT NULL CHECK (status IN ('ok', 'error'))
+  status        TEXT NOT NULL CHECK (status IN ('ok', 'error')),
+  stop_reason   TEXT,
+  cost_usd      REAL,
+  attempt       INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS scores (
@@ -29,4 +32,5 @@ CREATE TABLE IF NOT EXISTS scores (
 
 CREATE INDEX IF NOT EXISTS idx_runs_prompt ON runs(prompt_id);
 CREATE INDEX IF NOT EXISTS idx_runs_model ON runs(model_id);
+CREATE INDEX IF NOT EXISTS idx_runs_batch ON runs(run_batch_id);
 CREATE INDEX IF NOT EXISTS idx_scores_run ON scores(run_id);

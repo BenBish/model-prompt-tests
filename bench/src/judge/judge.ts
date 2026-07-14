@@ -25,6 +25,31 @@ const CORRECTIVE_MESSAGE =
   "Your previous reply was not valid JSON matching the required schema. " +
   'Reply with ONLY the JSON object: {"score": <integer 1-5>, "rationale": "<string>"}';
 
+export const JUDGE_RESULT_JSON_SCHEMA = {
+  name: "submit_score",
+  schema: {
+    type: "object",
+    properties: {
+      score: { type: "integer", minimum: 1, maximum: 5 },
+      rationale: { type: "string", minLength: 1 },
+    },
+    required: ["score", "rationale"],
+    additionalProperties: false,
+  },
+} as const;
+
+// Errors from a structured-output attempt that plausibly mean "this provider
+// doesn't support forced JSON schema / tool-call output" rather than a
+// transient or auth failure. Only these are worth retrying on the legacy
+// plain-text JSON contract; anything else should fail the same way it would
+// have before structured output existed.
+function looksLikeUnsupportedStructuredOutput(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const status = (err as { status?: number }).status;
+  if (status === 400 || status === 404 || status === 422) return true;
+  return /response_format|json_schema|tool_choice|tool_use|\btools\b/i.test(err.message);
+}
+
 function extractFirstJsonObject(text: string): unknown | undefined {
   const start = text.indexOf("{");
   if (start === -1) return undefined;
@@ -91,6 +116,39 @@ export async function runJudge(
   const userPrompt = buildJudgeUserPrompt(prompt, candidateOutput);
 
   let lastText = "";
+
+  try {
+    const response = await withRetry(
+      () =>
+        judgeAdapter.call({
+          systemPrompt,
+          userPrompt,
+          temperature: 0,
+          jsonSchema: JUDGE_RESULT_JSON_SCHEMA,
+        }),
+      options.retry ?? {},
+    );
+    lastText = response.text;
+    const parsed = extractFirstJsonObject(response.text);
+    const validated = parsed ? validateJudgeResult(parsed) : undefined;
+    if (validated) {
+      return { result: validated, rawJudgeText: response.text };
+    }
+    // Provider accepted the structured-output request but returned
+    // something that doesn't validate; fall through to the legacy retry
+    // loop below rather than treating this as an unsupported-feature signal.
+  } catch (err) {
+    if (!looksLikeUnsupportedStructuredOutput(err)) {
+      const message = err instanceof Error ? err.message : String(err);
+      return {
+        result: null,
+        rawJudgeText: "",
+        error: `judge request failed: ${message}`,
+      };
+    }
+    // Provider likely doesn't support forced JSON schema / tool-call output;
+    // fall back to the plain-text JSON contract below.
+  }
 
   for (let attempt = 0; attempt < 2; attempt++) {
     const effectiveUserPrompt = attempt === 0 ? userPrompt : `${userPrompt}\n\n${CORRECTIVE_MESSAGE}`;

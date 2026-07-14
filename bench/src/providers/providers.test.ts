@@ -104,7 +104,7 @@ describe("provider adapters", () => {
         }),
         { status: 200 },
       );
-    }) as unknown as typeof fetch;
+    }) as typeof fetch;
     const adapter = createOpenAICompatibleAdapter({
       kind: "openai-compatible",
       id: "openrouter:test",
@@ -117,5 +117,131 @@ describe("provider adapters", () => {
     await adapter.call({ userPrompt: "test" });
 
     expect(requestBody.reasoning).toEqual({ effort: "medium" });
+  });
+
+  test("requests and surfaces OpenRouter-reported cost", async () => {
+    let requestBody: any;
+    globalThis.fetch = (async (_input, init) => {
+      requestBody = JSON.parse(String(init?.body));
+      return new Response(
+        JSON.stringify({
+          choices: [{ message: { content: "ok" }, finish_reason: "stop" }],
+          usage: { prompt_tokens: 10, completion_tokens: 20, cost: 0.0042 },
+        }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+    const adapter = createOpenAICompatibleAdapter({
+      kind: "openai-compatible",
+      id: "openrouter:test",
+      providerId: "openrouter",
+      modelName: "provider/model",
+      baseUrl: "https://openrouter.ai/api/v1",
+    });
+
+    const result = await adapter.call({ userPrompt: "test" });
+
+    expect(requestBody.usage).toEqual({ include: true });
+    expect(result.costUsd).toBe(0.0042);
+  });
+
+  test("does not report cost when the provider omits usage.cost", async () => {
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: "ok" }, finish_reason: "stop" }],
+          usage: { prompt_tokens: 10, completion_tokens: 20 },
+        }),
+        { status: 200 },
+      )) as unknown as typeof fetch;
+    const adapter = createOpenAICompatibleAdapter({
+      kind: "openai-compatible",
+      id: "test",
+      providerId: "test",
+      modelName: "test",
+      baseUrl: "https://example.test/v1",
+    });
+
+    const result = await adapter.call({ userPrompt: "test" });
+
+    expect(result.costUsd).toBeUndefined();
+  });
+
+  test("Anthropic adapter sends a forced tool call for jsonSchema and decodes the tool_use block", async () => {
+    let requestBody: any;
+    globalThis.fetch = (async (_input, init) => {
+      requestBody = JSON.parse(String(init?.body));
+      return new Response(
+        JSON.stringify({
+          content: [{ type: "tool_use", name: "submit_score", input: { score: 4, rationale: "Good" } }],
+          usage: {},
+          stop_reason: "tool_use",
+        }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+    process.env.TEST_ANTHROPIC_API_KEY = "test";
+    const adapter = createAnthropicAdapter({
+      kind: "anthropic",
+      id: "test",
+      modelName: "test",
+      apiKeyEnvVar: "TEST_ANTHROPIC_API_KEY",
+    });
+
+    const result = await adapter.call({
+      userPrompt: "test",
+      jsonSchema: { name: "submit_score", schema: { type: "object" } },
+    });
+
+    expect(requestBody.tool_choice).toEqual({ type: "tool", name: "submit_score" });
+    expect(requestBody.tools[0].name).toBe("submit_score");
+    expect(JSON.parse(result.text)).toEqual({ score: 4, rationale: "Good" });
+  });
+
+  test("Anthropic adapter rejects a jsonSchema response missing the tool_use block", async () => {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ content: [{ type: "text", text: "not a tool call" }] }), {
+        status: 200,
+      })) as unknown as typeof fetch;
+    process.env.TEST_ANTHROPIC_API_KEY = "test";
+    const adapter = createAnthropicAdapter({
+      kind: "anthropic",
+      id: "test",
+      modelName: "test",
+      apiKeyEnvVar: "TEST_ANTHROPIC_API_KEY",
+    });
+
+    await expect(
+      adapter.call({ userPrompt: "test", jsonSchema: { name: "submit_score", schema: { type: "object" } } }),
+    ).rejects.toThrow("did not contain the expected tool_use block");
+  });
+
+  test("OpenAI-compatible adapter sends response_format json_schema for jsonSchema", async () => {
+    let requestBody: any;
+    globalThis.fetch = (async (_input, init) => {
+      requestBody = JSON.parse(String(init?.body));
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: '{"score":5,"rationale":"Great"}' }, finish_reason: "stop" }] }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+    const adapter = createOpenAICompatibleAdapter({
+      kind: "openai-compatible",
+      id: "test",
+      providerId: "test",
+      modelName: "test",
+      baseUrl: "https://example.test/v1",
+    });
+
+    const result = await adapter.call({
+      userPrompt: "test",
+      jsonSchema: { name: "submit_score", schema: { type: "object" } },
+    });
+
+    expect(requestBody.response_format).toEqual({
+      type: "json_schema",
+      json_schema: { name: "submit_score", schema: { type: "object" }, strict: true },
+    });
+    expect(result.text).toBe('{"score":5,"rationale":"Great"}');
   });
 });

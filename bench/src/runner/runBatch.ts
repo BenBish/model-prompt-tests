@@ -13,6 +13,8 @@ export interface RunBatchOptions {
   prompts: PromptDefinition[];
   runners: CandidateRunner[];
   defaultConcurrency: number;
+  /** Run each (prompt x model) this many times to measure score variance. Defaults to 1. */
+  repeats?: number;
   judge?: {
     adapter: ModelAdapter;
     modelId: string;
@@ -40,8 +42,18 @@ function makeRunBatchId(): string {
   return `${now}-${suffix}`;
 }
 
+function resolveCostUsd(runner: CandidateRunner, result: { costUsd?: number; inputTokens?: number; outputTokens?: number }): number | undefined {
+  // Provider-reported cost (e.g. OpenRouter) is authoritative when present.
+  if (result.costUsd !== undefined) return result.costUsd;
+  if (!runner.pricing) return undefined;
+  if (result.inputTokens === undefined || result.outputTokens === undefined) return undefined;
+  const { inputPerMTok, outputPerMTok } = runner.pricing;
+  return (result.inputTokens * inputPerMTok + result.outputTokens * outputPerMTok) / 1_000_000;
+}
+
 export async function runBatch(options: RunBatchOptions): Promise<RunBatchSummary> {
   const { db, prompts, runners, defaultConcurrency } = options;
+  const repeats = options.repeats ?? 1;
   const judges = options.judges ?? (options.judge ? [options.judge] : []);
   const started = performance.now();
   const runBatchId = makeRunBatchId();
@@ -85,19 +97,22 @@ export async function runBatch(options: RunBatchOptions): Promise<RunBatchSummar
     for (const runner of runners) {
       const providerLimiter = providerLimiterFor(runner);
       const runnerLimiter = runnerLimiterFor(runner);
-      const run = async () => {
-        await providerLimiter(() => executeCandidate(prompt, runner));
-      };
-      candidateTasks.push(runnerLimiter ? runnerLimiter(run) : run());
+      for (let attempt = 1; attempt <= repeats; attempt++) {
+        const run = async () => {
+          await providerLimiter(() => executeCandidate(prompt, runner, attempt));
+        };
+        candidateTasks.push(runnerLimiter ? runnerLimiter(run) : run());
+      }
     }
   }
 
   async function executeCandidate(
     prompt: PromptDefinition,
     runner: CandidateRunner,
+    attempt: number,
   ): Promise<void> {
     const startedAt = new Date().toISOString();
-    const label = `${prompt.id} x ${runner.id}`;
+    const label = `${prompt.id} x ${runner.id}${repeats > 1 ? ` (attempt ${attempt}/${repeats})` : ""}`;
     try {
       const result = await withRetry(() => runner.run(prompt));
       const record: RunRecord = {
@@ -113,6 +128,9 @@ export async function runBatch(options: RunBatchOptions): Promise<RunBatchSummar
         outputText: result.outputText,
         rawResponse: JSON.stringify(result.raw),
         status: "ok",
+        stopReason: result.stopReason,
+        costUsd: resolveCostUsd(runner, result),
+        attempt,
       };
       const runId = insertRun(db, record);
       ok++;
@@ -134,6 +152,7 @@ export async function runBatch(options: RunBatchOptions): Promise<RunBatchSummar
         startedAt,
         status: "error",
         error: message,
+        attempt,
       });
       errored++;
       console.log(`[error] ${label}: ${message}`);

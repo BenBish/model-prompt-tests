@@ -4,13 +4,15 @@
       "id": "anthropic:sonnet",
       "kind": "anthropic",
       "modelName": "claude-sonnet-5",
-      "apiKeyEnvVar": "ANTHROPIC_API_KEY"
+      "apiKeyEnvVar": "ANTHROPIC_API_KEY",
+      "pricing": { "inputPerMTok": 3, "outputPerMTok": 15 }
     },
     {
       "id": "anthropic:haiku",
       "kind": "anthropic",
       "modelName": "claude-haiku-4-5-20251001",
-      "apiKeyEnvVar": "ANTHROPIC_API_KEY"
+      "apiKeyEnvVar": "ANTHROPIC_API_KEY",
+      "pricing": { "inputPerMTok": 1, "outputPerMTok": 5 }
     },
     {
       "id": "openai:gpt-4o-mini",
@@ -18,7 +20,8 @@
       "providerId": "openai",
       "modelName": "gpt-4o-mini",
       "baseUrl": "https://api.openai.com/v1",
-      "apiKeyEnvVar": "OPENAI_API_KEY"
+      "apiKeyEnvVar": "OPENAI_API_KEY",
+      "pricing": { "inputPerMTok": 0.15, "outputPerMTok": 0.6 }
     },
     {
       "id": "openrouter:llama-3.3-70b",
@@ -55,7 +58,8 @@
       "kind": "anthropic",
       "modelName": "claude-opus-4-8",
       "apiKeyEnvVar": "ANTHROPIC_API_KEY",
-      "enabled": false
+      "enabled": false,
+      "pricing": { "inputPerMTok": 15, "outputPerMTok": 75 }
     }
   ],
   "judge": {

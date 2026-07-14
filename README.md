@@ -20,6 +20,17 @@ Recommended scoring:
 - `2`: Weak. Misses important constraints or contains meaningful errors.
 - `1`: Poor. Fails the core task, ignores instructions, or gives risky advice.
 
+## Automated Benchmarking
+
+Steps 2-4 above are also automated: [`bench/`](bench/) runs every prompt against a
+configured set of models, scores outputs with one or more LLM judges against each
+prompt's rubric, and generates an interactive report with cost, latency, and quality
+charts. See [`bench/README.md`](bench/README.md) for setup and the full command
+reference (`run`, `report`, `export`, `publish`).
+
+Published runs — full config, raw outputs, and score rationales — live in
+[`benchmark-results/`](benchmark-results/).
+
 ## Prompt Index
 
 ### Coding And Engineering

@@ -14,6 +14,9 @@ export interface ReportRow {
   outputText?: string;
   error?: string;
   runStatus: "ok" | "error";
+  stopReason?: string;
+  costUsd?: number;
+  attempt: number;
   judgeResults: JudgeReportRow[];
   score?: number;
   rationale?: string;
@@ -21,6 +24,12 @@ export interface ReportRow {
   judgeError?: string;
   judgeStatus?: "ok" | "error";
   scoredAt?: string;
+}
+
+const TRUNCATION_STOP_REASONS = new Set(["length", "max_tokens", "max_output_tokens"]);
+
+function isTruncated(stopReason: string | undefined): boolean {
+  return stopReason !== undefined && TRUNCATION_STOP_REASONS.has(stopReason);
 }
 
 export interface JudgeReportRow {
@@ -38,11 +47,31 @@ export interface ModelSummary {
   errorRuns: number;
   missingJudgeScores: number;
   avgScore?: number;
+  /** Mean of judge scores only from judges other than the candidate itself (headline number). */
+  peerScoreAvg?: number;
+  /** Mean of judge scores where the judge model judged its own output. Reported separately, not blended in. */
+  selfScoreAvg?: number;
+  scoreStdDev?: number;
   avgLatencyMs?: number;
   medianLatencyMs?: number;
+  avgInputTokens?: number;
   avgOutputTokens?: number;
   avgJudgeSpread?: number;
   qualityPerSecond?: number;
+  totalCostUsd?: number;
+  avgCostUsd?: number;
+  qualityPerDollar?: number;
+  truncatedRuns: number;
+}
+
+export interface PromptSummary {
+  promptId: string;
+  modelId: string;
+  okRuns: number;
+  errorRuns: number;
+  avgScore?: number;
+  scoreMin?: number;
+  scoreMax?: number;
 }
 
 export interface ReportData {
@@ -51,6 +80,7 @@ export interface ReportData {
   // rows[promptId][modelId] -> ReportRow[] (sorted oldest -> newest)
   rows: Map<string, Map<string, ReportRow[]>>;
   summaries: ModelSummary[];
+  promptSummaries: PromptSummary[];
 }
 
 export interface QueryOptions {
@@ -73,6 +103,9 @@ function rowToReportRow(row: any): ReportRow {
     outputText: row.output_text ?? undefined,
     error: row.error ?? undefined,
     runStatus: row.status,
+    stopReason: row.stop_reason ?? undefined,
+    costUsd: row.cost_usd ?? undefined,
+    attempt: row.attempt ?? 1,
     judgeResults: [],
   };
 }
@@ -90,53 +123,122 @@ function median(values: number[]): number | undefined {
   return (sorted[middle - 1]! + sorted[middle]!) / 2;
 }
 
+function stdDev(values: number[]): number | undefined {
+  if (values.length < 2) return undefined;
+  const mean = average(values)!;
+  const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (values.length - 1);
+  return Math.sqrt(variance);
+}
+
+export function peerScores(row: ReportRow): number[] {
+  return row.judgeResults.flatMap((judge) =>
+    judge.score === undefined || judge.judgeModelId === row.modelId ? [] : [judge.score],
+  );
+}
+
+/** Mean of a run's peer (non-self) judge scores -- the same value the headline aggregates are built from. */
+export function runPeerAverage(row: ReportRow): number | undefined {
+  const scores = peerScores(row);
+  if (scores.length === 0) return undefined;
+  return scores.reduce((sum, value) => sum + value, 0) / scores.length;
+}
+
+function selfScores(row: ReportRow): number[] {
+  return row.judgeResults.flatMap((judge) =>
+    judge.score === undefined || judge.judgeModelId !== row.modelId ? [] : [judge.score],
+  );
+}
+
 function summarize(modelIds: string[], rows: ReportRow[]): ModelSummary[] {
   return modelIds.map((modelId) => {
     const modelRows = rows.filter((row) => row.modelId === modelId);
     const okRows = modelRows.filter((row) => row.runStatus === "ok");
-    const runScores = okRows.flatMap((row) => {
-      const scores = row.judgeResults.flatMap((judge) =>
-        judge.score === undefined ? [] : [judge.score],
-      );
-      const runAverage = average(scores);
+
+    // Headline scoring excludes judge==candidate self-judging so a model can't
+    // inflate its own average; self scores are surfaced separately instead.
+    const peerRunScores = okRows.flatMap((row) => {
+      const runAverage = runPeerAverage(row);
       return runAverage === undefined ? [] : [runAverage];
     });
+    const selfRunScores = okRows.flatMap((row) => {
+      const runAverage = average(selfScores(row));
+      return runAverage === undefined ? [] : [runAverage];
+    });
+
     const missingJudgeScores = okRows.reduce(
       (sum, row) =>
         sum + row.judgeResults.filter((judge) => judge.judgeStatus !== "ok" || judge.score === undefined).length,
       0,
     );
-    const latencies = okRows.flatMap((row) =>
-      row.latencyMs === undefined ? [] : [row.latencyMs],
-    );
-    const outputTokens = okRows.flatMap((row) =>
-      row.outputTokens === undefined ? [] : [row.outputTokens],
-    );
+    const latencies = okRows.flatMap((row) => (row.latencyMs === undefined ? [] : [row.latencyMs]));
+    const inputTokens = okRows.flatMap((row) => (row.inputTokens === undefined ? [] : [row.inputTokens]));
+    const outputTokens = okRows.flatMap((row) => (row.outputTokens === undefined ? [] : [row.outputTokens]));
+    const costs = okRows.flatMap((row) => (row.costUsd === undefined ? [] : [row.costUsd]));
+    const truncatedRuns = okRows.filter((row) => isTruncated(row.stopReason)).length;
     const spreads = okRows.flatMap((row) => {
-      const rowScores = row.judgeResults.flatMap((judge) =>
-        judge.score === undefined ? [] : [judge.score],
-      );
-      if (rowScores.length < 2) return [];
-      return [Math.max(...rowScores) - Math.min(...rowScores)];
+      const scores = peerScores(row);
+      if (scores.length < 2) return [];
+      return [Math.max(...scores) - Math.min(...scores)];
     });
-    const avgScore = average(runScores);
+
+    const avgScore = average(peerRunScores);
     const avgLatencyMs = average(latencies);
+    const avgCostUsd = average(costs);
     return {
       modelId,
       okRuns: okRows.length,
       errorRuns: modelRows.length - okRows.length,
       missingJudgeScores,
       avgScore,
+      peerScoreAvg: avgScore,
+      selfScoreAvg: average(selfRunScores),
+      scoreStdDev: stdDev(peerRunScores),
       avgLatencyMs,
       medianLatencyMs: median(latencies),
+      avgInputTokens: average(inputTokens),
       avgOutputTokens: average(outputTokens),
       avgJudgeSpread: average(spreads),
       qualityPerSecond:
         avgScore !== undefined && avgLatencyMs !== undefined && avgLatencyMs > 0
           ? avgScore / (avgLatencyMs / 1000)
           : undefined,
+      totalCostUsd: costs.length > 0 ? costs.reduce((sum, cost) => sum + cost, 0) : undefined,
+      avgCostUsd,
+      qualityPerDollar:
+        avgScore !== undefined && avgCostUsd !== undefined && avgCostUsd > 0 ? avgScore / avgCostUsd : undefined,
+      truncatedRuns,
     };
   });
+}
+
+function summarizePrompts(rows: ReportRow[]): PromptSummary[] {
+  const key = (promptId: string, modelId: string) => `${promptId} ${modelId}`;
+  const groups = new Map<string, ReportRow[]>();
+  for (const row of rows) {
+    const k = key(row.promptId, row.modelId);
+    const list = groups.get(k) ?? [];
+    list.push(row);
+    groups.set(k, list);
+  }
+  return [...groups.values()]
+    .map((groupRows) => {
+      const { promptId, modelId } = groupRows[0]!;
+      const okRows = groupRows.filter((row) => row.runStatus === "ok");
+      const runScores = okRows.flatMap((row) => {
+        const runAverage = runPeerAverage(row);
+        return runAverage === undefined ? [] : [runAverage];
+      });
+      return {
+        promptId,
+        modelId,
+        okRuns: okRows.length,
+        errorRuns: groupRows.length - okRows.length,
+        avgScore: average(runScores),
+        scoreMin: runScores.length > 0 ? Math.min(...runScores) : undefined,
+        scoreMax: runScores.length > 0 ? Math.max(...runScores) : undefined,
+      };
+    })
+    .sort((a, b) => a.promptId.localeCompare(b.promptId) || a.modelId.localeCompare(b.modelId));
 }
 
 export function queryReportData(db: Database, options: QueryOptions = {}): ReportData {
@@ -196,9 +298,17 @@ export function queryReportData(db: Database, options: QueryOptions = {}): Repor
   }
 
   if (!options.allRuns) {
+    // Keep every row from the most recent batch for this (prompt, model) pair
+    // rather than a single row, so --repeats attempts within that batch all
+    // show up (list is sorted oldest -> newest, so the last row's batch is
+    // the newest one).
     for (const byModel of grouped.values()) {
       for (const [modelId, list] of byModel) {
-        byModel.set(modelId, [list[list.length - 1]!]);
+        const latestBatchId = list[list.length - 1]!.runBatchId;
+        byModel.set(
+          modelId,
+          list.filter((row) => row.runBatchId === latestBatchId),
+        );
       }
     }
   }
@@ -214,5 +324,11 @@ export function queryReportData(db: Database, options: QueryOptions = {}): Repor
     [...byModel.values()].flatMap((rows) => rows),
   );
 
-  return { promptIds, modelIds, rows: grouped, summaries: summarize(modelIds, latestRows) };
+  return {
+    promptIds,
+    modelIds,
+    rows: grouped,
+    summaries: summarize(modelIds, latestRows),
+    promptSummaries: summarizePrompts(latestRows),
+  };
 }
