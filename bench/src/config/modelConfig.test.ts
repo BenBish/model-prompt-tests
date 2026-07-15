@@ -9,6 +9,7 @@ import {
   saveLocalModelsConfig,
   validateModelsConfig,
 } from "./modelConfig";
+import type { OpenAICompatibleAdapterConfig } from "../providers/types";
 
 const tempRoots: string[] = [];
 
@@ -144,10 +145,10 @@ describe("model config", () => {
     const loaded = await loadModelsConfig(repoRoot);
 
     expect(loaded.config.models.some((model) => model.id === "openai:test")).toBe(true);
-    expect(
-      loaded.config.models.find((model) => model.id === "openai:test" && model.kind === "openai-compatible")
-        ?.reasoningEffort,
-    ).toBe("medium");
+    const found = loaded.config.models.find(
+      (model): model is OpenAICompatibleAdapterConfig => model.id === "openai:test" && model.kind === "openai-compatible",
+    );
+    expect(found?.reasoningEffort).toBe("medium");
     expect(loaded.config.judge.modelId).toBe("openai:test");
   });
 });
