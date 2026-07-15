@@ -2,7 +2,7 @@ import { isAbsolute, join, relative, resolve } from "node:path";
 import { parsePromptFile } from "./promptTemplate";
 import type { PromptDefinition } from "../types";
 
-const EXCLUDED_PREFIXES = ["templates/", "node_modules/", "bench/"];
+const EXCLUDED_PREFIXES = ["templates/", "node_modules/", "bench/", "benchmark-results/", "docs/"];
 const EXCLUDED_FILES = new Set(["README.md"]);
 
 function isExcluded(relPath: string): boolean {

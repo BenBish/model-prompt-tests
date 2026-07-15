@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { resolvePromptSelector } from "./discover";
+import { discoverPromptFiles, resolvePromptSelector } from "./discover";
 
 const tempRoots: string[] = [];
 
@@ -35,5 +35,28 @@ describe("resolvePromptSelector", () => {
 
     await expect(resolvePromptSelector(repoRoot, "../outside-prompt.md")).resolves.toEqual([]);
     rmSync(outsidePrompt, { force: true });
+  });
+
+  test("excludes benchmark-results/ so bench export output isn't parsed as a prompt", async () => {
+    const repoRoot = makeTempRepo();
+    mkdirSync(join(repoRoot, "benchmark-results", "some-run"), { recursive: true });
+    // A real bench-export markdown file has no "## Prompt" section and would
+    // fail promptTemplate parsing if discovery ever picked it up.
+    writeFileSync(
+      join(repoRoot, "benchmark-results", "some-run", "per-prompt-results.md"),
+      "# Per-Prompt Results\n\n| Prompt | score |\n",
+      { flush: true },
+    );
+
+    expect(await discoverPromptFiles(repoRoot)).toEqual([]);
+    await expect(resolvePromptSelector(repoRoot, "all")).resolves.toEqual([]);
+  });
+
+  test("excludes docs/ (bench publish output)", async () => {
+    const repoRoot = makeTempRepo();
+    mkdirSync(join(repoRoot, "docs", "runs", "some-run"), { recursive: true });
+    writeFileSync(join(repoRoot, "docs", "index.md"), "# Not a prompt\n", { flush: true });
+
+    expect(await discoverPromptFiles(repoRoot)).toEqual([]);
   });
 });
