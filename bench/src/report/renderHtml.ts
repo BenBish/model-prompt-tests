@@ -33,8 +33,10 @@ function renderRunDetails(row: ReportRow): string {
     return `<details><summary style="color:#c62828">error</summary><pre>${escapeHtml(row.error)}</pre></details>`;
   }
 
-  const scores = row.judgeResults.flatMap((judge) => (judge.score === undefined ? [] : [judge.score]));
-  const avgScore = scores.length > 0 ? scores.reduce((sum, score) => sum + score, 0) / scores.length : undefined;
+  // Peer-only, matching the headline number used by the heatmap, summary
+  // table, and export -- self-judge scores are shown per-judge-line below,
+  // not blended into this badge (see queryData.ts's self/peer split).
+  const avgScore = runPeerAverage(row);
   const badgeColor = scoreBadgeColor(avgScore);
   const summaryLabel = avgScore !== undefined ? avgScore.toFixed(2) : "?";
   const meta = [

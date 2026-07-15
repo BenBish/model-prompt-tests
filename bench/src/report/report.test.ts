@@ -193,6 +193,49 @@ test("excludes self-judging from the headline average but reports it separately"
   db.close();
 });
 
+test("prompt-details badge shows the peer-only score, not blended with self-judging", () => {
+  // Regression test: renderRunDetails used to average every judge score,
+  // including a self-judge, so the per-run badge in the Prompt Details
+  // matrix could disagree with the heatmap/summary/export for the exact
+  // same run whenever a model also judged its own output.
+  const db = createDb();
+  const startedAt = "2026-07-08T12:00:00.000Z";
+  const runId = insertRun(db, {
+    runBatchId: "batch-123",
+    promptId: "test/prompt",
+    providerId: "test",
+    modelId: "same-model",
+    modelName: "model",
+    startedAt,
+    outputText: "output",
+    status: "ok",
+  });
+  insertScore(db, {
+    runId,
+    judgeModelId: "same-model",
+    score: 5,
+    rationale: "self-praise",
+    scoredAt: startedAt,
+    status: "ok",
+  });
+  insertScore(db, {
+    runId,
+    judgeModelId: "other-judge",
+    score: 2,
+    rationale: "peer view",
+    scoredAt: startedAt,
+    status: "ok",
+  });
+
+  const data = queryReportData(db, { allRuns: true });
+  const html = renderReportHtml(data, startedAt);
+
+  // The badge must show 2.00 (peer-only), never 3.50 (the self+peer blend).
+  expect(html).toContain('style="background:#c2680a">2.00<');
+  expect(html).not.toContain("3.50");
+  db.close();
+});
+
 test("computes cost, truncation and per-prompt aggregation", () => {
   const db = createDb();
   const startedAt = "2026-07-08T12:00:00.000Z";
