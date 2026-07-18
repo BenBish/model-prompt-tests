@@ -1,0 +1,19 @@
+{
+  "harnesses": [
+    {
+      "id": "claude-code",
+      "kind": "claude-code",
+      "models": {
+        "sonnet": "claude-sonnet-5",
+        "haiku": "claude-haiku-4-5-20251001",
+        "opus": "claude-opus-4-8"
+      },
+      "maxTurns": 60
+    },
+    {
+      "id": "raw-api",
+      "kind": "raw-api",
+      "maxContextBytes": 120000
+    }
+  ]
+}

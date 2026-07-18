@@ -17,6 +17,11 @@ import { queryReportData } from "./report/queryData";
 import { renderReportHtml } from "./report/renderHtml";
 import { buildAssessmentSummary, buildNarrativePrompt, renderAssessmentMarkdown } from "./report/renderAssessment";
 import type { ModelMatrixEntry } from "./providers/types";
+import { resolveJudge, resolveJudges } from "./config/judgeSelection";
+import { parsePositiveInteger } from "./util/cliArgs";
+import { cmdSweList, cmdSweRun } from "./swe/cli";
+import { querySweReportData } from "./swe/sweReportData";
+import { renderSweAssessmentSection, renderSweReportSection } from "./swe/renderSweSection";
 
 const REPO_ROOT = process.cwd();
 const DB_PATH = `${REPO_ROOT}/bench/data/bench.sqlite`;
@@ -28,16 +33,9 @@ function usage(): void {
   bun bench/src/cli.ts run <prompt-glob-or-all> [--models id1,id2] [--judge <id>] [--judges id1,id2] [--concurrency <n>] [--repeats <n>] [--dry-run] [--no-judge]
   bun bench/src/cli.ts report [--out <path>] [--batch <run_batch_id>] [--all-runs] [--narrative] [--judge <id>]
   bun bench/src/cli.ts models <list|init|validate|set-judge|add-openai-compatible|add-anthropic|remove>
-  bun bench/src/cli.ts list`);
-}
-
-function parsePositiveInteger(value: unknown, label: string): number | undefined {
-  if (value === undefined) return undefined;
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < 1) {
-    throw new Error(`${label} must be a positive integer`);
-  }
-  return parsed;
+  bun bench/src/cli.ts list
+  bun bench/src/cli.ts swe list
+  bun bench/src/cli.ts swe run <task-glob-or-all> --harnesses <ids> --models <aliases> [--repeats <n>] [--concurrency <n>] [--judge <id>] [--judges id1,id2] [--no-judge] [--keep-workspaces] [--dry-run] [--timeout <ms>]`);
 }
 
 function requireFlag(values: Record<string, unknown>, key: string): string {
@@ -83,44 +81,6 @@ function resolveMatrix(config: BenchModelsConfig, modelsFlag: string | undefined
     throw new Error(`unknown model id(s) in --models: ${missing.join(", ")}`);
   }
   return resolved;
-}
-
-function resolveJudge(config: BenchModelsConfig, judgeFlag: string | undefined): ModelMatrixEntry {
-  const judgeId = judgeFlag ?? process.env.BENCH_JUDGE_MODEL_ID ?? config.judge.modelId;
-  const found = findModel(config, judgeId);
-  if (!found) {
-    throw new Error(`unknown judge model id: ${judgeId}`);
-  }
-  return found;
-}
-
-function resolveJudges(
-  config: BenchModelsConfig,
-  judgeFlag: string | undefined,
-  judgesFlag: string | undefined,
-): ModelMatrixEntry[] {
-  if (!judgesFlag) return [resolveJudge(config, judgeFlag)];
-  if (judgeFlag) {
-    throw new Error("use either --judge or --judges, not both");
-  }
-  const ids = judgesFlag
-    .split(",")
-    .map((id) => id.trim())
-    .filter(Boolean);
-  if (ids.length === 0) {
-    throw new Error("--judges must contain at least one model id");
-  }
-  const duplicate = ids.find((id, index) => ids.indexOf(id) !== index);
-  if (duplicate) {
-    throw new Error(`duplicate judge model id: ${duplicate}`);
-  }
-  return ids.map((id) => {
-    const found = findModel(config, id);
-    if (!found) {
-      throw new Error(`unknown judge model id: ${id}`);
-    }
-    return found;
-  });
 }
 
 async function cmdList(): Promise<void> {
@@ -216,8 +176,15 @@ async function cmdReport(values: Record<string, unknown>): Promise<void> {
     allRuns: values["all-runs"] === true,
   });
 
+  const sweData = querySweReportData(db, {
+    runBatchId,
+    allRuns: values["all-runs"] === true,
+  });
+  const sweHtmlSection = renderSweReportSection(sweData);
+  const sweAssessmentSection = renderSweAssessmentSection(sweData);
+
   const generatedAt = new Date().toISOString();
-  const html = renderReportHtml(data, generatedAt);
+  const html = renderReportHtml(data, generatedAt, sweHtmlSection);
 
   const timestamp = generatedAt.replace(/[:.]/g, "-");
   const outPath = (values.out as string | undefined) ?? `${REPORTS_DIR}/${timestamp}.html`;
@@ -228,12 +195,16 @@ async function cmdReport(values: Record<string, unknown>): Promise<void> {
     ? outPath.replace(/\.html?$/i, ".assessment.md")
     : `${outPath}.assessment.md`;
 
-  const assessment = renderAssessmentMarkdown(data, {
-    generatedAt,
-    reportPath: outPath,
-    summaryPath,
-    runBatchId,
-  });
+  const assessment = renderAssessmentMarkdown(
+    data,
+    {
+      generatedAt,
+      reportPath: outPath,
+      summaryPath,
+      runBatchId,
+    },
+    sweAssessmentSection,
+  );
 
   // Write the deterministic outputs first: they're fully computable from the local DB and
   // should never be lost because an optional, network-dependent narrative call failed.
@@ -257,12 +228,16 @@ async function cmdReport(values: Record<string, unknown>): Promise<void> {
       const { config } = await loadModelsConfig(REPO_ROOT);
       const judgeEntry = resolveJudge(config, values.judge as string | undefined);
       const adapter = createAdapter(judgeEntry);
-      const assessmentSummary = buildAssessmentSummary(data, {
-        generatedAt,
-        reportPath: outPath,
-        summaryPath,
-        runBatchId,
-      });
+      const assessmentSummary = buildAssessmentSummary(
+        data,
+        {
+          generatedAt,
+          reportPath: outPath,
+          summaryPath,
+          runBatchId,
+        },
+        sweData.summaries.length > 0 ? sweData.summaries : undefined,
+      );
       const { systemPrompt, userPrompt } = buildNarrativePrompt(assessmentSummary);
       const response = await adapter.call({ systemPrompt, userPrompt, temperature: 0.3 });
       narrativeSection = `\n## Analysis (LLM-generated by ${judgeEntry.id})\n\n${response.text.trim()}\n`;
@@ -474,6 +449,35 @@ async function main(): Promise<void> {
     }
     case "models": {
       await cmdModels(rest);
+      break;
+    }
+    case "swe": {
+      const sweSubcommand = rest[0];
+      const sweRest = rest.slice(1);
+      if (sweSubcommand === "list") {
+        await cmdSweList(REPO_ROOT);
+      } else if (sweSubcommand === "run") {
+        const { values, positionals } = parseArgs({
+          args: sweRest,
+          allowPositionals: true,
+          options: {
+            harnesses: { type: "string" },
+            models: { type: "string" },
+            judge: { type: "string" },
+            judges: { type: "string" },
+            repeats: { type: "string" },
+            concurrency: { type: "string" },
+            timeout: { type: "string" },
+            "dry-run": { type: "boolean" },
+            "no-judge": { type: "boolean" },
+            "keep-workspaces": { type: "boolean" },
+          },
+        });
+        await cmdSweRun(REPO_ROOT, positionals, values);
+      } else {
+        usage();
+        process.exit(1);
+      }
       break;
     }
     default:

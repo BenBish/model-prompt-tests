@@ -14,6 +14,8 @@ const COLUMN_MIGRATIONS: ColumnMigration[] = [
   { table: "runs", column: "repeat_index", ddlType: "INTEGER NOT NULL DEFAULT 0" },
   { table: "scores", column: "dimension_scores", ddlType: "TEXT" },
   { table: "scores", column: "weighted_score", ddlType: "REAL" },
+  { table: "runs", column: "kind", ddlType: "TEXT NOT NULL DEFAULT 'prompt' CHECK (kind IN ('prompt', 'swe'))" },
+  { table: "runs", column: "harness_id", ddlType: "TEXT" },
 ];
 
 function ensureColumn(target: Database, migration: ColumnMigration): void {

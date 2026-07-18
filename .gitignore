@@ -3,6 +3,8 @@ node_modules/
 bench/data/*.sqlite
 bench/data/*.sqlite-*
 bench/models.json
+bench/harnesses.json
 bench/reports/*.html
 bench/reports/*.summary.json
 bench/reports/*.assessment.md
+bench/data/workspaces/

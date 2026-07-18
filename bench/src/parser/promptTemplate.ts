@@ -1,14 +1,14 @@
 import { relative } from "node:path";
 import type { PromptDefinition, RubricDimension, RubricEntry } from "../types";
 
-class PromptParseError extends Error {
+export class PromptParseError extends Error {
   constructor(filePath: string, message: string) {
     super(`${filePath}: ${message}`);
     this.name = "PromptParseError";
   }
 }
 
-function splitSections(body: string): Map<string, string> {
+export function splitSections(body: string): Map<string, string> {
   const sections = new Map<string, string>();
   const headingRegex = /^##\s+(.+)$/gm;
   const matches = [...body.matchAll(headingRegex)];
@@ -24,21 +24,30 @@ function splitSections(body: string): Map<string, string> {
   return sections;
 }
 
-function extractBullets(sectionBody: string | undefined): string[] {
+export function extractBullets(sectionBody: string | undefined): string[] {
   if (!sectionBody) return [];
   const bulletRegex = /^-\s+(.+)$/gm;
   return [...sectionBody.matchAll(bulletRegex)].map((m) => m[1]!.trim());
 }
 
-function extractPromptText(filePath: string, sectionBody: string | undefined): string {
+/** Extracts a ```text fenced block from a section, e.g. `## Prompt` or a SWE task's `## Task`. */
+export function extractFencedText(
+  filePath: string,
+  sectionName: string,
+  sectionBody: string | undefined,
+): string {
   if (!sectionBody) {
-    throw new PromptParseError(filePath, "missing required '## Prompt' section");
+    throw new PromptParseError(filePath, `missing required '## ${sectionName}' section`);
   }
   const fenceMatch = sectionBody.match(/```text\r?\n([\s\S]*?)\r?\n```/);
   if (!fenceMatch) {
-    throw new PromptParseError(filePath, "'## Prompt' section has no ```text fenced block");
+    throw new PromptParseError(filePath, `'## ${sectionName}' section has no \`\`\`text fenced block`);
   }
   return fenceMatch[1]!;
+}
+
+function extractPromptText(filePath: string, sectionBody: string | undefined): string {
+  return extractFencedText(filePath, "Prompt", sectionBody);
 }
 
 function extractRubric(filePath: string, sectionBody: string | undefined): RubricEntry[] {
@@ -81,7 +90,7 @@ const DIMENSION_LINE_REGEX = /^-\s+`([a-z0-9-]+)`\s+\(weight\s+(\d+)\):\s*(.+)$/
 const MIN_DIMENSIONS = 2;
 const MAX_DIMENSIONS = 5;
 
-function extractDimensions(
+export function extractDimensions(
   filePath: string,
   sectionBody: string | undefined,
 ): RubricDimension[] | undefined {

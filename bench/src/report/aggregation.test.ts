@@ -11,6 +11,38 @@ function createDb(): Database {
   return db;
 }
 
+describe("queryReportData kind filtering", () => {
+  test("excludes SWE-kind runs from the prompt report entirely", () => {
+    const db = createDb();
+    insertRun(db, {
+      runBatchId: "batch-1",
+      promptId: "debugging/javascript-debounce",
+      providerId: "anthropic",
+      modelId: "anthropic:sonnet",
+      modelName: "sonnet",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      status: "ok",
+      kind: "prompt",
+    });
+    insertRun(db, {
+      runBatchId: "batch-1",
+      promptId: "swe-tasks/fixture/smoke",
+      providerId: "claude-code",
+      modelId: "claude-code:haiku",
+      modelName: "haiku",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      status: "ok",
+      kind: "swe",
+      harnessId: "claude-code",
+    });
+
+    const data = queryReportData(db, { allRuns: true });
+    expect(data.promptIds).toEqual(["debugging/javascript-debounce"]);
+    expect(data.modelIds).toEqual(["anthropic:sonnet"]);
+    expect(data.summaries.map((s) => s.modelId)).toEqual(["anthropic:sonnet"]);
+  });
+});
+
 describe("latest-batch-per-cell (default view)", () => {
   test("keeps all repeats from the latest batch but drops older batches", () => {
     const db = createDb();

@@ -1,0 +1,185 @@
+import { copyFileSync, existsSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
+
+export interface ClaudeCodeHarnessConfig {
+  id: string;
+  kind: "claude-code";
+  /** Alias -> harness-native model name, e.g. { sonnet: "claude-sonnet-5" }. */
+  models: Record<string, string>;
+  maxTurns?: number;
+  /**
+   * Passes `--bare` for hermetic runs (skips hooks/plugins/CLAUDE.md discovery). Requires
+   * ANTHROPIC_API_KEY: `--bare` also skips normal OAuth/subscription session-credential
+   * discovery, confirmed empirically. Defaults to false so it works with an interactive
+   * `claude login` session out of the box.
+   */
+  bare?: boolean;
+  enabled?: boolean;
+}
+
+export interface RawApiHarnessConfig {
+  id: string;
+  kind: "raw-api";
+  /** No model map: aliases resolve directly against bench/models.json. */
+  maxContextBytes?: number;
+  enabled?: boolean;
+}
+
+export type HarnessMatrixEntry = ClaudeCodeHarnessConfig | RawApiHarnessConfig;
+
+export interface BenchHarnessesConfig {
+  harnesses: HarnessMatrixEntry[];
+}
+
+export interface LoadedHarnessesConfig {
+  config: BenchHarnessesConfig;
+  sourcePath: string;
+  isLocal: boolean;
+}
+
+export function harnessesConfigPaths(repoRoot: string): { localPath: string; examplePath: string } {
+  return {
+    localPath: `${repoRoot}/bench/harnesses.json`,
+    examplePath: `${repoRoot}/bench/harnesses.example.json`,
+  };
+}
+
+function requireString(obj: Record<string, unknown>, key: string, context: string): string {
+  const value = obj[key];
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new Error(`${context}: missing required string "${key}"`);
+  }
+  return value;
+}
+
+function optionalPositiveInteger(
+  obj: Record<string, unknown>,
+  key: string,
+  context: string,
+): number | undefined {
+  const value = obj[key];
+  if (value === undefined) return undefined;
+  if (!Number.isInteger(value) || (value as number) < 1) {
+    throw new Error(`${context}: "${key}" must be a positive integer when present`);
+  }
+  return value as number;
+}
+
+function optionalBoolean(obj: Record<string, unknown>, key: string, context: string): boolean | undefined {
+  const value = obj[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== "boolean") {
+    throw new Error(`${context}: "${key}" must be a boolean when present`);
+  }
+  return value;
+}
+
+function requireStringRecord(obj: Record<string, unknown>, key: string, context: string): Record<string, string> {
+  const value = obj[key];
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${context}: missing required object "${key}"`);
+  }
+  const record = value as Record<string, unknown>;
+  if (Object.keys(record).length === 0) {
+    throw new Error(`${context}: "${key}" must have at least one entry`);
+  }
+  for (const [alias, modelName] of Object.entries(record)) {
+    if (typeof modelName !== "string" || modelName.trim() === "") {
+      throw new Error(`${context}: "${key}.${alias}" must be a non-empty string`);
+    }
+  }
+  return record as Record<string, string>;
+}
+
+function normalizeHarness(raw: unknown, index: number): HarnessMatrixEntry {
+  const context = `harnesses[${index}]`;
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    throw new Error(`${context}: must be an object`);
+  }
+  const obj = raw as Record<string, unknown>;
+  const kind = requireString(obj, "kind", context);
+  const common = {
+    id: requireString(obj, "id", context),
+    enabled: optionalBoolean(obj, "enabled", context),
+  };
+
+  if (kind === "claude-code") {
+    return {
+      kind,
+      ...common,
+      models: requireStringRecord(obj, "models", context),
+      maxTurns: optionalPositiveInteger(obj, "maxTurns", context),
+      bare: optionalBoolean(obj, "bare", context),
+    };
+  }
+
+  if (kind === "raw-api") {
+    return {
+      kind,
+      ...common,
+      maxContextBytes: optionalPositiveInteger(obj, "maxContextBytes", context),
+    };
+  }
+
+  throw new Error(`${context}: unsupported kind "${kind}"`);
+}
+
+export function validateHarnessesConfig(raw: unknown): BenchHarnessesConfig {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    throw new Error("harnesses config must be an object");
+  }
+  const obj = raw as Record<string, unknown>;
+  if (!Array.isArray(obj.harnesses) || obj.harnesses.length === 0) {
+    throw new Error('harnesses config must contain a non-empty "harnesses" array');
+  }
+  const harnesses = obj.harnesses.map(normalizeHarness);
+  const ids = new Set<string>();
+  for (const harness of harnesses) {
+    if (ids.has(harness.id)) {
+      throw new Error(`duplicate harness id "${harness.id}"`);
+    }
+    ids.add(harness.id);
+  }
+
+  return { harnesses };
+}
+
+export async function loadHarnessesConfig(repoRoot: string): Promise<LoadedHarnessesConfig> {
+  const { localPath, examplePath } = harnessesConfigPaths(repoRoot);
+  const sourcePath = existsSync(localPath) ? localPath : examplePath;
+  const text = await Bun.file(sourcePath).text();
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`${sourcePath}: invalid JSON: ${message}`);
+  }
+  try {
+    return {
+      config: validateHarnessesConfig(raw),
+      sourcePath,
+      isLocal: sourcePath === localPath,
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`${sourcePath}: ${message}`);
+  }
+}
+
+export function ensureLocalHarnessesConfig(repoRoot: string): string {
+  const { localPath, examplePath } = harnessesConfigPaths(repoRoot);
+  if (!existsSync(localPath)) {
+    mkdirSync(dirname(localPath), { recursive: true });
+    copyFileSync(examplePath, localPath);
+  }
+  return localPath;
+}
+
+export function enabledHarnessMatrix(config: BenchHarnessesConfig): HarnessMatrixEntry[] {
+  return config.harnesses.filter((harness) => harness.enabled !== false);
+}
+
+export function findHarness(config: BenchHarnessesConfig, harnessId: string): HarnessMatrixEntry | undefined {
+  return config.harnesses.find((harness) => harness.id === harnessId);
+}

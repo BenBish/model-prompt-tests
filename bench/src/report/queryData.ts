@@ -231,10 +231,10 @@ function summarize(modelIds: string[], rows: ReportRow[]): ModelSummary[] {
 }
 
 export function queryReportData(db: Database, options: QueryOptions = {}): ReportData {
-  let sql = "SELECT runs.* FROM runs";
+  let sql = "SELECT runs.* FROM runs WHERE runs.kind = 'prompt'";
   const params: Record<string, string> = {};
   if (options.runBatchId) {
-    sql += " WHERE runs.run_batch_id = $runBatchId";
+    sql += " AND runs.run_batch_id = $runBatchId";
     params.$runBatchId = options.runBatchId;
   }
   sql += " ORDER BY runs.prompt_id, runs.model_id, runs.started_at ASC";
