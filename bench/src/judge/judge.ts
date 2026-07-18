@@ -1,11 +1,18 @@
 import type { ModelAdapter } from "../providers/types";
 import type { PromptDefinition } from "../types";
-import { withRetry } from "../util/retry";
+import { runStructuredLlmCall } from "./structuredCall";
 import { buildJudgeSystemPrompt, buildJudgeUserPrompt } from "./buildJudgePrompt";
+
+export interface JudgeDimensionScore {
+  score: number;
+  rationale: string;
+}
 
 export interface JudgeResult {
   score: 1 | 2 | 3 | 4 | 5;
   rationale: string;
+  dimensions?: Record<string, JudgeDimensionScore>;
+  weightedScore?: number;
 }
 
 export interface JudgeOutcome {
@@ -25,60 +32,68 @@ const CORRECTIVE_MESSAGE =
   "Your previous reply was not valid JSON matching the required schema. " +
   'Reply with ONLY the JSON object: {"score": <integer 1-5>, "rationale": "<string>"}';
 
-function extractFirstJsonObject(text: string): unknown | undefined {
-  const start = text.indexOf("{");
-  if (start === -1) return undefined;
-
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-  for (let i = start; i < text.length; i++) {
-    const char = text[i]!;
-
-    if (inString) {
-      if (escaped) {
-        escaped = false;
-      } else if (char === "\\") {
-        escaped = true;
-      } else if (char === '"') {
-        inString = false;
-      }
-      continue;
-    }
-
-    if (char === '"') {
-      inString = true;
-    } else if (char === "{") {
-      depth++;
-    } else if (char === "}") {
-      depth--;
-      if (depth === 0) {
-        const candidate = text.slice(start, i + 1);
-        try {
-          return JSON.parse(candidate);
-        } catch {
-          return undefined;
-        }
-      }
-    }
-  }
-  return undefined;
+function buildDimensionalCorrectiveMessage(prompt: PromptDefinition): string {
+  const dimensionIds = (prompt.dimensions ?? []).map((d) => d.id).join(", ");
+  return (
+    "Your previous reply was not valid JSON matching the required schema, or was missing a required " +
+    `dimension. Reply with ONLY a JSON object containing "score" (integer 1-5), "rationale" (string), ` +
+    `and a "dimensions" object covering exactly these ids, each with an integer 1-5 "score" and a "rationale": ${dimensionIds}.`
+  );
 }
 
-function validateJudgeResult(parsed: unknown): JudgeResult | undefined {
-  if (typeof parsed !== "object" || parsed === null) return undefined;
-  const obj = parsed as Record<string, unknown>;
-  const score = obj.score;
-  const rationale = obj.rationale;
+function validateJudgeResult(prompt: PromptDefinition) {
+  return (parsed: unknown): JudgeResult | undefined => {
+    if (typeof parsed !== "object" || parsed === null) return undefined;
+    const obj = parsed as Record<string, unknown>;
+    const score = obj.score;
+    const rationale = obj.rationale;
 
-  if (typeof score !== "number" || !Number.isInteger(score) || score < 1 || score > 5) {
-    return undefined;
-  }
-  if (typeof rationale !== "string" || rationale.trim().length === 0) {
-    return undefined;
-  }
+    if (typeof score !== "number" || !Number.isInteger(score) || score < 1 || score > 5) {
+      return undefined;
+    }
+    if (typeof rationale !== "string" || rationale.trim().length === 0) {
+      return undefined;
+    }
 
-  return { score: score as JudgeResult["score"], rationale };
+    const dims = prompt.dimensions;
+    if (!dims || dims.length === 0) {
+      return { score: score as JudgeResult["score"], rationale };
+    }
+
+    const rawDimensions = obj.dimensions;
+    if (typeof rawDimensions !== "object" || rawDimensions === null) return undefined;
+    const dimensionsObj = rawDimensions as Record<string, unknown>;
+
+    const parsedDimensions: Record<string, JudgeDimensionScore> = {};
+    for (const dim of dims) {
+      const entry = dimensionsObj[dim.id];
+      if (typeof entry !== "object" || entry === null) return undefined;
+      const entryObj = entry as Record<string, unknown>;
+      const dimScore = entryObj.score;
+      const dimRationale = entryObj.rationale;
+      if (
+        typeof dimScore !== "number" ||
+        !Number.isInteger(dimScore) ||
+        dimScore < 1 ||
+        dimScore > 5
+      ) {
+        return undefined;
+      }
+      if (typeof dimRationale !== "string" || dimRationale.trim().length === 0) return undefined;
+      parsedDimensions[dim.id] = { score: dimScore, rationale: dimRationale };
+    }
+
+    const totalWeight = dims.reduce((sum, d) => sum + d.weight, 0);
+    const weightedScore =
+      dims.reduce((sum, d) => sum + d.weight * parsedDimensions[d.id]!.score, 0) / totalWeight;
+
+    return {
+      score: score as JudgeResult["score"],
+      rationale,
+      dimensions: parsedDimensions,
+      weightedScore,
+    };
+  };
 }
 
 export async function runJudge(
@@ -87,45 +102,25 @@ export async function runJudge(
   candidateOutput: string,
   options: RunJudgeOptions = {},
 ): Promise<JudgeOutcome> {
-  const systemPrompt = buildJudgeSystemPrompt();
+  const systemPrompt = buildJudgeSystemPrompt(prompt);
   const userPrompt = buildJudgeUserPrompt(prompt, candidateOutput);
+  const hasDimensions = (prompt.dimensions?.length ?? 0) > 0;
+  const correctiveMessage = hasDimensions
+    ? buildDimensionalCorrectiveMessage(prompt)
+    : CORRECTIVE_MESSAGE;
 
-  let lastText = "";
+  const outcome = await runStructuredLlmCall(
+    judgeAdapter,
+    systemPrompt,
+    userPrompt,
+    validateJudgeResult(prompt),
+    correctiveMessage,
+    {
+      retry: options.retry,
+      requestErrorPrefix: "judge request failed",
+      exhaustedErrorMessage: () => "judge did not return a valid JSON score after 2 attempts",
+    },
+  );
 
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const effectiveUserPrompt = attempt === 0 ? userPrompt : `${userPrompt}\n\n${CORRECTIVE_MESSAGE}`;
-
-    try {
-      const response = await withRetry(
-        () =>
-          judgeAdapter.call({
-            systemPrompt,
-            userPrompt: effectiveUserPrompt,
-            temperature: 0,
-          }),
-        options.retry ?? {},
-      );
-      lastText = response.text;
-
-      const parsed = extractFirstJsonObject(response.text);
-      const validated = parsed ? validateJudgeResult(parsed) : undefined;
-
-      if (validated) {
-        return { result: validated, rawJudgeText: response.text };
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return {
-        result: null,
-        rawJudgeText: "",
-        error: `judge request failed: ${message}`,
-      };
-    }
-  }
-
-  return {
-    result: null,
-    rawJudgeText: lastText,
-    error: "judge did not return a valid JSON score after 2 attempts",
-  };
+  return { result: outcome.result, rawJudgeText: outcome.rawText, error: outcome.error };
 }

@@ -42,6 +42,12 @@ function debounce(fn, delay) {
 - `2`: Misdiagnoses the behavior or creates a different utility.
 - `1`: Broken code or no meaningful bug explanation.
 
+## Scoring Dimensions
+
+- `correctness` (weight 3): Identifies the missing `clearTimeout` and explains why calls stack up.
+- `explanation-quality` (weight 2): Explains the bug's cause before presenting the fix.
+- `code-quality` (weight 2): Fix preserves `this`/arguments and stays a debounce, not a throttle rewrite.
+
 ## Variants
 
 - Easier: Ask only for the corrected debounce function.

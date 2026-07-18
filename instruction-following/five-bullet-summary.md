@@ -37,6 +37,11 @@ The company delayed the analytics dashboard launch after discovering that histor
 - `2`: Multiple format violations or missing key facts.
 - `1`: Ignores the requested structure.
 
+## Scoring Dimensions
+
+- `format-compliance` (weight 3): Exactly five bullets, each under twelve words, with no adjectives.
+- `content-fidelity` (weight 2): Preserves the delay, reason, current dashboard, validation, and documentation/export facts.
+
 ## Variants
 
 - Easier: Remove the adjective ban.

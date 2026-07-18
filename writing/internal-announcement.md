@@ -37,6 +37,12 @@ Hey everyone - so the dashboard migration is taking longer than we thought. We f
 - `2`: Drops facts, changes meaning, or misses the tone.
 - `1`: Fails the rewrite or ignores the constraints.
 
+## Scoring Dimensions
+
+- `fact-preservation` (weight 3): Keeps all dates, actions, and cautions intact, including the Friday sample export.
+- `tone-control` (weight 3): Reads calm and direct, with no unsupported apologies or new promises.
+- `constraint-compliance` (weight 2): Stays under 180 words.
+
 ## Variants
 
 - Easier: Remove the word limit.

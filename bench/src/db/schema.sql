@@ -12,7 +12,8 @@ CREATE TABLE IF NOT EXISTS runs (
   output_text   TEXT,
   raw_response  TEXT,
   error         TEXT,
-  status        TEXT NOT NULL CHECK (status IN ('ok', 'error'))
+  status        TEXT NOT NULL CHECK (status IN ('ok', 'error')),
+  repeat_index  INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS scores (
@@ -24,7 +25,9 @@ CREATE TABLE IF NOT EXISTS scores (
   raw_judge_output TEXT,
   scored_at        TEXT NOT NULL,
   error            TEXT,
-  status           TEXT NOT NULL CHECK (status IN ('ok', 'error'))
+  status           TEXT NOT NULL CHECK (status IN ('ok', 'error')),
+  dimension_scores TEXT,
+  weighted_score   REAL
 );
 
 CREATE INDEX IF NOT EXISTS idx_runs_prompt ON runs(prompt_id);

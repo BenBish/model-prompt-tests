@@ -35,6 +35,12 @@ Build a notes app for teams.
 - `2`: Overbuilt, underbuilt, or poorly scoped.
 - `1`: Ignores the ambiguity and core team requirement.
 
+## Scoring Dimensions
+
+- `clarifying-behavior` (weight 3): Asks clarifying questions, or states explicit conservative assumptions before building.
+- `scope-control` (weight 3): Defines a narrow, sensible MVP instead of inventing a full collaboration suite.
+- `team-fit` (weight 2): Covers users, permissions, sharing, search, and persistence for a team context specifically.
+
 ## Variants
 
 - Easier: Add requirements for sharing, comments, and search.

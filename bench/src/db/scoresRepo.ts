@@ -9,14 +9,18 @@ export interface ScoreRecord {
   scoredAt: string;
   error?: string;
   status: "ok" | "error";
+  dimensionScores?: Record<string, { score: number; rationale: string }>;
+  weightedScore?: number;
 }
 
 export function insertScore(db: Database, record: ScoreRecord): number {
   const stmt = db.prepare(`
     INSERT INTO scores (
-      run_id, judge_model_id, score, rationale, raw_judge_output, scored_at, error, status
+      run_id, judge_model_id, score, rationale, raw_judge_output, scored_at, error, status,
+      dimension_scores, weighted_score
     ) VALUES (
-      $runId, $judgeModelId, $score, $rationale, $rawJudgeOutput, $scoredAt, $error, $status
+      $runId, $judgeModelId, $score, $rationale, $rawJudgeOutput, $scoredAt, $error, $status,
+      $dimensionScores, $weightedScore
     )
   `);
 
@@ -29,6 +33,8 @@ export function insertScore(db: Database, record: ScoreRecord): number {
     $scoredAt: record.scoredAt,
     $error: record.error ?? null,
     $status: record.status,
+    $dimensionScores: record.dimensionScores ? JSON.stringify(record.dimensionScores) : null,
+    $weightedScore: record.weightedScore ?? null,
   });
 
   return Number(result.lastInsertRowid);

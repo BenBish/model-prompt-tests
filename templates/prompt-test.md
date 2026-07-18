@@ -32,6 +32,15 @@ Paste the exact test prompt here.
 - `2`: Meaningfully flawed or misses important constraints.
 - `1`: Fails the task or gives unsafe/incorrect guidance.
 
+## Scoring Dimensions
+
+Optional. 2-5 weighted dimensions the judge scores individually (each 1-5), in addition to the
+holistic rubric above. Use a short kebab-case id, an integer weight from 1 (minor) to 5 (critical),
+and a one-line description of what a high score looks like for this prompt specifically.
+
+- `dimension-id` (weight N): What a strong answer does on this dimension.
+- `dimension-id` (weight N): What a strong answer does on this dimension.
+
 ## Variants
 
 - Easier:

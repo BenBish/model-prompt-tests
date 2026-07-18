@@ -35,6 +35,12 @@ Build a Pomodoro timer app. It should support configurable work and break interv
 - `2`: Partially implemented or likely broken during normal use.
 - `1`: Non-runnable, mostly conceptual, or ignores the requested stack.
 
+## Scoring Dimensions
+
+- `runnability` (weight 3): Produces complete, runnable code with clear file boundaries.
+- `state-correctness` (weight 3): Timer state (pause/resume/reset/interval changes) is handled without drift or duplicate timers.
+- `ui-practicality` (weight 2): Controls, mode indicators, and completion alerts are usable and responsive.
+
 ## Variants
 
 - Easier: Build only a 25-minute work timer with pause and reset.

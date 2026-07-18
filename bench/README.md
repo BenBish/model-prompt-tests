@@ -91,7 +91,9 @@ Judge-only models can be added with `--disabled`, which keeps them available for
 
 - `--models id1,id2` — restrict to specific model matrix ids (default: enabled configured models).
 - `--judge <id>` — override the judge model for this run (default: `judge.modelId` in model config, or `BENCH_JUDGE_MODEL_ID`).
+- `--judges id1,id2` — score every run with multiple judges instead of one (mutually exclusive with `--judge`); each ok run gets one `scores` row per judge.
 - `--concurrency <n>` — default per-provider concurrency (individual matrix entries can set their own `maxConcurrent`, e.g. for single-GPU local servers).
+- `--repeats <n>` — run each (prompt, model) cell `n` times independently (default 1). Useful for measuring variance; see "Aggregation" below for how repeats factor into the report.
 - `--dry-run` — resolve and print the prompt x model matrix with zero network calls.
 - `--no-judge` — skip LLM-judge scoring.
 
@@ -103,11 +105,51 @@ failed, while still storing successful and failed results for reporting.
 
 - `--out <path>` — write to a specific path (default: `bench/reports/<timestamp>.html`, always also mirrored to `bench/reports/latest.html`).
 - `--batch <run_batch_id>` — restrict the report to one `run` invocation.
-- `--all-runs` — show full run history per (prompt, model) instead of just the latest.
+- `--all-runs` — show full run history per (prompt, model) instead of just the latest batch per cell.
+- `--narrative` — append an LLM-written analysis paragraph to the assessment (see below); calls the default judge model, so this makes network calls. Off by default.
+- `--judge <id>` — which judge model writes the `--narrative` analysis (default: the same judge resolution as `run`).
+
+Every `report` invocation writes three files (plus `latest.*` mirrors):
+`<timestamp>.html` (the prompt x model matrix), `<timestamp>.summary.json` (per-model
+`ModelSummary` stats), and `<timestamp>.assessment.md` (a deterministic markdown writeup —
+model summary table, per-dimension averages, per-prompt winners, judge-disagreement
+flags, and an error inventory — generated from the same data as the HTML report).
+
+## Aggregation
+
+By default `report` shows only the most recent `run` batch for each (prompt, model)
+cell, but keeps every repeat within that batch (`--all-runs` shows full history instead).
+A single run's judge scores collapse to one number via the **median across judges**
+(not the mean), so one outlier judge doesn't skew a run's score. When `--repeats > 1`,
+a cell's repeats collapse the same way: **median across repeats**. A model's `avgScore`
+is the mean of its per-cell medians, so a prompt run many times doesn't dominate a
+prompt run once. `scoreStdDev` is computed across all individual run scores;
+`repeatVariance` is the mean of per-cell score stddevs (only meaningful once
+`--repeats > 1`); `judgeAgreementPct` is the share of multi-judge runs where every judge
+gave the exact same integer score.
+
+## Scoring Dimensions
+
+Prompt files can add an optional `## Scoring Dimensions` section (see
+`templates/prompt-test.md`) listing 2-5 weighted dimensions, e.g.:
+
+```markdown
+## Scoring Dimensions
+
+- `correctness` (weight 3): Identifies the missing clearTimeout and explains why calls stack.
+- `code-quality` (weight 2): Fix preserves `this`/args; minimal.
+```
+
+When present, the judge is asked to score each dimension (1-5) in addition to the
+holistic rubric score, and a weighted score (`sum(weight * score) / sum(weight)`) is
+computed and stored alongside it. Prompts without this section are scored exactly as
+before — it's fully optional and backward compatible.
 
 ## Storage
 
 Results are stored in `bench/data/bench.sqlite` (`runs` and `scores` tables, gitignored).
+Schema migrations for new columns are applied automatically on open
+(`bench/src/db/client.ts`), so existing databases upgrade in place.
 
 ## Phase 2 (not yet implemented)
 

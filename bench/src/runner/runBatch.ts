@@ -13,6 +13,8 @@ export interface RunBatchOptions {
   prompts: PromptDefinition[];
   runners: CandidateRunner[];
   defaultConcurrency: number;
+  /** Number of independent runs per (prompt, runner) cell. Defaults to 1. */
+  repeats?: number;
   judge?: {
     adapter: ModelAdapter;
     modelId: string;
@@ -42,6 +44,7 @@ function makeRunBatchId(): string {
 
 export async function runBatch(options: RunBatchOptions): Promise<RunBatchSummary> {
   const { db, prompts, runners, defaultConcurrency } = options;
+  const repeats = options.repeats ?? 1;
   const judges = options.judges ?? (options.judge ? [options.judge] : []);
   const started = performance.now();
   const runBatchId = makeRunBatchId();
@@ -83,21 +86,25 @@ export async function runBatch(options: RunBatchOptions): Promise<RunBatchSummar
   const candidateTasks: Promise<void>[] = [];
   for (const prompt of prompts) {
     for (const runner of runners) {
-      const providerLimiter = providerLimiterFor(runner);
-      const runnerLimiter = runnerLimiterFor(runner);
-      const run = async () => {
-        await providerLimiter(() => executeCandidate(prompt, runner));
-      };
-      candidateTasks.push(runnerLimiter ? runnerLimiter(run) : run());
+      for (let repeatIndex = 0; repeatIndex < repeats; repeatIndex++) {
+        const providerLimiter = providerLimiterFor(runner);
+        const runnerLimiter = runnerLimiterFor(runner);
+        const run = async () => {
+          await providerLimiter(() => executeCandidate(prompt, runner, repeatIndex));
+        };
+        candidateTasks.push(runnerLimiter ? runnerLimiter(run) : run());
+      }
     }
   }
 
   async function executeCandidate(
     prompt: PromptDefinition,
     runner: CandidateRunner,
+    repeatIndex: number,
   ): Promise<void> {
     const startedAt = new Date().toISOString();
-    const label = `${prompt.id} x ${runner.id}`;
+    const label =
+      repeats > 1 ? `${prompt.id} x ${runner.id} (repeat ${repeatIndex + 1}/${repeats})` : `${prompt.id} x ${runner.id}`;
     try {
       const result = await withRetry(() => runner.run(prompt));
       const record: RunRecord = {
@@ -113,6 +120,7 @@ export async function runBatch(options: RunBatchOptions): Promise<RunBatchSummar
         outputText: result.outputText,
         rawResponse: JSON.stringify(result.raw),
         status: "ok",
+        repeatIndex,
       };
       const runId = insertRun(db, record);
       ok++;
@@ -134,6 +142,7 @@ export async function runBatch(options: RunBatchOptions): Promise<RunBatchSummar
         startedAt,
         status: "error",
         error: message,
+        repeatIndex,
       });
       errored++;
       console.log(`[error] ${label}: ${message}`);
@@ -164,6 +173,8 @@ export async function runBatch(options: RunBatchOptions): Promise<RunBatchSummar
             scoredAt: new Date().toISOString(),
             error: outcome.error,
             status: outcome.result ? "ok" : "error",
+            dimensionScores: outcome.result?.dimensions,
+            weightedScore: outcome.result?.weightedScore,
           });
           if (outcome.result) {
             const list = scoresByModel.get(modelId) ?? [];
