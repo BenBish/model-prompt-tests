@@ -1,4 +1,4 @@
-import { judgeScoresForRow, perRunMedianScore, type ModelSummary, type ReportData, type ReportRow } from "./queryData";
+import { judgeScoresForRow, median, perRunMedianScore, type ModelSummary, type ReportData, type ReportRow } from "./queryData";
 
 export interface AssessmentMeta {
   generatedAt: string;
@@ -53,7 +53,9 @@ function cellWinners(data: ReportData): PromptWinner[] {
       });
       if (perRunScores.length === 0) continue;
       contenders++;
-      const cellScore = perRunScores.reduce((a, b) => a + b, 0) / perRunScores.length;
+      // Median across repeats, matching queryData.ts's summarize() and renderHtml's cell summary —
+      // a single outlier repeat shouldn't decide the declared winner.
+      const cellScore = median(perRunScores)!;
       if (!best || cellScore > best.score) {
         best = { promptId, modelId, score: cellScore };
       }

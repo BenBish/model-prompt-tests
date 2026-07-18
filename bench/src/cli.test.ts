@@ -149,4 +149,56 @@ describe("bench models CLI", () => {
     expect(result.exitCode).toBe(1);
     expect(result.stderr.toString()).toContain("duplicate judge model id: local:test");
   });
+
+  test("reflects --repeats in the dry-run summary", () => {
+    const repoRoot = makeTempRepo();
+
+    const result = runCli(repoRoot, [
+      "run",
+      "test-prompt",
+      "--models",
+      "local:test",
+      "--repeats",
+      "3",
+      "--dry-run",
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.toString()).toContain("x 3 repeat(s)");
+  });
+
+  test("rejects a non-positive --repeats value", () => {
+    const repoRoot = makeTempRepo();
+
+    const result = runCli(repoRoot, [
+      "run",
+      "test-prompt",
+      "--models",
+      "local:test",
+      "--repeats",
+      "0",
+      "--dry-run",
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr.toString()).toContain("--repeats must be a positive integer");
+  });
+
+  test("--narrative failure still writes the deterministic report, summary, and assessment", () => {
+    const repoRoot = makeTempRepo();
+    createBenchDb(repoRoot);
+
+    // models.example.json points local:test at http://localhost:8000/v1, which nothing is
+    // listening on in this test, so the narrative call is guaranteed to fail — proving the
+    // report/summary/assessment outputs survive an optional narrative failure.
+    const outPath = join(repoRoot, "bench", "reports", "narrative-report.html");
+    const result = runCli(repoRoot, ["report", "--out", outPath, "--narrative", "--judge", "local:test"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(readFileSync(outPath, "utf8")).toContain("<!doctype html>");
+    expect(JSON.parse(readFileSync(`${outPath.replace(/\.html$/, ".summary.json")}`, "utf8"))).toEqual([]);
+    const assessment = readFileSync(outPath.replace(/\.html$/, ".assessment.md"), "utf8");
+    expect(assessment).toContain("# Bench Assessment");
+    expect(assessment).toContain("Narrative generation failed");
+  });
 });

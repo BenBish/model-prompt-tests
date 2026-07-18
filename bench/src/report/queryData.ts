@@ -73,6 +73,18 @@ export interface QueryOptions {
   allRuns?: boolean;
 }
 
+function parseDimensionScores(
+  raw: string | null,
+): Record<string, JudgeDimensionReportScore> | undefined {
+  if (!raw) return undefined;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    console.error(`[warn] ignoring malformed dimension_scores JSON: ${raw}`);
+    return undefined;
+  }
+}
+
 function rowToReportRow(row: any): ReportRow {
   return {
     runId: row.id,
@@ -249,7 +261,7 @@ export function queryReportData(db: Database, options: QueryOptions = {}): Repor
       judgeError: scoreRow.judge_error ?? undefined,
       judgeStatus: scoreRow.judge_status,
       scoredAt: scoreRow.scored_at,
-      dimensions: scoreRow.dimension_scores ? JSON.parse(scoreRow.dimension_scores) : undefined,
+      dimensions: parseDimensionScores(scoreRow.dimension_scores),
       weightedScore: scoreRow.weighted_score ?? undefined,
     });
     scoresByRun.set(scoreRow.run_id, list);

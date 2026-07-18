@@ -17,12 +17,11 @@ function scoreBadgeColor(score: number | undefined): string {
   return "#c62828";
 }
 
-function renderRunDetails(row: ReportRow): string {
+function renderRunDetails(row: ReportRow, runScore: number | undefined): string {
   if (row.runStatus === "error") {
     return `<details><summary style="color:#c62828">error${row.repeatIndex > 0 ? ` (repeat ${row.repeatIndex + 1})` : ""}</summary><pre>${escapeHtml(row.error)}</pre></details>`;
   }
 
-  const runScore = perRunMedianScore(row);
   const badgeColor = scoreBadgeColor(runScore);
   const summaryLabel = runScore !== undefined ? runScore.toFixed(2) : "?";
   const meta = [
@@ -75,13 +74,8 @@ function renderJudgeResult(judge: JudgeReportRow, modelId: string): string {
   `;
 }
 
-function renderCellSummary(rows: ReportRow[]): string {
-  if (rows.length <= 1) return "";
-  const scores = rows.flatMap((row) => {
-    const score = perRunMedianScore(row);
-    return score === undefined ? [] : [score];
-  });
-  if (scores.length === 0) return "";
+function renderCellSummary(rows: ReportRow[], scores: number[]): string {
+  if (rows.length <= 1 || scores.length === 0) return "";
   const sorted = [...scores].sort((a, b) => a - b);
   const med = median(scores)!;
   return `<div class="cell-summary">median ${med.toFixed(2)} (${sorted[0]!.toFixed(2)}–${sorted[sorted.length - 1]!.toFixed(2)}, n=${scores.length})</div>`;
@@ -89,7 +83,19 @@ function renderCellSummary(rows: ReportRow[]): string {
 
 function renderCell(rows: ReportRow[] | undefined): string {
   if (!rows || rows.length === 0) return `<td class="empty">—</td>`;
-  return `<td>${renderCellSummary(rows)}${rows.map(renderRunDetails).join("<hr/>")}</td>`;
+
+  // Compute each ok row's score once and reuse it for both the cell summary and its own badge.
+  const scoresByRunId = new Map<number, number | undefined>();
+  const okScores: number[] = [];
+  for (const row of rows) {
+    if (row.runStatus !== "ok") continue;
+    const score = perRunMedianScore(row);
+    scoresByRunId.set(row.runId, score);
+    if (score !== undefined) okScores.push(score);
+  }
+
+  const details = rows.map((row) => renderRunDetails(row, scoresByRunId.get(row.runId))).join("<hr/>");
+  return `<td>${renderCellSummary(rows, okScores)}${details}</td>`;
 }
 
 function formatNumber(value: number | undefined, digits = 2): string {
