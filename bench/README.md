@@ -147,15 +147,127 @@ before — it's fully optional and backward compatible.
 
 ## Storage
 
-Results are stored in `bench/data/bench.sqlite` (`runs` and `scores` tables, gitignored).
-Schema migrations for new columns are applied automatically on open
-(`bench/src/db/client.ts`), so existing databases upgrade in place.
+Results are stored in `bench/data/bench.sqlite` (`runs`, `scores`, and `swe_results`
+tables, gitignored). Schema migrations for new columns are applied automatically on
+open (`bench/src/db/client.ts`), so existing databases upgrade in place.
 
-## Phase 2 (not yet implemented)
+## SWE benchmarking
 
-`bench/src/providers/harness.ts` sketches an `AgentHarness` interface for running
-prompts through real tool-using coding agents (Claude Code, Codex CLI, Opencode, OMP)
-instead of a plain single-turn API call. The runner/db/judge/report layers depend on
-the narrow `CandidateRunner` interface (`bench/src/runner/candidateRunner.ts`) rather
-than directly on model adapters, so adding harness support later shouldn't require
-changes to those layers.
+Real-world software-engineering tasks — fix a bug, implement a feature — run through
+an agent harness (Claude Code, a raw single-shot API call, and more in the future),
+verified by a hidden test suite the agent never sees, plus an LLM judge for code
+quality and process. This is a separate pipeline from `run`/`report` above: its own
+task format, its own harness config, and its own `swe` subcommand.
+
+### Setup
+
+```
+bun run bench models init      # if not already done — raw-api reuses bench/models.json
+cp bench/harnesses.example.json bench/harnesses.json   # gitignored, edit as needed
+```
+
+### Task format (`swe-tasks/`)
+
+```
+swe-tasks/
+  fixture/<name>/
+    task.md       # frontmatter + task description
+    project/      # the visible starting project, copied into a fresh git workspace
+    hidden/       # test overlay applied ONLY after the agent finishes
+```
+
+`task.md` frontmatter is flat `key: value` (plus indented `- item` lists for
+array-typed keys: `tags`, `ignorePaths`, `envPassthrough`):
+
+````markdown
+---
+type: fixture
+verify: bun test
+verifyTimeoutMs: 30000
+agentTimeoutMs: 300000
+tags: typescript, debugging
+---
+# Fix the debounce utility
+
+## Task
+
+```text
+The debounce function in src/debounce.ts sometimes calls fn more than once. Fix it.
+```
+
+## Judging Guidance
+
+- Reward identifying that a prior scheduled call is never cancelled.
+
+## Scoring Dimensions
+
+- `correctness` (weight 3): Only the most recent call's arguments trigger fn, and only once.
+- `code-quality` (weight 2): Minimal fix that preserves the calling contract.
+````
+
+`## Scoring Dimensions` uses the same optional, weighted format as prompt files (see
+above). See `swe-tasks/fixture/{smoke,debounce-fix,cart-discount}/` for worked examples,
+including how `hidden/` catches an agent that only special-cases the visible test.
+
+### Harness config (`bench/harnesses.json`)
+
+Each entry maps CLI-facing model aliases to harness-native model names:
+
+```json
+{
+  "harnesses": [
+    { "id": "claude-code", "kind": "claude-code",
+      "models": { "sonnet": "claude-sonnet-5", "haiku": "claude-haiku-4-5-20251001" },
+      "maxTurns": 60 },
+    { "id": "raw-api", "kind": "raw-api", "maxContextBytes": 120000 }
+  ]
+}
+```
+
+- **`claude-code`** runs `claude -p --output-format json --dangerously-skip-permissions`
+  headlessly, prompt on stdin, in an isolated workspace directory. It does **not** pass
+  `--bare` by default — `--bare` skips normal OAuth/subscription session-credential
+  discovery and requires `ANTHROPIC_API_KEY` explicitly (confirmed empirically). Set
+  `"bare": true` on the entry for hermetic runs once `ANTHROPIC_API_KEY` is available.
+- **`raw-api`** has no agent loop and no `models` map: model aliases are bench model ids
+  from `bench/models.json` directly (e.g. `anthropic:sonnet`). It bundles the
+  workspace's own files as context, asks the model for a single fenced unified diff, and
+  applies it with `git apply` (one corrective retry if the reply has no diff fence). A
+  diff that fails to apply is recorded honestly — real models sometimes emit malformed
+  hunk headers — and verification simply fails, rather than being treated as a tool error.
+
+Both harness kinds spawn CLIs with a whitelisted environment (`PATH`/`HOME`/`TMPDIR`/
+`LANG`/`LC_ALL` plus anything explicitly needed) and strip `CLAUDE_CODE_*`/`CLAUDECODE`
+env vars, since bench itself may be invoked from inside a Claude Code session.
+
+### `swe list`
+
+Prints discovered tasks and an availability check (`Bun.which` — cheap, no process
+spawned) for every configured harness.
+
+### `swe run <task-glob-or-all>`
+
+- `--harnesses <ids>` — **required**, comma-separated harness ids from `harnesses.json`.
+- `--models <aliases>` — **required**, comma-separated model aliases. Every
+  harness/alias combination must resolve (raw-api against `bench/models.json`, other
+  harnesses against their own `models` map) — an unresolved combination errors before
+  anything runs.
+- `--repeats <n>`, `--concurrency <n>` (per-harness limiter, default 2), `--judge`/`--judges`/`--no-judge`, `--dry-run`, `--timeout <ms>` (overrides every selected task's `agentTimeoutMs`), `--keep-workspaces` (workspaces under `bench/data/workspaces/`, gitignored, are always kept on error and cleaned up on success unless this flag is set).
+
+`--models` and `--harnesses` are both required deliberately: agent runs are the
+expensive part of this benchmark, so there is no "run everything" default. `--dry-run`
+runs the availability checks and prints a worst-case wall-clock estimate (every cell
+hitting its timeout) before any process is spawned or network call made.
+
+Each cell: copy the task's `project/` into a fresh git workspace → commit a baseline →
+run `setup` if any → commit again (that second commit is the diff baseline) → run the
+harness → capture the agent's diff against that baseline → overlay `hidden/` (this
+overwrites any file the agent tampered with) → run `verify` with a timeout → judge.
+A `verify` pass/fail is the primary, objective signal; the judge scores are secondary
+(code quality, diff minimality, whether the agent's own summary was honest).
+
+`report` (above) picks up SWE runs automatically and adds an "SWE Task Summary"/"SWE
+Task Details" section to the HTML report and assessment — pass rate, judge score,
+agent latency, diff size, and timeouts per harness:model, plus a task × harness:model
+matrix with collapsible diffs and verify output. Prompt runs and SWE runs are stored in
+the same `runs` table (`kind` column) but never mixed in either report's summary table.

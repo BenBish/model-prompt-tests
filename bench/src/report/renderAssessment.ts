@@ -123,15 +123,22 @@ export interface AssessmentSummary {
   promptWinners: PromptWinner[];
   flaggedCells: FlaggedCell[];
   errors: ErrorEntry[];
+  /** Untyped here to avoid report/ depending on swe/ types; cli.ts passes SweSummary[] through. */
+  sweSummaries?: unknown;
 }
 
-export function buildAssessmentSummary(data: ReportData, meta: AssessmentMeta): AssessmentSummary {
+export function buildAssessmentSummary(
+  data: ReportData,
+  meta: AssessmentMeta,
+  sweSummaries?: unknown,
+): AssessmentSummary {
   return {
     meta,
     modelSummaries: data.summaries,
     promptWinners: cellWinners(data),
     flaggedCells: flaggedCells(data),
     errors: errorInventory(data),
+    ...(sweSummaries ? { sweSummaries } : {}),
   };
 }
 
@@ -166,7 +173,11 @@ function renderDimensionTable(summaries: ModelSummary[]): string | undefined {
   return [header, ...rows].join("\n");
 }
 
-export function renderAssessmentMarkdown(data: ReportData, meta: AssessmentMeta): string {
+export function renderAssessmentMarkdown(
+  data: ReportData,
+  meta: AssessmentMeta,
+  sweSectionMarkdown = "",
+): string {
   const summary = buildAssessmentSummary(data, meta);
   const sections: string[] = [];
 
@@ -213,6 +224,10 @@ export function renderAssessmentMarkdown(data: ReportData, meta: AssessmentMeta)
     sections.push(`## Errors\n\n${errorLines.join("\n")}`);
   } else {
     sections.push(`## Errors\n\nNone.`);
+  }
+
+  if (sweSectionMarkdown) {
+    sections.push(sweSectionMarkdown);
   }
 
   return `${sections.join("\n\n")}\n`;

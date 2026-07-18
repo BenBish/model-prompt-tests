@@ -129,6 +129,35 @@ describe("renderAssessmentMarkdown", () => {
   });
 });
 
+describe("renderAssessmentMarkdown with a SWE section", () => {
+  test("appends the given SWE section markdown verbatim when provided", () => {
+    const db = createDb();
+    const data = queryReportData(db, { allRuns: true });
+    const markdown = renderAssessmentMarkdown(data, meta, "## SWE Task Summary\n\nfoo");
+    expect(markdown).toContain("## SWE Task Summary\n\nfoo");
+  });
+
+  test("omits the SWE section entirely when not provided", () => {
+    const db = createDb();
+    const data = queryReportData(db, { allRuns: true });
+    const markdown = renderAssessmentMarkdown(data, meta);
+    expect(markdown).not.toContain("SWE Task Summary");
+  });
+});
+
+describe("buildAssessmentSummary with SWE summaries", () => {
+  test("includes sweSummaries only when passed", () => {
+    const db = createDb();
+    const data = queryReportData(db, { allRuns: true });
+
+    const withoutSwe = buildAssessmentSummary(data, meta);
+    expect(withoutSwe.sweSummaries).toBeUndefined();
+
+    const withSwe = buildAssessmentSummary(data, meta, [{ harnessModelId: "claude-code:sonnet" }]);
+    expect(withSwe.sweSummaries).toEqual([{ harnessModelId: "claude-code:sonnet" }]);
+  });
+});
+
 describe("buildNarrativePrompt", () => {
   test("embeds the exact summary JSON and forbids invented numbers", () => {
     const db = createDb();

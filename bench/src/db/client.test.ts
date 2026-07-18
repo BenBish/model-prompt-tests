@@ -54,16 +54,22 @@ describe("applyMigrations", () => {
 
     expect(tableColumns(db, "runs")).not.toContain("repeat_index");
     expect(tableColumns(db, "scores")).not.toContain("dimension_scores");
+    expect(tableColumns(db, "runs")).not.toContain("kind");
+    expect(tableColumns(db, "runs")).not.toContain("harness_id");
 
     applyMigrations(db);
 
     expect(tableColumns(db, "runs")).toContain("repeat_index");
     expect(tableColumns(db, "scores")).toContain("dimension_scores");
     expect(tableColumns(db, "scores")).toContain("weighted_score");
+    expect(tableColumns(db, "runs")).toContain("kind");
+    expect(tableColumns(db, "runs")).toContain("harness_id");
 
     const run = db.query("SELECT * FROM runs WHERE id = $id").get({ $id: runId.id }) as any;
     expect(run.prompt_id).toBe("prompt-1");
     expect(run.repeat_index).toBe(0);
+    expect(run.kind).toBe("prompt");
+    expect(run.harness_id).toBeNull();
 
     const score = db.query("SELECT * FROM scores WHERE run_id = $id").get({ $id: runId.id }) as any;
     expect(score.score).toBe(4);
@@ -76,5 +82,29 @@ describe("applyMigrations", () => {
     db.exec(OLD_SCHEMA_SQL);
     applyMigrations(db);
     expect(() => applyMigrations(db)).not.toThrow();
+  });
+
+  test("the migrated kind column accepts 'swe' and rejects other values", () => {
+    const db = new Database(":memory:");
+    db.exec(OLD_SCHEMA_SQL);
+    applyMigrations(db);
+
+    expect(() =>
+      db
+        .prepare(
+          `INSERT INTO runs (run_batch_id, prompt_id, provider_id, model_id, model_name, started_at, status, kind, harness_id)
+           VALUES ('batch-1', 'task-1', 'claude-code', 'claude-code:sonnet', 'sonnet', '2026-01-01T00:00:00Z', 'ok', 'swe', 'claude-code')`,
+        )
+        .run(),
+    ).not.toThrow();
+
+    expect(() =>
+      db
+        .prepare(
+          `INSERT INTO runs (run_batch_id, prompt_id, provider_id, model_id, model_name, started_at, status, kind)
+           VALUES ('batch-1', 'task-1', 'p', 'm', 'm', '2026-01-01T00:00:00Z', 'ok', 'bogus')`,
+        )
+        .run(),
+    ).toThrow();
   });
 });
