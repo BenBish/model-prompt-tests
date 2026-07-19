@@ -2,7 +2,7 @@ import { loadModelsConfig, type BenchModelsConfig } from "../config/modelConfig"
 import { resolveJudges } from "../config/judgeSelection";
 import { openDb } from "../db/client";
 import { createAdapter } from "../providers/registry";
-import { parsePositiveInteger } from "../util/cliArgs";
+import { findDuplicate, parsePositiveInteger } from "../util/cliArgs";
 import { loadTasks } from "./discoverTasks";
 import { createClaudeCodeHarness } from "./harness/claudeCode";
 import { benchModelsLookup, createRawApiHarness } from "./harness/rawApi";
@@ -47,7 +47,7 @@ export async function cmdSweList(repoRoot: string): Promise<void> {
 }
 
 function rejectDuplicates(ids: string[], flagName: string): void {
-  const duplicate = ids.find((id, index) => ids.indexOf(id) !== index);
+  const duplicate = findDuplicate(ids);
   if (duplicate) {
     throw new Error(`duplicate value in ${flagName}: "${duplicate}"`);
   }

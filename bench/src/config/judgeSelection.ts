@@ -1,5 +1,6 @@
 import { findModel, type BenchModelsConfig } from "./modelConfig";
 import type { ModelMatrixEntry } from "../providers/types";
+import { findDuplicate } from "../util/cliArgs";
 
 export function resolveJudge(config: BenchModelsConfig, judgeFlag: string | undefined): ModelMatrixEntry {
   const judgeId = judgeFlag ?? process.env.BENCH_JUDGE_MODEL_ID ?? config.judge.modelId;
@@ -26,7 +27,7 @@ export function resolveJudges(
   if (ids.length === 0) {
     throw new Error("--judges must contain at least one model id");
   }
-  const duplicate = ids.find((id, index) => ids.indexOf(id) !== index);
+  const duplicate = findDuplicate(ids);
   if (duplicate) {
     throw new Error(`duplicate judge model id: ${duplicate}`);
   }

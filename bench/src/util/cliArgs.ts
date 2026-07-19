@@ -6,3 +6,8 @@ export function parsePositiveInteger(value: unknown, label: string): number | un
   }
   return parsed;
 }
+
+/** Returns the first id that appears more than once in the list, if any. */
+export function findDuplicate(ids: string[]): string | undefined {
+  return ids.find((id, index) => ids.indexOf(id) !== index);
+}
