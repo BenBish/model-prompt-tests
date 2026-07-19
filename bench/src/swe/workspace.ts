@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { appendFileSync, mkdirSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { dirname } from "node:path";
 import { buildHarnessEnv } from "./harness/env";
@@ -70,7 +70,7 @@ export async function provisionFixtureWorkspace(
   const env = gitEnv();
 
   const copyResult = await runCommand({
-    cmd: ["bash", "-c", `cp -R "${task.projectDir}/." "${workspaceDir}/"`],
+    cmd: ["cp", "-R", `${task.projectDir}/.`, `${workspaceDir}/`],
     cwd: workspaceDir,
     env,
     timeoutMs: 30_000,
@@ -81,13 +81,8 @@ export async function provisionFixtureWorkspace(
 
   await runCommand({ cmd: ["git", "init", "-q", "-b", "main"], cwd: workspaceDir, env, timeoutMs: 10_000 });
 
-  for (const ignorePath of task.ignorePaths) {
-    await runCommand({
-      cmd: ["bash", "-c", `echo "${ignorePath}" >> .git/info/exclude`],
-      cwd: workspaceDir,
-      env,
-      timeoutMs: 5000,
-    });
+  if (task.ignorePaths.length > 0) {
+    appendFileSync(`${workspaceDir}/.git/info/exclude`, `${task.ignorePaths.join("\n")}\n`);
   }
 
   await runCommand({ cmd: ["git", "add", "-A"], cwd: workspaceDir, env, timeoutMs: 10_000 });
@@ -101,8 +96,6 @@ export async function provisionFixtureWorkspace(
 
   let setupOutput: ProvisionedWorkspace["setupOutput"];
   if (task.setup) {
-    // .git/info/exclude only exists after `git init`, so add it now that setup may generate
-    // node_modules/ or similar directories not already covered by task.ignorePaths.
     const setupResult = await runCommand({
       cmd: ["bash", "-c", task.setup],
       cwd: workspaceDir,
@@ -171,7 +164,7 @@ export async function captureDiff(workspaceDir: string, postSetupSha: string): P
 /** Overlays the task's hidden tests, overwriting any same-named path the agent may have tampered with. */
 export async function overlayHiddenTests(task: FixtureSweTask, workspaceDir: string): Promise<void> {
   const result = await runCommand({
-    cmd: ["bash", "-c", `cp -R "${task.hiddenDir}/." "${workspaceDir}/"`],
+    cmd: ["cp", "-R", `${task.hiddenDir}/.`, `${workspaceDir}/`],
     cwd: workspaceDir,
     env: buildHarnessEnv(),
     timeoutMs: 15_000,
