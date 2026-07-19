@@ -46,6 +46,13 @@ export async function cmdSweList(repoRoot: string): Promise<void> {
   }
 }
 
+function rejectDuplicates(ids: string[], flagName: string): void {
+  const duplicate = ids.find((id, index) => ids.indexOf(id) !== index);
+  if (duplicate) {
+    throw new Error(`duplicate value in ${flagName}: "${duplicate}"`);
+  }
+}
+
 interface ResolvedCellPlan {
   cells: SweRunnerCell[];
   errors: string[];
@@ -101,6 +108,7 @@ export async function cmdSweRun(
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
+  rejectDuplicates(harnessIds, "--harnesses");
   const harnessEntries = harnessIds.map((id) => {
     const entry = findHarness(harnessesConfig, id);
     if (!entry) throw new Error(`unknown harness id "${id}"`);
@@ -111,6 +119,7 @@ export async function cmdSweRun(
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
+  rejectDuplicates(modelAliases, "--models");
   const { cells, errors } = resolveCells(harnessEntries, modelsConfig, modelAliases);
   if (errors.length > 0) {
     throw new Error(`unresolved harness/model combination(s):\n  ${errors.join("\n  ")}`);
