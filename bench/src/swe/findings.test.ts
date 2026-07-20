@@ -97,4 +97,21 @@ describe("computeReviewMetrics", () => {
     expect(m.falsePositives).toBe(1);
     expect(m.precision).toBe(3 / 4);
   });
+
+  test("ignores matched claims for unknown finding ids (schema should prevent them)", () => {
+    const matcher: ReviewMatcherResult = {
+      matches: [
+        { findingId: "a", matched: true },
+        { findingId: "b", matched: false },
+        { findingId: "c", matched: false },
+        // Would be rejected by reviewMatcher validation; metrics still ignore safely.
+        { findingId: "ghost", matched: true },
+      ],
+      extraFindings: [],
+    };
+    const m = computeReviewMetrics(groundTruth, matcher);
+    expect(m.truePositives).toBe(1);
+    expect(m.falsePositives).toBe(0);
+    expect(m.matchedWeight).toBe(3);
+  });
 });

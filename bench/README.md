@@ -291,9 +291,15 @@ Ground truth lives in `findings.json`:
 ```
 
 After the agent runs, the **primary `--judge` model** also acts as matcher: one structured
-call maps the review onto findings. Severity-weighted recall (high=3, med=2, low=1),
-precision, and F1 land in `swe_results.review_metrics` and the SWE report columns.
-Qualitative SWE judging still runs for process/quality dimensions.
+call maps the review onto findings. Severity-weighted **recall** (high=3, med=2, low=1),
+unweighted claim-count **precision** (TP / (TP + plausible extras)), and **F1** land in
+`swe_results.review_metrics` and the SWE report columns. Qualitative SWE judging still runs
+for process/quality dimensions.
+
+When a judge is configured, a successful matcher pass is **required**: matcher failure marks
+the run as `error` (agent output is still stored). Runs without `--judge` skip matching and
+record no recall/precision/F1. Console pass/fail counts stay 0 for pure code-review batches
+(there is no verify step) — look at per-cell F1 / the report instead.
 
 Seeds: `swe-tasks/code-review/{cart-coupon,auth-timing}/`.
 

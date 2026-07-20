@@ -296,7 +296,9 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
       mode: "review",
     });
 
-    // Matcher uses the primary qualitative judge when available.
+    // Matcher uses the primary qualitative judge when available. When a judge is configured,
+    // a successful match is required — matcher failure marks the run as error (agent output
+    // is still stored for debugging).
     const primaryJudge = judges[0];
     let reviewMetrics: unknown | undefined;
     let matcherError: string | undefined;
@@ -318,6 +320,9 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
       }
     }
 
+    const matcherRequiredAndFailed = Boolean(primaryJudge && matcherError);
+    const runStatus = matcherRequiredAndFailed ? "error" : "ok";
+
     const runId = insertRun(db, {
       runBatchId,
       promptId: task.id,
@@ -330,7 +335,8 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
       outputTokens: agentResult.outputTokens,
       outputText: agentResult.finalMessage,
       rawResponse: JSON.stringify(agentResult.raw),
-      status: "ok",
+      status: runStatus,
+      error: matcherError,
       repeatIndex,
       kind: "swe",
       harnessId: cell.harnessId,
@@ -355,8 +361,16 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
       error: matcherError,
     });
 
+    if (matcherRequiredAndFailed) {
+      errored++;
+      // Keep workspace on matcher failure for debugging (same as other errors).
+      console.log(`[error] ${label}: matcher required but failed: ${matcherError}`);
+      return;
+    }
+
     ok++;
     // Code-review has no verify pass/fail; do not increment passed/failed.
+    // Console summary reports review F1 separately when present.
     okRunIds.push({
       runId,
       task,
@@ -413,8 +427,14 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
   }
 
   const wallClockMs = performance.now() - started;
+  // For pure code-review batches, pass/fail stay 0 (no verify). Call that out so the summary
+  // does not look like a no-op.
+  const reviewOnlyNote =
+    passed === 0 && failed === 0 && ok > 0
+      ? " (code-review cells have no verify pass/fail; see F1 in per-cell logs / report)"
+      : "";
   console.log(
-    `\nSWE batch ${runBatchId}: ${ok} ok (${passed} passed, ${failed} failed), ${errored} errors, ` +
+    `\nSWE batch ${runBatchId}: ${ok} ok (${passed} passed, ${failed} failed)${reviewOnlyNote}, ${errored} errors, ` +
       `${judgeErrored} judge errors, ${Math.round(wallClockMs)}ms`,
   );
 

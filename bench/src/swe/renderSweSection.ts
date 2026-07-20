@@ -150,6 +150,18 @@ export function renderSweAssessmentSection(data: SweReportData): string {
   }
 
   const sections = [`## SWE Task Summary\n\n${[header, ...rows].join("\n")}`];
+  if (data.summaries.some((s) => s.reviewRuns > 0)) {
+    sections.push(
+      [
+        "### Code-review metric notes",
+        "",
+        "- **Recall** is severity-weighted (high=3, med=2, low=1).",
+        "- **Precision** is unweighted claim-count: TP / (TP + plausible extra findings).",
+        "- **F1** combines those two scales; compare models relative to each other rather than to a 0–1 ideal absolute.",
+        "- Code-review tasks have no hidden-test verify step, so Passed/Failed/Pass rate stay empty unless mixed with fixture/external tasks.",
+      ].join("\n"),
+    );
+  }
   if (errorLines.length > 0) {
     sections.push(`## SWE Task Errors\n\n${errorLines.join("\n")}`);
   }
@@ -169,8 +181,13 @@ export function renderSweReportSection(data: SweReportData): string {
     })
     .join("");
 
+  const metricNotes = data.summaries.some((s) => s.reviewRuns > 0)
+    ? `<p class="muted">Code-review metrics: <b>recall</b> is severity-weighted (high=3/med=2/low=1); <b>precision</b> is unweighted claim-count (TP / (TP + plausible extras)). F1 mixes those scales. Passed/Failed apply only to fixture/external verify, not code-review cells.</p>`
+    : "";
+
   return `
   <h2>SWE Task Summary</h2>
+  ${metricNotes}
   <table class="summary-table">
     <thead>
       <tr>

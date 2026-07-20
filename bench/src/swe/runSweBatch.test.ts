@@ -315,6 +315,74 @@ describe("runSweBatch", () => {
     expect(scores.length).toBe(2);
   });
 
+  test("code-review: matcher failure with --judge marks the run as error", async () => {
+    spyOn(console, "log").mockImplementation(() => {});
+    const db = createDb();
+    const taskDir = join(makeTempDir(), "code-review-task-fail");
+    mkdirSync(taskDir, { recursive: true });
+    writeFileSync(join(taskDir, "diff.patch"), "diff --git a/x.ts b/x.ts\n");
+    writeFileSync(
+      join(taskDir, "findings.json"),
+      JSON.stringify({
+        findings: [{ id: "a", severity: "high", summary: "A" }],
+        redHerrings: [],
+      }),
+    );
+
+    const task: import("./taskSpec").CodeReviewSweTask = {
+      id: "code-review/fail-match",
+      filePath: join(taskDir, "task.md"),
+      taskDir,
+      title: "Review",
+      taskText: "Review it.",
+      judgingGuidance: [],
+      verifyTimeoutMs: 10_000,
+      agentTimeoutMs: 20_000,
+      tags: [],
+      ignorePaths: [],
+      envPassthrough: [],
+      type: "code-review",
+      diffPatchPath: join(taskDir, "diff.patch"),
+      findingsPath: join(taskDir, "findings.json"),
+    };
+
+    const harness = fakeHarness("fake-cc", { sonnet: "fake-model" }, async () => ({
+      finalMessage: "Looks fine.",
+      exitCode: 0,
+      latencyMs: 3,
+      timedOut: false,
+      raw: {},
+    }));
+
+    const badMatcher: ModelAdapter = {
+      providerId: "judge",
+      modelName: "bad",
+      async call() {
+        return { text: "not-json-at-all", raw: {}, latencyMs: 1 };
+      },
+    };
+
+    const summary = await runSweBatch({
+      db,
+      tasks: [task],
+      cells: [{ harnessId: "fake-cc", harness, modelAlias: "sonnet" }],
+      workspacesRoot: join(makeTempDir(), "workspaces"),
+      judges: [{ adapter: badMatcher, modelId: "judge:bad" }],
+      keepWorkspaces: true,
+    });
+
+    expect(summary.ok).toBe(0);
+    expect(summary.errored).toBe(1);
+    expect(summary.judgeErrored).toBe(1);
+
+    const run = db.query("SELECT status, error, output_text FROM runs").get() as any;
+    expect(run.status).toBe("error");
+    expect(run.error).toMatch(/valid JSON|matcher|failed/i);
+    // Agent output preserved for debugging.
+    expect(run.output_text).toBe("Looks fine.");
+    // No qualitative scores when matcher fails (run not queued for judges).
+    expect(db.query("SELECT COUNT(*) as c FROM scores").get()).toEqual({ c: 0 });
+  });
   test("scores completed runs with a judge, including dimensions", async () => {
     spyOn(console, "log").mockImplementation(() => {});
     const db = createDb();

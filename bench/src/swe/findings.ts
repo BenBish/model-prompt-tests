@@ -157,12 +157,12 @@ export interface ReviewMetrics {
 
 /**
  * Compute severity-weighted recall/precision/F1 from matcher output + ground truth.
- * - TP weight = sum of severities for ground-truth findings with matched=true
- * - FN weight = total weight - TP weight
- * - FP count = matched=true for unknown ids + extraFindings with verdict "plausible"
- *   (incorrect extras do not count as FP — they are correctly rejected noise)
- * Precision = TP_count / (TP_count + FP_count) using unweighted counts for claimed hits,
- * with severity-weighted recall as specified in the plan.
+ *
+ * - **Recall (severity-weighted):** matchedWeight / totalWeight where weights are high=3, med=2, low=1.
+ * - **Precision (claim-count):** TP / (TP + FP) where TP = ground-truth findings with matched=true,
+ *   FP = extraFindings with verdict "plausible". Incorrect extras do not count as FP.
+ * - Matcher schema only allows ground-truth findingIds, so free-form/unknown IDs are rejected
+ *   at validation time rather than counted here.
  */
 export function computeReviewMetrics(
   groundTruth: GroundTruthFinding[],
@@ -173,11 +173,8 @@ export function computeReviewMetrics(
   const totalWeight = groundTruth.reduce((sum, f) => sum + SEVERITY_WEIGHT[f.severity], 0);
 
   const matchedIds = new Set<string>();
-  let unknownMatchedClaims = 0;
   for (const m of matcher.matches) {
-    if (!m.matched) continue;
-    if (byId.has(m.findingId)) matchedIds.add(m.findingId);
-    else unknownMatchedClaims++;
+    if (m.matched && byId.has(m.findingId)) matchedIds.add(m.findingId);
   }
 
   const matchedWeight = [...matchedIds].reduce((sum, id) => {
@@ -187,8 +184,7 @@ export function computeReviewMetrics(
 
   const truePositives = matchedIds.size;
   const falseNegatives = groundTruth.length - truePositives;
-  const plausibleExtras = matcher.extraFindings.filter((e) => e.verdict === "plausible").length;
-  const falsePositives = unknownMatchedClaims + plausibleExtras;
+  const falsePositives = matcher.extraFindings.filter((e) => e.verdict === "plausible").length;
 
   const recall = totalWeight > 0 ? matchedWeight / totalWeight : 0;
   const claimed = truePositives + falsePositives;
