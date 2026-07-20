@@ -210,10 +210,13 @@ swe-tasks/
     task.md       # frontmatter + task description
     project/      # the visible starting project, copied into a fresh git workspace
     hidden/       # test overlay applied ONLY after the agent finishes
+  external/<name>/
+    task.md       # repoUrl + commitSha (+ optional holdoutPatch, testPaths)
+    source.bundle # optional offline seed (git bundle); or any cloneable URL/path
 ```
 
 `task.md` frontmatter is flat `key: value` (plus indented `- item` lists for
-array-typed keys: `tags`, `ignorePaths`, `envPassthrough`):
+array-typed keys: `tags`, `ignorePaths`, `envPassthrough`, `testPaths`, `contextFiles`):
 
 ````markdown
 ---
@@ -245,6 +248,22 @@ The debounce function in src/debounce.ts sometimes calls fn more than once. Fix 
 above). See `swe-tasks/fixture/{smoke,debounce-fix,cart-discount}/` for worked examples,
 including how `hidden/` catches an agent that only special-cases the visible test.
 
+#### External tasks
+
+External tasks pin a real git repo (HTTPS URL, local path, or relative path/bundle under
+the task directory) at `commitSha`. Provisioning:
+
+1. Blob-less clone cached at `bench/data/repo-cache/<hash>/` (reused across runs — second
+   run is offline for the same URL).
+2. Per cell: `git worktree add <workspace> <commitSha>`.
+3. After the agent finishes: reset `testPaths` with `git checkout <sha> -- <paths>`, then
+   apply optional `holdoutPatch` (SWE-bench style hidden tests the agent never saw).
+4. Run `verify` as usual.
+
+Only listed `testPaths` are defended against agent tampering — authors are responsible
+for listing every grader path. Seed example: `swe-tasks/external/tiny-add/` (offline
+`source.bundle` + `holdout.patch`).
+
 ### Harness config (`bench/harnesses.json`)
 
 Each entry maps CLI-facing model aliases to harness-native model names:
@@ -255,16 +274,46 @@ Each entry maps CLI-facing model aliases to harness-native model names:
     { "id": "claude-code", "kind": "claude-code",
       "models": { "sonnet": "claude-sonnet-5", "haiku": "claude-haiku-4-5-20251001" },
       "maxTurns": 60 },
+    { "id": "codex", "kind": "codex",
+      "models": { "o4-mini": "o4-mini" }, "sandbox": "workspace-write" },
+    { "id": "grok", "kind": "generic-cli", "binary": "grok",
+      "command": ["grok", "--output-format", "json",
+        "--permission-mode", "bypassPermissions", "--always-approve",
+        "--cwd", "{workdir}", "-m", "{model}",
+        "--prompt-file", "{promptFile}", "--max-turns", "60"],
+      "promptVia": "file", "resultPath": "text",
+      "models": { "default": "grok-4" } },
     { "id": "raw-api", "kind": "raw-api", "maxContextBytes": 120000 }
   ]
 }
 ```
+
+Model alias → native name maps in `harnesses.example.json` are **placeholders**. Copy to
+`bench/harnesses.json` and edit for the models installed on your machine, then validate with
+`bun run bench swe doctor` (non-empty parsed `finalMessage` is required to pass).
+
+`bun test` ignores `bench/data/workspaces/**` and `bench/data/repo-cache/**` (see `bunfig.toml`)
+so `--keep-workspaces` trees cannot pollute the unit suite with agent-written `*.test.ts` files.
 
 - **`claude-code`** runs `claude -p --output-format json --dangerously-skip-permissions`
   headlessly, prompt on stdin, in an isolated workspace directory. It does **not** pass
   `--bare` by default — `--bare` skips normal OAuth/subscription session-credential
   discovery and requires `ANTHROPIC_API_KEY` explicitly (confirmed empirically). Set
   `"bare": true` on the entry for hermetic runs once `ANTHROPIC_API_KEY` is available.
+- **`codex`** runs `codex exec --cd <workDir> --ephemeral --skip-git-repo-check -m <model>
+  --json -o <file outside workdir> -s workspace-write` (default sandbox). Set
+  `"dangerouslyBypassApprovalsAndSandbox": true` only in externally sandboxed environments.
+  Optional `"oss": true` / `"localProvider": "ollama"` for local models. For OpenAI-compatible
+  local servers (e.g. llama-swap), use `"ignoreUserConfig": true` plus
+  `"configOverrides": { "model_providers.llamaswap.base_url": "https://host/v1",
+  "model_providers.llamaswap.wire_api": "responses", "model_provider": "llamaswap" }`
+  (and a matching models map).
+- **`generic-cli`** is a config-driven adapter for tools like **Grok** and **omp**: a
+  `command` argv template with `{model}` / `{workdir}` / `{promptFile}` placeholders,
+  `promptVia: stdin|arg|file`, and optional `resultPath` into the JSON/JSONL output
+  (whole stdout is the fallback). Grok's example uses `--prompt-file` + `resultPath: "text"`
+  (current Grok JSON shape) rather than single-turn `-p` alone — re-check with `swe doctor`
+  after CLI upgrades. `omp` ships disabled in `harnesses.example.json`.
 - **`raw-api`** has no agent loop and no `models` map: model aliases are bench model ids
   from `bench/models.json` directly (e.g. `anthropic:sonnet`). It bundles the
   workspace's own files as context, asks the model for a single fenced unified diff, and
@@ -272,7 +321,7 @@ Each entry maps CLI-facing model aliases to harness-native model names:
   diff that fails to apply is recorded honestly — real models sometimes emit malformed
   hunk headers — and verification simply fails, rather than being treated as a tool error.
 
-Both harness kinds spawn CLIs with a whitelisted environment (`PATH`/`HOME`/`TMPDIR`/
+All harness kinds spawn CLIs with a whitelisted environment (`PATH`/`HOME`/`TMPDIR`/
 `LANG`/`LC_ALL` plus anything explicitly needed) and strip `CLAUDE_CODE_*`/`CLAUDECODE`
 env vars, since bench itself may be invoked from inside a Claude Code session.
 
@@ -280,6 +329,19 @@ env vars, since bench itself may be invoked from inside a Claude Code session.
 
 Prints discovered tasks and an availability check (`Bun.which` — cheap, no process
 spawned) for every configured harness.
+
+### `swe doctor`
+
+Probes every enabled harness (or `--harnesses id1,id2`) with a trivial echo prompt in a
+temp directory, then prints the parsed `finalMessage`. Use this after upgrading CLIs
+(Claude Code / Codex / Grok) to catch JSON-format drift before spending agent budget:
+
+```
+bun run bench swe doctor
+bun run bench swe doctor --harnesses codex,grok --timeout 30000
+```
+
+Exit code is nonzero if any harness is unavailable or the probe run fails/times out.
 
 ### `swe run <task-glob-or-all>`
 

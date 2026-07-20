@@ -99,6 +99,38 @@ describe("bench swe list", () => {
   });
 });
 
+describe("bench swe doctor", () => {
+  test("runs doctor against configured harnesses and exits nonzero when unavailable", () => {
+    const repoRoot = makeTempRepo();
+    // Only raw-api is "available" without a real CLI; claude-code may or may not be on PATH.
+    // Force a harness that is definitely missing so we observe FAIL path.
+    writeFileSync(
+      join(repoRoot, "bench", "harnesses.json"),
+      `${JSON.stringify(
+        {
+          harnesses: [
+            {
+              id: "missing-cli",
+              kind: "generic-cli",
+              binary: "definitely-not-a-real-bench-cli-binary",
+              command: ["definitely-not-a-real-bench-cli-binary", "{model}"],
+              models: { m: "m" },
+            },
+          ],
+        },
+        null,
+        2,
+      )}\n`,
+    );
+
+    const result = runCli(repoRoot, ["swe", "doctor"]);
+    const stdout = result.stdout.toString() + result.stderr.toString();
+    expect(stdout).toContain("SWE harness doctor");
+    expect(stdout).toContain("missing-cli");
+    expect(result.exitCode).not.toBe(0);
+  });
+});
+
 describe("bench swe run validation", () => {
   test("requires a task selector", () => {
     const repoRoot = makeTempRepo();

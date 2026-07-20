@@ -8,6 +8,13 @@ import type { FixtureSweTask } from "./taskSpec";
 const DEFAULT_SETUP_TIMEOUT_MS = 120_000;
 const MAX_VERIFY_OUTPUT_BYTES = 64 * 1024;
 
+/** Minimal fields needed to run a verify command (fixture or external). */
+export interface VerifiableTask {
+  verify: string;
+  verifyTimeoutMs: number;
+  envPassthrough: string[];
+}
+
 function gitEnv(): Record<string, string> {
   return {
     ...buildHarnessEnv(),
@@ -108,6 +115,12 @@ export async function provisionFixtureWorkspace(
       exitCode: setupResult.exitCode,
       timedOut: setupResult.timedOut,
     };
+    if (setupResult.timedOut || setupResult.exitCode !== 0) {
+      const detail = setupResult.timedOut
+        ? "timed out"
+        : `exit ${setupResult.exitCode}: ${setupResult.stderr || setupResult.stdout}`.trim();
+      throw new Error(`fixture task setup failed (${detail})`);
+    }
   }
 
   await runCommand({ cmd: ["git", "add", "-A"], cwd: workspaceDir, env, timeoutMs: 10_000 });
@@ -189,7 +202,7 @@ function tail(text: string, maxBytes: number): string {
   return buf.subarray(buf.length - maxBytes).toString("utf-8");
 }
 
-export async function runVerify(task: FixtureSweTask, workspaceDir: string): Promise<VerifyResult> {
+export async function runVerify(task: VerifiableTask, workspaceDir: string): Promise<VerifyResult> {
   const env = { ...buildHarnessEnv({ extraKeys: task.envPassthrough }), CI: "1" };
   const result = await runCommand({
     cmd: ["bash", "-c", task.verify],

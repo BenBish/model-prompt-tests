@@ -5,6 +5,8 @@ import { createAdapter } from "../providers/registry";
 import { findDuplicate, parsePositiveInteger } from "../util/cliArgs";
 import { loadTasks } from "./discoverTasks";
 import { createClaudeCodeHarness } from "./harness/claudeCode";
+import { createCodexHarness } from "./harness/codex";
+import { createGenericCliHarness } from "./harness/genericCli";
 import { benchModelsLookup, createRawApiHarness } from "./harness/rawApi";
 import type { SweHarness } from "./harness/types";
 import {
@@ -13,11 +15,14 @@ import {
   loadHarnessesConfig,
   type HarnessMatrixEntry,
 } from "./harnessConfig";
+import { formatDoctorReport, runSweDoctor } from "./doctor";
 import { runSweBatch, type SweRunnerCell } from "./runSweBatch";
 
-function createHarnessInstance(entry: HarnessMatrixEntry, modelsConfig: BenchModelsConfig): SweHarness {
+export function createHarnessInstance(entry: HarnessMatrixEntry, modelsConfig: BenchModelsConfig): SweHarness {
   if (entry.kind === "claude-code") return createClaudeCodeHarness(entry);
   if (entry.kind === "raw-api") return createRawApiHarness(entry, benchModelsLookup(modelsConfig));
+  if (entry.kind === "codex") return createCodexHarness(entry);
+  if (entry.kind === "generic-cli") return createGenericCliHarness(entry);
   throw new Error(`unsupported harness kind "${(entry as { kind: string }).kind}"`);
 }
 
@@ -77,6 +82,35 @@ function resolveCells(
     }
   }
   return { cells, errors };
+}
+
+export async function cmdSweDoctor(repoRoot: string, values: Record<string, unknown> = {}): Promise<void> {
+  const { config: harnessesConfig } = await loadHarnessesConfig(repoRoot);
+  const { config: modelsConfig } = await loadModelsConfig(repoRoot);
+
+  let entries = enabledHarnessMatrix(harnessesConfig);
+  const harnessesFlag = values.harnesses as string | undefined;
+  if (harnessesFlag) {
+    const harnessIds = harnessesFlag
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    rejectDuplicates(harnessIds, "--harnesses");
+    entries = harnessIds.map((id) => {
+      const entry = findHarness(harnessesConfig, id);
+      if (!entry) throw new Error(`unknown harness id "${id}"`);
+      return entry;
+    });
+  }
+
+  const timeoutMs = parsePositiveInteger(values.timeout, "--timeout");
+  const results = await runSweDoctor(entries, modelsConfig, createHarnessInstance, {
+    timeoutMs: timeoutMs ?? undefined,
+  });
+  console.log(formatDoctorReport(results));
+  if (results.some((r) => !r.ok)) {
+    process.exitCode = 1;
+  }
 }
 
 export async function cmdSweRun(

@@ -11,6 +11,53 @@
       "maxTurns": 60
     },
     {
+      "id": "codex",
+      "kind": "codex",
+      "models": {
+        "gpt-5": "gpt-5",
+        "o4-mini": "o4-mini"
+      },
+      "sandbox": "workspace-write"
+    },
+    {
+      "id": "grok",
+      "kind": "generic-cli",
+      "binary": "grok",
+      "command": [
+        "grok",
+        "--output-format",
+        "json",
+        "--permission-mode",
+        "bypassPermissions",
+        "--always-approve",
+        "--cwd",
+        "{workdir}",
+        "-m",
+        "{model}",
+        "--prompt-file",
+        "{promptFile}",
+        "--max-turns",
+        "60"
+      ],
+      "promptVia": "file",
+      "resultPath": "text",
+      "models": {
+        "default": "grok-4.5"
+      },
+      "extraEnvKeys": ["XAI_API_KEY"]
+    },
+    {
+      "id": "omp",
+      "kind": "generic-cli",
+      "enabled": false,
+      "binary": "omp",
+      "command": ["omp", "run", "--model", "{model}", "--cwd", "{workdir}"],
+      "promptVia": "stdin",
+      "models": {
+        "default": "default"
+      }
+    },
+    {
       "id": "raw-api",
       "kind": "raw-api",
       "maxContextBytes": 120000

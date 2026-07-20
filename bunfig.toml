@@ -1,2 +1,10 @@
 [test]
 root = "bench"
+# Keep SWE agent workspaces / git caches out of discovery. After --keep-workspaces,
+# those trees can contain *.test.ts that would otherwise pollute `bun test`.
+pathIgnorePatterns = [
+  "**/data/workspaces/**",
+  "**/data/workspaces-*/**",
+  "**/data/repo-cache/**",
+  "**/data/repo-cache-*/**",
+]
