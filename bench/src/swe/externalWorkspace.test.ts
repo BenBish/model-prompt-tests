@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { ExternalSweTask } from "./taskSpec";
@@ -10,6 +10,7 @@ import {
   provisionExternalWorkspace,
   removeExternalWorktree,
   repoCacheKey,
+  resolveHoldoutPatchPath,
   resolveRepoUrl,
 } from "./externalWorkspace";
 import { captureDiff, runVerify } from "./workspace";
@@ -108,6 +109,33 @@ describe("resolveRepoUrl / repoCacheKey", () => {
   });
 });
 
+describe("applyIgnorePaths", () => {
+  test("writes excludes into the worktree git dir (linked worktree)", async () => {
+    const { applyIgnorePaths } = await import("./externalWorkspace");
+    const { repoPath, commitSha } = await makeLocalSourceRepo();
+    const cacheRoot = join(makeTempDir(), "repo-cache");
+    const workspaceDir = join(makeTempDir(), "ws");
+    const task = makeExternalTask(repoPath, commitSha, { ignorePaths: ["node_modules", "dist"] });
+    const provisioned = await provisionExternalWorkspace(task, workspaceDir, cacheRoot);
+
+    await applyIgnorePaths(workspaceDir, task.ignorePaths);
+
+    const gitDir = Bun.spawnSync({
+      cmd: ["git", "rev-parse", "--git-dir"],
+      cwd: workspaceDir,
+      stdout: "pipe",
+    })
+      .stdout.toString()
+      .trim();
+    const absoluteGitDir = gitDir.startsWith("/") ? gitDir : join(workspaceDir, gitDir);
+    const exclude = readFileSync(join(absoluteGitDir, "info", "exclude"), "utf8");
+    expect(exclude).toContain("node_modules");
+    expect(exclude).toContain("dist");
+
+    await removeExternalWorktree(workspaceDir, provisioned.cacheDir);
+  });
+});
+
 describe("external workspace provisioning", () => {
   test("clones once into cache and reuses it on second ensureCachedRepo", async () => {
     const { repoPath, commitSha } = await makeLocalSourceRepo();
@@ -195,5 +223,12 @@ test("hidden", () => { expect(add(1, 1)).toBe(2); });
 
     await removeExternalWorktree(a.dir, a.cacheDir);
     await removeExternalWorktree(b.dir, b.cacheDir);
+  });
+});
+
+describe("resolveHoldoutPatchPath", () => {
+  test("rejects paths that escape the task directory", () => {
+    const task = makeExternalTask("/abs/repo", "abc", { holdoutPatch: "../../../etc/passwd" });
+    expect(() => resolveHoldoutPatchPath(task)).toThrow("escapes task directory");
   });
 });

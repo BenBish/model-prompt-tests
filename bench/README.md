@@ -277,14 +277,20 @@ Each entry maps CLI-facing model aliases to harness-native model names:
     { "id": "codex", "kind": "codex",
       "models": { "o4-mini": "o4-mini" }, "sandbox": "workspace-write" },
     { "id": "grok", "kind": "generic-cli", "binary": "grok",
-      "command": ["grok", "-p", "--output-format", "json",
-        "--permission-mode", "bypassPermissions", "--cwd", "{workdir}", "-m", "{model}"],
-      "promptVia": "stdin", "resultPath": "result",
-      "models": { "grok-4": "grok-4" } },
+      "command": ["grok", "--output-format", "json",
+        "--permission-mode", "bypassPermissions", "--always-approve",
+        "--cwd", "{workdir}", "-m", "{model}",
+        "--prompt-file", "{promptFile}", "--max-turns", "60"],
+      "promptVia": "file", "resultPath": "text",
+      "models": { "default": "grok-4" } },
     { "id": "raw-api", "kind": "raw-api", "maxContextBytes": 120000 }
   ]
 }
 ```
+
+Model alias → native name maps in `harnesses.example.json` are **placeholders**. Copy to
+`bench/harnesses.json` and edit for the models installed on your machine, then validate with
+`bun run bench swe doctor` (non-empty parsed `finalMessage` is required to pass).
 
 - **`claude-code`** runs `claude -p --output-format json --dangerously-skip-permissions`
   headlessly, prompt on stdin, in an isolated workspace directory. It does **not** pass
@@ -298,7 +304,9 @@ Each entry maps CLI-facing model aliases to harness-native model names:
 - **`generic-cli`** is a config-driven adapter for tools like **Grok** and **omp**: a
   `command` argv template with `{model}` / `{workdir}` / `{promptFile}` placeholders,
   `promptVia: stdin|arg|file`, and optional `resultPath` into the JSON/JSONL output
-  (whole stdout is the fallback). `omp` ships disabled in `harnesses.example.json`.
+  (whole stdout is the fallback). Grok's example uses `--prompt-file` + `resultPath: "text"`
+  (current Grok JSON shape) rather than single-turn `-p` alone — re-check with `swe doctor`
+  after CLI upgrades. `omp` ships disabled in `harnesses.example.json`.
 - **`raw-api`** has no agent loop and no `models` map: model aliases are bench model ids
   from `bench/models.json` directly (e.g. `anthropic:sonnet`). It bundles the
   workspace's own files as context, asks the model for a single fenced unified diff, and

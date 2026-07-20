@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { buildHarnessEnv } from "./harness/env";
 import { runCommand } from "./harness/runCommand";
@@ -173,16 +173,7 @@ export async function provisionExternalWorkspace(
   }
 
   if (task.ignorePaths.length > 0) {
-    // worktree has a .git file pointing at the cache; local excludes still work under .git/info when real dir
-    const excludePath = join(workspaceDir, ".git", "info", "exclude");
-    // In a linked worktree, .git is a file — put excludes in the worktree's git dir via git.
-    await runCommand({
-      cmd: ["git", "config", "core.excludesFile", join(workspaceDir, ".git", "info", "exclude")],
-      cwd: workspaceDir,
-      env,
-      timeoutMs: 10_000,
-    }).catch(() => undefined);
-    void excludePath;
+    await applyIgnorePaths(workspaceDir, task.ignorePaths);
   }
 
   const baselineSha = await currentHeadSha(workspaceDir);
@@ -247,9 +238,7 @@ export async function prepareExternalVerify(task: ExternalSweTask, workspaceDir:
   }
 
   if (task.holdoutPatch) {
-    const patchPath = isAbsolute(task.holdoutPatch)
-      ? task.holdoutPatch
-      : join(task.taskDir, task.holdoutPatch);
+    const patchPath = resolveHoldoutPatchPath(task);
     if (!existsSync(patchPath)) {
       throw new Error(`holdoutPatch not found: ${patchPath}`);
     }
@@ -298,12 +287,48 @@ export async function removeExternalWorktree(workspaceDir: string, cacheDir: str
   }
 }
 
+/**
+ * Append ignore paths to the worktree's real git exclude file.
+ * Linked worktrees have `.git` as a file; resolve via `git rev-parse --git-dir`.
+ */
+export async function applyIgnorePaths(workspaceDir: string, ignorePaths: string[]): Promise<void> {
+  if (ignorePaths.length === 0) return;
+  const env = gitEnv();
+  const gitDirResult = await runCommand({
+    cmd: ["git", "rev-parse", "--git-dir"],
+    cwd: workspaceDir,
+    env,
+    timeoutMs: 10_000,
+  });
+  if (gitDirResult.exitCode !== 0) {
+    throw new Error(`failed to resolve git dir for ignorePaths: ${gitDirResult.stderr}`);
+  }
+  const gitDir = gitDirResult.stdout.trim();
+  const absoluteGitDir = isAbsolute(gitDir) ? gitDir : resolve(workspaceDir, gitDir);
+  const infoDir = join(absoluteGitDir, "info");
+  mkdirSync(infoDir, { recursive: true });
+  const excludePath = join(infoDir, "exclude");
+  appendFileSync(excludePath, `${ignorePaths.join("\n")}\n`);
+}
+
+/** Resolve holdoutPatch path; relative paths stay under taskDir (no `..` escape). */
+export function resolveHoldoutPatchPath(task: ExternalSweTask): string {
+  if (!task.holdoutPatch) {
+    throw new Error("task has no holdoutPatch");
+  }
+  if (isAbsolute(task.holdoutPatch)) return task.holdoutPatch;
+  const resolved = resolve(task.taskDir, task.holdoutPatch);
+  const taskRoot = resolve(task.taskDir);
+  if (resolved !== taskRoot && !resolved.startsWith(`${taskRoot}/`)) {
+    throw new Error(`holdoutPatch escapes task directory: ${task.holdoutPatch}`);
+  }
+  return resolved;
+}
+
 /** Read a holdout patch file for tests/debug. */
 export function readHoldoutPatch(task: ExternalSweTask): string | undefined {
   if (!task.holdoutPatch) return undefined;
-  const patchPath = isAbsolute(task.holdoutPatch)
-    ? task.holdoutPatch
-    : join(task.taskDir, task.holdoutPatch);
+  const patchPath = resolveHoldoutPatchPath(task);
   if (!existsSync(patchPath)) return undefined;
   return readFileSync(patchPath, "utf8");
 }

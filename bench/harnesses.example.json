@@ -25,21 +25,24 @@
       "binary": "grok",
       "command": [
         "grok",
-        "-p",
         "--output-format",
         "json",
         "--permission-mode",
         "bypassPermissions",
+        "--always-approve",
         "--cwd",
         "{workdir}",
         "-m",
-        "{model}"
+        "{model}",
+        "--prompt-file",
+        "{promptFile}",
+        "--max-turns",
+        "60"
       ],
-      "promptVia": "stdin",
-      "resultPath": "result",
+      "promptVia": "file",
+      "resultPath": "text",
       "models": {
-        "grok-4": "grok-4",
-        "grok-4.5": "grok-4-1-fast-reasoning"
+        "default": "grok-4"
       },
       "extraEnvKeys": ["XAI_API_KEY"]
     },
@@ -61,4 +64,3 @@
     }
   ]
 }
-

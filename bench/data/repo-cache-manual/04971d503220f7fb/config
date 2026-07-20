@@ -1,0 +1,9 @@
+[core]
+	repositoryformatversion = 1
+	filemode = true
+	bare = true
+	excludesFile = /home/ben/Dev/model-prompt-tests-phase-3/bench/data/workspaces-manual/ws2/.git/info/exclude
+[remote "origin"]
+	url = /home/ben/Dev/model-prompt-tests-phase-3/swe-tasks/external/tiny-add/source.bundle
+	promisor = true
+	partialclonefilter = blob:none

@@ -112,7 +112,18 @@ export async function runSweDoctor(
         timeoutMs,
       });
       const preview = runResult.finalMessage.trim().slice(0, 200);
-      const ok = !runResult.timedOut && runResult.exitCode === 0;
+      const exitOk = !runResult.timedOut && runResult.exitCode === 0;
+      // Non-empty parse catches JSON-path drift that still exits 0 with an empty finalMessage.
+      // We only require non-empty content (not an exact "pong") so agent harnesses that wrap
+      // the reply still pass the probe.
+      const parseOk = preview.length > 0;
+      const ok = exitOk && parseOk;
+      let error: string | undefined;
+      if (!ok) {
+        if (runResult.timedOut) error = "timed out";
+        else if (runResult.exitCode !== 0) error = `exit code ${runResult.exitCode}`;
+        else if (!parseOk) error = "empty finalMessage (JSON path / parse drift?)";
+      }
       results.push({
         harnessId: entry.id,
         kind: entry.kind,
@@ -124,11 +135,7 @@ export async function runSweDoctor(
         exitCode: runResult.exitCode,
         timedOut: runResult.timedOut,
         latencyMs: Math.round(runResult.latencyMs),
-        error: ok
-          ? undefined
-          : runResult.timedOut
-            ? "timed out"
-            : `exit code ${runResult.exitCode}`,
+        error,
       });
     } catch (err) {
       results.push({

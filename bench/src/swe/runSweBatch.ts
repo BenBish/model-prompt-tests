@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { dirname, join } from "node:path";
 import type { ModelAdapter } from "../providers/types";
 import { insertRun } from "../db/runsRepo";
 import { insertScore } from "../db/scoresRepo";
@@ -65,9 +66,17 @@ function makeRunBatchId(): string {
   return `${now}-${suffix}`;
 }
 
-function defaultRepoCacheRoot(workspacesRoot: string): string {
-  // workspacesRoot is typically .../bench/data/workspaces → .../bench/data/repo-cache
-  return workspacesRoot.replace(/\/workspaces\/?$/, "/repo-cache");
+/**
+ * Place the blob-less clone cache next to the workspaces root when the path ends in
+ * `workspaces`, otherwise under a `repo-cache` sibling of the given directory. Never reuses
+ * the workspaces path itself (that would mix cell dirs with bare clones).
+ */
+export function defaultRepoCacheRoot(workspacesRoot: string): string {
+  const normalized = workspacesRoot.replace(/\/+$/, "");
+  const base = normalized.endsWith("/workspaces") || normalized.endsWith("workspaces")
+    ? dirname(normalized)
+    : normalized;
+  return join(base, "repo-cache");
 }
 
 export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBatchSummary> {

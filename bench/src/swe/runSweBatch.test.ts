@@ -6,8 +6,8 @@ import { tmpdir } from "node:os";
 import type { ModelAdapter } from "../providers/types";
 import { getSweResultForRun } from "../db/sweResultsRepo";
 import type { SweHarness, SweHarnessInput, SweHarnessResult } from "./harness/types";
-import type { FixtureSweTask } from "./taskSpec";
-import { runSweBatch, type SweRunnerCell } from "./runSweBatch";
+import type { ExternalSweTask, FixtureSweTask } from "./taskSpec";
+import { defaultRepoCacheRoot, runSweBatch, type SweRunnerCell } from "./runSweBatch";
 
 const tempRoots: string[] = [];
 
@@ -270,5 +270,127 @@ describe("runSweBatch", () => {
     expect(summary.ok).toBe(3);
     const rows = db.query("SELECT repeat_index FROM runs ORDER BY repeat_index").all() as { repeat_index: number }[];
     expect(rows.map((r) => r.repeat_index)).toEqual([0, 1, 2]);
+  });
+
+  test("external task: provision → harness fix → holdout verify → DB row", async () => {
+    spyOn(console, "log").mockImplementation(() => {});
+    const db = createDb();
+
+    // Build a local source repo + holdout patch under a temp task dir.
+    const taskDir = join(makeTempDir(), "external-task");
+    const sourceDir = join(taskDir, "source");
+    mkdirSync(join(sourceDir, "src"), { recursive: true });
+    mkdirSync(join(sourceDir, "tests"), { recursive: true });
+    writeFileSync(join(sourceDir, "src", "add.ts"), "export const add = (a: number, b: number) => a - b;\n");
+    writeFileSync(
+      join(sourceDir, "tests", "add.test.ts"),
+      `import { expect, test } from "bun:test";
+import { add } from "../src/add";
+test("adds", () => { expect(add(2, 3)).toBe(5); });
+`,
+    );
+    writeFileSync(join(sourceDir, "package.json"), `{"name":"t","private":true,"type":"module"}\n`);
+    const env = {
+      ...process.env,
+      GIT_AUTHOR_NAME: "bench",
+      GIT_AUTHOR_EMAIL: "bench@localhost",
+      GIT_COMMITTER_NAME: "bench",
+      GIT_COMMITTER_EMAIL: "bench@localhost",
+    };
+    const run = (cmd: string[], cwd = sourceDir) =>
+      Bun.spawnSync({ cmd, cwd, env, stdout: "pipe", stderr: "pipe" });
+    run(["git", "init", "-q", "-b", "main"]);
+    run(["git", "add", "-A"]);
+    run(["git", "commit", "-q", "-m", "seed"]);
+    const commitSha = run(["git", "rev-parse", "HEAD"]).stdout.toString().trim();
+
+    // Real holdout patch via git
+    const patchBuild = join(makeTempDir(), "patch-build");
+    Bun.spawnSync({
+      cmd: ["git", "clone", "-q", sourceDir, patchBuild],
+      env,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    writeFileSync(
+      join(patchBuild, "tests", "hidden.test.ts"),
+      `import { expect, test } from "bun:test";
+import { add } from "../src/add";
+test("hidden", () => { expect(add(1, 1)).toBe(2); });
+`,
+    );
+    Bun.spawnSync({ cmd: ["git", "add", "tests/hidden.test.ts"], cwd: patchBuild, env, stdout: "pipe" });
+    const patch = Bun.spawnSync({
+      cmd: ["git", "diff", "--cached"],
+      cwd: patchBuild,
+      env,
+      stdout: "pipe",
+    }).stdout.toString();
+    writeFileSync(join(taskDir, "holdout.patch"), patch);
+
+    const task: ExternalSweTask = {
+      id: "external/batch-test",
+      filePath: join(taskDir, "task.md"),
+      taskDir,
+      title: "External batch",
+      taskText: "Fix add.",
+      judgingGuidance: [],
+      verifyTimeoutMs: 30_000,
+      agentTimeoutMs: 20_000,
+      tags: [],
+      ignorePaths: ["node_modules"],
+      envPassthrough: [],
+      type: "external",
+      verify: "bun test",
+      repoUrl: sourceDir,
+      commitSha,
+      testPaths: ["tests/add.test.ts"],
+      holdoutPatch: "holdout.patch",
+    };
+
+    const workspacesRoot = join(makeTempDir(), "workspaces");
+    const repoCacheRoot = join(makeTempDir(), "repo-cache");
+    const harness = fakeHarness("fake-cc", { sonnet: "fake-model" }, async (input) => {
+      writeFileSync(
+        join(input.workDir, "src", "add.ts"),
+        "export const add = (a: number, b: number) => a + b;\n",
+      );
+      return { finalMessage: "fixed add", exitCode: 0, latencyMs: 8, timedOut: false, raw: {} };
+    });
+    const cells: SweRunnerCell[] = [{ harnessId: "fake-cc", harness, modelAlias: "sonnet" }];
+
+    const summary = await runSweBatch({
+      db,
+      tasks: [task],
+      cells,
+      workspacesRoot,
+      repoCacheRoot,
+    });
+
+    expect(summary.ok).toBe(1);
+    expect(summary.passed).toBe(1);
+    expect(summary.errored).toBe(0);
+
+    const runRow = db.query("SELECT * FROM runs").get() as any;
+    expect(runRow.kind).toBe("swe");
+    expect(runRow.prompt_id).toBe("external/batch-test");
+
+    const sweResult = getSweResultForRun(db, runRow.id);
+    expect(sweResult?.taskType).toBe("external");
+    expect(sweResult?.verifyPassed).toBe(true);
+    expect(sweResult?.diffPatch).toContain("add.ts");
+    // Workspace cleaned on success.
+    expect(existsSync(sweResult!.workdir!)).toBe(false);
+  });
+});
+
+describe("defaultRepoCacheRoot", () => {
+  test("places cache next to a .../workspaces directory", () => {
+    expect(defaultRepoCacheRoot("/repo/bench/data/workspaces")).toBe("/repo/bench/data/repo-cache");
+    expect(defaultRepoCacheRoot("/repo/bench/data/workspaces/")).toBe("/repo/bench/data/repo-cache");
+  });
+
+  test("does not reuse a non-workspaces path as the cache root itself", () => {
+    expect(defaultRepoCacheRoot("/tmp/cells")).toBe("/tmp/cells/repo-cache");
   });
 });

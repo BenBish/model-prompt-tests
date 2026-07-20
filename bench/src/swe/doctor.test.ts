@@ -68,6 +68,21 @@ describe("runSweDoctor", () => {
     expect(results[0]!.error).toContain("not found");
   });
 
+  test("reports FAIL when finalMessage is empty (parse drift)", async () => {
+    const entry: HarnessMatrixEntry = {
+      id: "empty",
+      kind: "claude-code",
+      models: { m: "native-m" },
+    };
+    const results = await runSweDoctor(
+      [entry],
+      modelsConfig,
+      () => fakeHarness({ finalMessage: "   ", exitCode: 0 }),
+    );
+    expect(results[0]!.ok).toBe(false);
+    expect(results[0]!.error).toContain("empty finalMessage");
+  });
+
   test("doctor prompt is stable", () => {
     expect(DOCTOR_PROMPT).toContain("pong");
   });
