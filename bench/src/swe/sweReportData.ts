@@ -104,16 +104,30 @@ function rowToSweReportRow(row: any): SweReportRow {
   };
 }
 
+/**
+ * Whether a judge row is self-judging for this SWE cell.
+ *
+ * Prompt-bench self-judging uses exact model ids. SWE cells use `harness:alias`
+ * (e.g. `claude-code:haiku`) while judges use bench model ids (`anthropic:haiku`),
+ * so we also treat matching bare aliases and `*:alias` suffixes as self.
+ */
+export function isSweSelfJudge(row: SweReportRow, judgeModelId: string): boolean {
+  if (judgeModelId === row.harnessModelId) return true;
+  if (row.modelAlias === "") return false;
+  if (judgeModelId === row.modelAlias) return true;
+  return judgeModelId.endsWith(`:${row.modelAlias}`);
+}
+
 /** Peer (non-self) judge scores for a SWE run. */
 function peerScoresForSweRow(row: SweReportRow): number[] {
   return row.judgeResults.flatMap((judge) =>
-    judge.score === undefined || judge.judgeModelId === row.harnessModelId ? [] : [judge.score],
+    judge.score === undefined || isSweSelfJudge(row, judge.judgeModelId) ? [] : [judge.score],
   );
 }
 
 function selfScoresForSweRow(row: SweReportRow): number[] {
   return row.judgeResults.flatMap((judge) =>
-    judge.score === undefined || judge.judgeModelId !== row.harnessModelId ? [] : [judge.score],
+    judge.score === undefined || !isSweSelfJudge(row, judge.judgeModelId) ? [] : [judge.score],
   );
 }
 
@@ -125,7 +139,7 @@ function summarizeSwe(harnessModelIds: string[], rows: SweReportRow[]): SweSumma
     const failedRuns = okRows.filter((row) => row.verifyPassed === false).length;
     const verifiedTotal = passedRuns + failedRuns;
 
-    // Headline judge scores exclude self-judging (judge model == candidate harness:model).
+    // Headline judge scores exclude self-judging (see isSweSelfJudge).
     const judgeScores = okRows.flatMap((row) => {
       const rowScore = median(peerScoresForSweRow(row));
       return rowScore === undefined ? [] : [rowScore];

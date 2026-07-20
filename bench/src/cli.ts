@@ -18,7 +18,7 @@ import { queryReportData } from "./report/queryData";
 import { renderReportHtml } from "./report/renderHtml";
 import { renderCompareHtml } from "./report/renderCompareHtml";
 import { buildAssessmentSummary, buildNarrativePrompt, renderAssessmentMarkdown } from "./report/renderAssessment";
-import { exportBatch } from "./export/exportBatch";
+import { exportBatch, validateExportName } from "./export/exportBatch";
 import { publishSite } from "./publish/publishSite";
 import type { ModelMatrixEntry } from "./providers/types";
 import { resolveJudge, resolveJudges } from "./config/judgeSelection";
@@ -39,7 +39,7 @@ function usage(): void {
   bun bench/src/cli.ts run <prompt-glob-or-all> [--models id1,id2] [--judge <id>] [--judges id1,id2] [--concurrency <n>] [--repeats <n>] [--dry-run] [--no-judge]
   bun bench/src/cli.ts report [--out <path>] [--batch <run_batch_id>] [--all-runs] [--narrative] [--judge <id>]
   bun bench/src/cli.ts report --compare <batchA> --compare <batchB> [--out <path>]
-  bun bench/src/cli.ts export --name <slug> [--batch <run_batch_id> | --latest]
+  bun bench/src/cli.ts export --name <slug> (--batch <run_batch_id> | --latest)
   bun bench/src/cli.ts publish [--out <dir>] [--results-dir <dir>]
   bun bench/src/cli.ts models <list|init|validate|set-judge|add-openai-compatible|add-anthropic|remove>
   bun bench/src/cli.ts list
@@ -221,17 +221,21 @@ async function cmdReportCompare(values: Record<string, unknown>): Promise<void> 
 
 async function cmdExport(values: Record<string, unknown>): Promise<void> {
   const name = requireFlag(values, "name");
-  const db = openDb(DB_PATH);
+  // Validate the slug before opening the DB / resolving batches so bad names fail fast.
+  validateExportName(name);
 
   const batchFlag = values.batch as string | undefined;
   if (batchFlag && values.latest) {
     throw new Error("use either --batch or --latest, not both");
   }
-  const runBatchId = batchFlag ?? (values.latest ? getLatestRunBatchId(db) : undefined);
+  if (!batchFlag && !values.latest) {
+    throw new Error("export requires --name <slug> and either --batch <run_batch_id> or --latest");
+  }
+
+  const db = openDb(DB_PATH);
+  const runBatchId = batchFlag ?? getLatestRunBatchId(db);
   if (!runBatchId) {
-    throw new Error(
-      values.latest ? "no runs found in the database yet" : "missing --batch <run_batch_id> (or pass --latest)",
-    );
+    throw new Error("no runs found in the database yet");
   }
 
   const { config } = await loadModelsConfig(REPO_ROOT);

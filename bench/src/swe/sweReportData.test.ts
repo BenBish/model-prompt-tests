@@ -134,4 +134,41 @@ describe("querySweReportData", () => {
     const summary = data.summaries.find((s) => s.harnessModelId === "claude-code:haiku")!;
     expect(summary.passRate).toBeUndefined();
   });
+
+  test("excludes self-judging when the judge id shares the model alias", () => {
+    // SWE cells are harness:alias while judges use bench model ids; a judge of
+    // anthropic:haiku scoring claude-code:haiku must not inflate the headline.
+    const db = createDb();
+    const runId = insertSweRun(db);
+    insertSweResult(db, { runId, taskType: "fixture", verifyPassed: true });
+    insertScore(db, {
+      runId,
+      judgeModelId: "peer:sonnet",
+      score: 2,
+      rationale: "peer",
+      scoredAt: "t",
+      status: "ok",
+    });
+    insertScore(db, {
+      runId,
+      judgeModelId: "anthropic:haiku",
+      score: 5,
+      rationale: "self alias",
+      scoredAt: "t",
+      status: "ok",
+    });
+    insertScore(db, {
+      runId,
+      judgeModelId: "claude-code:haiku",
+      score: 5,
+      rationale: "exact harness id",
+      scoredAt: "t",
+      status: "ok",
+    });
+
+    const data = querySweReportData(db, { allRuns: true });
+    const summary = data.summaries.find((s) => s.harnessModelId === "claude-code:haiku")!;
+    expect(summary.avgJudgeScore).toBe(2);
+    expect(summary.selfScoreAvg).toBe(5);
+  });
 });

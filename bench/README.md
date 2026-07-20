@@ -124,7 +124,8 @@ Every normal `report` invocation writes three files (plus `latest.*` mirrors):
 ### `export` / `publish`
 
 Package a batch into a shareable directory, then assemble exported runs into a static
-site under `docs/` (GitHub Pages):
+site under `docs/` (GitHub Pages). Both `--name` and either `--batch` or `--latest` are
+required for export:
 
 ```
 bun run bench export --name grok-45-vs-sonnet-5 --latest
@@ -132,25 +133,36 @@ bun run bench export --name my-run --batch <run_batch_id>
 bun run bench publish
 ```
 
-Export names must be lowercase kebab-case (`^[a-z0-9][a-z0-9-]*$`). `docs/` is excluded
-from prompt discovery so published pages cannot break `run all`.
+Export names must be lowercase kebab-case (`^[a-z0-9][a-z0-9-]*$`). Export writes to
+`benchmark-results/<name>/` (gitignored except intentionally committed writeups such as
+`grok-45-vs-sonnet-5`); only commit an export directory when you mean to keep it in the
+repo. `docs/` is excluded from prompt discovery so published pages cannot break `run all`.
 
 ## Aggregation
+
+**Note:** headline scores are **peer-only**. Re-running reports against older batches
+where a candidate was also a judge will lower that model's headline `avgScore` versus
+pre-Phase-2.5 reports (self scores still appear as `selfScoreAvg`).
 
 By default `report` shows only the most recent `run` batch for each (prompt, model)
 cell, but keeps every repeat within that batch (`--all-runs` shows full history instead).
 A single run's judge scores collapse to one number via the **median across peer judges**
 (not the mean), so one outlier judge doesn't skew a run's score. **Self-judging is
 excluded from headline scores** (`avgScore`, badges, charts, agreement, dimension
-averages): when a judge's model id equals the candidate's model id, that score is
-reported only as `selfScoreAvg`. When `--repeats > 1`, a cell's repeats collapse the
-same way: **median across repeats**. A model's `avgScore` is the mean of its per-cell
-medians. `scoreStdDev` is computed across all individual peer run scores;
-`repeatVariance` is the mean of per-cell score stddevs (only meaningful once
-`--repeats > 1`); `judgeAgreementPct` is the share of multi-peer-judge runs where every
-peer judge gave the exact same integer score. Cost columns use provider-reported USD
-when present, otherwise pricing × tokens; `truncatedRuns` counts stop reasons
-`length` / `max_tokens` / `max_output_tokens`.
+averages):
+
+- **Prompt runs:** judge model id equals the candidate model id.
+- **SWE runs:** judge id equals the cell `harness:alias`, the bare model alias, or ends
+  with `:<alias>` (so a bench judge like `anthropic:haiku` scoring `claude-code:haiku`
+  is treated as self).
+
+When `--repeats > 1`, a cell's repeats collapse the same way: **median across repeats**.
+A model's `avgScore` is the mean of its per-cell medians. `scoreStdDev` is computed
+across all individual peer run scores; `repeatVariance` is the mean of per-cell score
+stddevs (only meaningful once `--repeats > 1`); `judgeAgreementPct` is the share of
+multi-peer-judge runs where every peer judge gave the exact same integer score. Cost
+columns use provider-reported USD when present, otherwise pricing × tokens;
+`truncatedRuns` counts stop reasons `length` / `max_tokens` / `max_output_tokens`.
 
 ## Scoring Dimensions
 

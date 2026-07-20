@@ -8,3 +8,7 @@ bench/reports/*.html
 bench/reports/*.summary.json
 bench/reports/*.assessment.md
 bench/data/workspaces/
+# Local export smoke dirs; re-add intentionally committed writeups (e.g. grok-45-vs-sonnet-5).
+benchmark-results/*
+!benchmark-results/grok-45-vs-sonnet-5/
+!benchmark-results/grok-45-vs-sonnet-5/**
