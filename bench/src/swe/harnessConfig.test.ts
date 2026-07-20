@@ -55,8 +55,8 @@ describe("validateHarnessesConfig", () => {
   });
 
   test("rejects an unsupported kind", () => {
-    expect(() => validateHarnessesConfig({ harnesses: [{ id: "x", kind: "codex" }] })).toThrow(
-      'unsupported kind "codex"',
+    expect(() => validateHarnessesConfig({ harnesses: [{ id: "x", kind: "nope" }] })).toThrow(
+      'unsupported kind "nope"',
     );
   });
 
@@ -69,6 +69,51 @@ describe("validateHarnessesConfig", () => {
   test("does not require a models map for raw-api", () => {
     const config = validateHarnessesConfig({ harnesses: [{ id: "raw-api", kind: "raw-api" }] });
     expect(config.harnesses[0]).toEqual({ id: "raw-api", kind: "raw-api" });
+  });
+
+  test("accepts codex and generic-cli entries", () => {
+    const config = validateHarnessesConfig({
+      harnesses: [
+        {
+          id: "codex",
+          kind: "codex",
+          models: { "o4-mini": "o4-mini" },
+          sandbox: "workspace-write",
+        },
+        {
+          id: "grok",
+          kind: "generic-cli",
+          command: ["grok", "-p", "-m", "{model}", "--cwd", "{workdir}"],
+          models: { "grok-4": "grok-4" },
+          promptVia: "stdin",
+          resultPath: "result",
+        },
+        {
+          id: "omp",
+          kind: "generic-cli",
+          enabled: false,
+          command: ["omp", "run"],
+          models: { default: "default" },
+        },
+      ],
+    });
+    expect(config.harnesses.map((h) => h.kind)).toEqual(["codex", "generic-cli", "generic-cli"]);
+  });
+
+  test("rejects invalid codex sandbox values", () => {
+    expect(() =>
+      validateHarnessesConfig({
+        harnesses: [{ id: "c", kind: "codex", models: { m: "m" }, sandbox: "yeet" }],
+      }),
+    ).toThrow("sandbox");
+  });
+
+  test("requires command array for generic-cli", () => {
+    expect(() =>
+      validateHarnessesConfig({
+        harnesses: [{ id: "g", kind: "generic-cli", models: { m: "m" } }],
+      }),
+    ).toThrow("command");
   });
 });
 

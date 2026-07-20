@@ -25,7 +25,56 @@ export interface RawApiHarnessConfig {
   enabled?: boolean;
 }
 
-export type HarnessMatrixEntry = ClaudeCodeHarnessConfig | RawApiHarnessConfig;
+export type CodexSandboxMode = "read-only" | "workspace-write" | "danger-full-access";
+
+export interface CodexHarnessConfig {
+  id: string;
+  kind: "codex";
+  /** Alias -> harness-native model name. */
+  models: Record<string, string>;
+  /** Default: workspace-write. Config may escalate via dangerouslyBypassApprovalsAndSandbox. */
+  sandbox?: CodexSandboxMode;
+  /** Skip all confirmations and sandboxing (extremely dangerous; for externally sandboxed envs). */
+  dangerouslyBypassApprovalsAndSandbox?: boolean;
+  /** Use open-source / local provider path (`--oss`). */
+  oss?: boolean;
+  /** With oss: lmstudio | ollama. */
+  localProvider?: string;
+  enabled?: boolean;
+}
+
+export type GenericCliPromptVia = "stdin" | "arg" | "file";
+
+export interface GenericCliHarnessConfig {
+  id: string;
+  kind: "generic-cli";
+  /**
+   * Argv template. Placeholders: `{model}`, `{workdir}`, `{promptFile}`.
+   * First element is the binary (unless `binary` is set).
+   */
+  command: string[];
+  models: Record<string, string>;
+  /** How to feed the task prompt. Default: stdin. */
+  promptVia?: GenericCliPromptVia;
+  /**
+   * Dotted path into a top-level JSON object (or the last JSONL event) for the final message,
+   * e.g. `result` or `message.content`. When missing or unparseable, whole stdout is used.
+   */
+  resultPath?: string;
+  /** Binary name for availability checks (default: first command element). */
+  binary?: string;
+  /** Extra env keys to pass through (e.g. API keys). */
+  extraEnvKeys?: string[];
+  /** Env prefixes to strip (e.g. CLAUDE_CODE_). */
+  stripPrefixes?: string[];
+  enabled?: boolean;
+}
+
+export type HarnessMatrixEntry =
+  | ClaudeCodeHarnessConfig
+  | RawApiHarnessConfig
+  | CodexHarnessConfig
+  | GenericCliHarnessConfig;
 
 export interface BenchHarnessesConfig {
   harnesses: HarnessMatrixEntry[];
@@ -91,6 +140,36 @@ function requireStringRecord(obj: Record<string, unknown>, key: string, context:
   return record as Record<string, string>;
 }
 
+function requireStringArray(obj: Record<string, unknown>, key: string, context: string): string[] {
+  const value = obj[key];
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error(`${context}: missing required non-empty string array "${key}"`);
+  }
+  for (let i = 0; i < value.length; i++) {
+    if (typeof value[i] !== "string" || (value[i] as string).trim() === "") {
+      throw new Error(`${context}: "${key}[${i}]" must be a non-empty string`);
+    }
+  }
+  return value as string[];
+}
+
+function optionalStringArray(obj: Record<string, unknown>, key: string, context: string): string[] | undefined {
+  const value = obj[key];
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) {
+    throw new Error(`${context}: "${key}" must be an array of strings when present`);
+  }
+  for (let i = 0; i < value.length; i++) {
+    if (typeof value[i] !== "string" || (value[i] as string).trim() === "") {
+      throw new Error(`${context}: "${key}[${i}]" must be a non-empty string`);
+    }
+  }
+  return value as string[];
+}
+
+const CODEX_SANDBOX_MODES = new Set(["read-only", "workspace-write", "danger-full-access"]);
+const PROMPT_VIA_MODES = new Set(["stdin", "arg", "file"]);
+
 function normalizeHarness(raw: unknown, index: number): HarnessMatrixEntry {
   const context = `harnesses[${index}]`;
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
@@ -118,6 +197,58 @@ function normalizeHarness(raw: unknown, index: number): HarnessMatrixEntry {
       kind,
       ...common,
       maxContextBytes: optionalPositiveInteger(obj, "maxContextBytes", context),
+    };
+  }
+
+  if (kind === "codex") {
+    const sandbox = obj.sandbox;
+    if (sandbox !== undefined) {
+      if (typeof sandbox !== "string" || !CODEX_SANDBOX_MODES.has(sandbox)) {
+        throw new Error(
+          `${context}: "sandbox" must be one of ${[...CODEX_SANDBOX_MODES].join(", ")} when present`,
+        );
+      }
+    }
+    const localProvider = obj.localProvider;
+    if (localProvider !== undefined && (typeof localProvider !== "string" || localProvider.trim() === "")) {
+      throw new Error(`${context}: "localProvider" must be a non-empty string when present`);
+    }
+    return {
+      kind,
+      ...common,
+      models: requireStringRecord(obj, "models", context),
+      sandbox: sandbox as CodexSandboxMode | undefined,
+      dangerouslyBypassApprovalsAndSandbox: optionalBoolean(obj, "dangerouslyBypassApprovalsAndSandbox", context),
+      oss: optionalBoolean(obj, "oss", context),
+      localProvider: typeof localProvider === "string" ? localProvider : undefined,
+    };
+  }
+
+  if (kind === "generic-cli") {
+    const promptVia = obj.promptVia;
+    if (promptVia !== undefined) {
+      if (typeof promptVia !== "string" || !PROMPT_VIA_MODES.has(promptVia)) {
+        throw new Error(`${context}: "promptVia" must be one of stdin, arg, file when present`);
+      }
+    }
+    const resultPath = obj.resultPath;
+    if (resultPath !== undefined && (typeof resultPath !== "string" || resultPath.trim() === "")) {
+      throw new Error(`${context}: "resultPath" must be a non-empty string when present`);
+    }
+    const binary = obj.binary;
+    if (binary !== undefined && (typeof binary !== "string" || binary.trim() === "")) {
+      throw new Error(`${context}: "binary" must be a non-empty string when present`);
+    }
+    return {
+      kind,
+      ...common,
+      command: requireStringArray(obj, "command", context),
+      models: requireStringRecord(obj, "models", context),
+      promptVia: promptVia as GenericCliPromptVia | undefined,
+      resultPath: typeof resultPath === "string" ? resultPath : undefined,
+      binary: typeof binary === "string" ? binary : undefined,
+      extraEnvKeys: optionalStringArray(obj, "extraEnvKeys", context),
+      stripPrefixes: optionalStringArray(obj, "stripPrefixes", context),
     };
   }
 

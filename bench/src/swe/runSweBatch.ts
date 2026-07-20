@@ -6,8 +6,23 @@ import { insertSweResult } from "../db/sweResultsRepo";
 import { createLimiter, type Limiter } from "../util/concurrency";
 import { runSweJudge } from "./sweJudge";
 import type { SweHarness } from "./harness/types";
-import type { SweTask } from "./taskSpec";
-import { captureDiff, cleanupWorkspace, overlayHiddenTests, provisionFixtureWorkspace, runVerify, workspaceDirFor } from "./workspace";
+import type { ExternalSweTask, FixtureSweTask, SweTask } from "./taskSpec";
+import {
+  prepareExternalVerify,
+  provisionExternalWorkspace,
+  removeExternalWorktree,
+  type ProvisionedExternalWorkspace,
+} from "./externalWorkspace";
+import {
+  captureDiff,
+  cleanupWorkspace,
+  overlayHiddenTests,
+  provisionFixtureWorkspace,
+  runVerify,
+  workspaceDirFor,
+  type ProvisionedWorkspace,
+  type VerifyResult,
+} from "./workspace";
 
 export interface SweRunnerCell {
   harnessId: string;
@@ -20,6 +35,8 @@ export interface RunSweBatchOptions {
   tasks: SweTask[];
   cells: SweRunnerCell[];
   workspacesRoot: string;
+  /** Root for blob-less git clones of external tasks. Default: sibling of workspacesRoot named repo-cache. */
+  repoCacheRoot?: string;
   repeats?: number;
   defaultConcurrency?: number;
   keepWorkspaces?: boolean;
@@ -48,8 +65,14 @@ function makeRunBatchId(): string {
   return `${now}-${suffix}`;
 }
 
+function defaultRepoCacheRoot(workspacesRoot: string): string {
+  // workspacesRoot is typically .../bench/data/workspaces → .../bench/data/repo-cache
+  return workspacesRoot.replace(/\/workspaces\/?$/, "/repo-cache");
+}
+
 export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBatchSummary> {
   const { db, tasks, cells, workspacesRoot } = options;
+  const repoCacheRoot = options.repoCacheRoot ?? defaultRepoCacheRoot(workspacesRoot);
   const repeats = options.repeats ?? 1;
   const defaultConcurrency = options.defaultConcurrency ?? DEFAULT_CONCURRENCY;
   const judges = options.judges ?? [];
@@ -72,12 +95,22 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
     return limiter;
   }
 
-  const okRunIds: { runId: number; task: SweTask; diffPatch: string; verify: Awaited<ReturnType<typeof runVerify>> | undefined; finalMessage: string }[] = [];
+  const okRunIds: {
+    runId: number;
+    task: SweTask;
+    diffPatch: string;
+    verify: VerifyResult | undefined;
+    finalMessage: string;
+  }[] = [];
 
   const cellTasks: Promise<void>[] = [];
   for (const task of tasks) {
-    if (task.type !== "fixture") {
-      console.log(`[skip] ${task.id}: only fixture tasks are runnable in this version`);
+    if (task.type === "code-review") {
+      console.log(`[skip] ${task.id}: code-review tasks are Phase 4`);
+      continue;
+    }
+    if (task.type !== "fixture" && task.type !== "external") {
+      console.log(`[skip] ${task.id}: unsupported task type`);
       continue;
     }
     for (const cell of cells) {
@@ -88,12 +121,22 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
     }
   }
 
-  async function executeCell(task: SweTask, cell: SweRunnerCell, repeatIndex: number): Promise<void> {
-    if (task.type !== "fixture") return;
+  async function executeCell(
+    task: FixtureSweTask | ExternalSweTask,
+    cell: SweRunnerCell,
+    repeatIndex: number,
+  ): Promise<void> {
     const startedAt = new Date().toISOString();
     const modelId = `${cell.harnessId}:${cell.modelAlias}`;
     const label = `${task.id} x ${modelId}${repeats > 1 ? ` (repeat ${repeatIndex + 1}/${repeats})` : ""}`;
-    const workspaceDir = workspaceDirFor(workspacesRoot, runBatchId, task.id, cell.harnessId, cell.modelAlias, repeatIndex);
+    const workspaceDir = workspaceDirFor(
+      workspacesRoot,
+      runBatchId,
+      task.id,
+      cell.harnessId,
+      cell.modelAlias,
+      repeatIndex,
+    );
 
     const nativeModel = cell.harness.resolveModel(cell.modelAlias);
     if (!nativeModel) {
@@ -116,8 +159,17 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
       return;
     }
 
+    let externalMeta: ProvisionedExternalWorkspace | undefined;
+
     try {
-      const provisioned = await provisionFixtureWorkspace(task, workspaceDir);
+      let provisioned: ProvisionedWorkspace;
+      if (task.type === "fixture") {
+        provisioned = await provisionFixtureWorkspace(task, workspaceDir);
+      } else {
+        externalMeta = await provisionExternalWorkspace(task, workspaceDir, repoCacheRoot);
+        provisioned = externalMeta;
+      }
+
       const agentResult = await cell.harness.run({
         taskPrompt: task.taskText,
         model: nativeModel,
@@ -125,7 +177,12 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
         timeoutMs: task.agentTimeoutMs,
       });
       const diff = await captureDiff(workspaceDir, provisioned.postSetupSha);
-      await overlayHiddenTests(task, workspaceDir);
+
+      if (task.type === "fixture") {
+        await overlayHiddenTests(task, workspaceDir);
+      } else {
+        await prepareExternalVerify(task, workspaceDir);
+      }
       const verify = await runVerify(task, workspaceDir);
 
       const runId = insertRun(db, {
@@ -144,7 +201,6 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
         repeatIndex,
         kind: "swe",
         harnessId: cell.harnessId,
-        // claude-code (and other harnesses) may report total_cost_usd via costUsd.
         costUsd: agentResult.costUsd,
       });
 
@@ -177,7 +233,11 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
       );
 
       if (!options.keepWorkspaces) {
-        await cleanupWorkspace(workspaceDir);
+        if (externalMeta) {
+          await removeExternalWorktree(workspaceDir, externalMeta.cacheDir);
+        } else {
+          await cleanupWorkspace(workspaceDir);
+        }
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

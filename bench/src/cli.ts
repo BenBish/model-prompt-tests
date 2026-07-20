@@ -23,7 +23,7 @@ import { publishSite } from "./publish/publishSite";
 import type { ModelMatrixEntry } from "./providers/types";
 import { resolveJudge, resolveJudges } from "./config/judgeSelection";
 import { parsePositiveInteger } from "./util/cliArgs";
-import { cmdSweList, cmdSweRun } from "./swe/cli";
+import { cmdSweDoctor, cmdSweList, cmdSweRun } from "./swe/cli";
 import { querySweReportData } from "./swe/sweReportData";
 import { renderSweAssessmentSection, renderSweReportSection } from "./swe/renderSweSection";
 
@@ -44,6 +44,7 @@ function usage(): void {
   bun bench/src/cli.ts models <list|init|validate|set-judge|add-openai-compatible|add-anthropic|remove>
   bun bench/src/cli.ts list
   bun bench/src/cli.ts swe list
+  bun bench/src/cli.ts swe doctor [--harnesses <ids>] [--timeout <ms>]
   bun bench/src/cli.ts swe run <task-glob-or-all> --harnesses <ids> --models <aliases> [--repeats <n>] [--concurrency <n>] [--judge <id>] [--judges id1,id2] [--no-judge] [--keep-workspaces] [--dry-run] [--timeout <ms>]`);
 }
 
@@ -589,6 +590,16 @@ async function main(): Promise<void> {
       const sweRest = rest.slice(1);
       if (sweSubcommand === "list") {
         await cmdSweList(REPO_ROOT);
+      } else if (sweSubcommand === "doctor") {
+        const { values } = parseArgs({
+          args: sweRest,
+          allowPositionals: false,
+          options: {
+            harnesses: { type: "string" },
+            timeout: { type: "string" },
+          },
+        });
+        await cmdSweDoctor(REPO_ROOT, values);
       } else if (sweSubcommand === "run") {
         const { values, positionals } = parseArgs({
           args: sweRest,

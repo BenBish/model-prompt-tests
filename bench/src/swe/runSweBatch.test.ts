@@ -180,15 +180,14 @@ describe("runSweBatch", () => {
     expect(getSweResultForRun(db, run.id)).toBeUndefined();
   });
 
-  test("skips non-fixture tasks", async () => {
+  test("skips code-review tasks (Phase 4)", async () => {
     spyOn(console, "log").mockImplementation(() => {});
     const db = createDb();
-    const externalTask = {
+    const reviewTask = {
       ...makeFixtureTask(),
-      type: "external" as const,
-      repoUrl: "https://example.com/repo.git",
-      commitSha: "abc",
-      testPaths: [],
+      type: "code-review" as const,
+      diffPatchPath: "/tmp/diff.patch",
+      findingsPath: "/tmp/findings.json",
     };
     const workspacesRoot = join(makeTempDir(), "workspaces");
     const harness = fakeHarness("fake-cc", { sonnet: "fake-model" }, async () => {
@@ -196,7 +195,7 @@ describe("runSweBatch", () => {
     });
     const cells: SweRunnerCell[] = [{ harnessId: "fake-cc", harness, modelAlias: "sonnet" }];
 
-    const summary = await runSweBatch({ db, tasks: [externalTask as any], cells, workspacesRoot });
+    const summary = await runSweBatch({ db, tasks: [reviewTask as any], cells, workspacesRoot });
     expect(summary.ok).toBe(0);
     expect(summary.errored).toBe(0);
     expect(db.query("SELECT COUNT(*) as c FROM runs").get()).toEqual({ c: 0 });
