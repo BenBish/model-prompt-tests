@@ -38,6 +38,12 @@ Prompt to evaluate:
 - `2`: Too vague to support consistent evaluation.
 - `1`: Does not produce a rubric.
 
+## Scoring Dimensions
+
+- `task-specificity` (weight 3): Criteria are specific to itinerary planning, not generic writing quality.
+- `scoring-anchors` (weight 3): Includes clear, usable score anchors rather than vague labels like "good detail".
+- `coverage` (weight 2): Covers practicality, personalization, pacing, logistics, and risk/contingencies.
+
 ## Variants
 
 - Easier: Ask for only five pass/fail checks.

@@ -35,6 +35,12 @@ Compare Postgres, SQLite, and DynamoDB for a small SaaS app with 2 developers, l
 - `2`: Overweights hype or misses team/product constraints.
 - `1`: No recommendation or technically misleading guidance.
 
+## Scoring Dimensions
+
+- `recommendation-clarity` (weight 3): Gives one clear recommendation rather than an endless pros/cons list.
+- `constraint-fit` (weight 3): Grounds the choice in the two-developer, low-traffic, uncertain-future constraints.
+- `change-conditions` (weight 2): Names concrete conditions that would change the recommendation.
+
 ## Variants
 
 - Easier: Compare only Postgres and SQLite.

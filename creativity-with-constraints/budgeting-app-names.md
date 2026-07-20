@@ -35,6 +35,12 @@ Generate 10 names for a budgeting app. They should sound trustworthy, not playfu
 - `2`: Several tone or constraint misses.
 - `1`: Ignores count, banned words, or requested rationale.
 
+## Scoring Dimensions
+
+- `constraint-compliance` (weight 3): Exactly ten names; banned words and obvious variants are avoided.
+- `tone-fit` (weight 3): Names feel trustworthy and credible for a financial product, not playful or gimmicky.
+- `rationale-quality` (weight 1): Rationales are concise and relevant to each name.
+
 ## Variants
 
 - Easier: Remove the rationale requirement.

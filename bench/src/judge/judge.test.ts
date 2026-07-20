@@ -95,3 +95,106 @@ describe("judge request failures", () => {
     expect(calls).toBe(2);
   });
 });
+
+describe("dimensional judging", () => {
+  const promptWithDimensions: PromptDefinition = {
+    ...prompt,
+    dimensions: [
+      { id: "correctness", weight: 3, description: "Finds the bug." },
+      { id: "code-quality", weight: 1, description: "Minimal fix." },
+    ],
+  };
+
+  test("parses per-dimension scores and computes a weighted score", async () => {
+    const adapter: ModelAdapter = {
+      providerId: "test",
+      modelName: "test-judge",
+      async call() {
+        return {
+          text: JSON.stringify({
+            score: 4,
+            rationale: "Solid overall",
+            dimensions: {
+              correctness: { score: 5, rationale: "Found the exact bug" },
+              "code-quality": { score: 3, rationale: "A bit verbose" },
+            },
+          }),
+          raw: {},
+          latencyMs: 1,
+        };
+      },
+    };
+
+    const outcome = await runJudge(adapter, promptWithDimensions, "candidate output");
+
+    expect(outcome.result?.dimensions).toEqual({
+      correctness: { score: 5, rationale: "Found the exact bug" },
+      "code-quality": { score: 3, rationale: "A bit verbose" },
+    });
+    // (5*3 + 3*1) / 4 = 4.5
+    expect(outcome.result?.weightedScore).toBeCloseTo(4.5);
+  });
+
+  test("retries with a corrective message when a required dimension is missing", async () => {
+    let calls = 0;
+    const adapter: ModelAdapter = {
+      providerId: "test",
+      modelName: "test-judge",
+      async call(input) {
+        calls++;
+        if (calls === 1) {
+          return {
+            text: JSON.stringify({
+              score: 4,
+              rationale: "Missing code-quality dimension",
+              dimensions: { correctness: { score: 5, rationale: "Found it" } },
+            }),
+            raw: {},
+            latencyMs: 1,
+          };
+        }
+        expect(input.userPrompt).toContain("code-quality");
+        return {
+          text: JSON.stringify({
+            score: 4,
+            rationale: "Fixed",
+            dimensions: {
+              correctness: { score: 5, rationale: "Found it" },
+              "code-quality": { score: 4, rationale: "Fine" },
+            },
+          }),
+          raw: {},
+          latencyMs: 1,
+        };
+      },
+    };
+
+    const outcome = await runJudge(adapter, promptWithDimensions, "candidate output");
+
+    expect(calls).toBe(2);
+    expect(outcome.result?.dimensions?.["code-quality"]).toEqual({ score: 4, rationale: "Fine" });
+  });
+
+  test("gives up after exhausting corrective attempts with a missing dimension", async () => {
+    const adapter: ModelAdapter = {
+      providerId: "test",
+      modelName: "test-judge",
+      async call() {
+        return {
+          text: JSON.stringify({
+            score: 4,
+            rationale: "Still missing",
+            dimensions: { correctness: { score: 5, rationale: "Found it" } },
+          }),
+          raw: {},
+          latencyMs: 1,
+        };
+      },
+    };
+
+    const outcome = await runJudge(adapter, promptWithDimensions, "candidate output");
+
+    expect(outcome.result).toBeNull();
+    expect(outcome.error).toBe("judge did not return a valid JSON score after 2 attempts");
+  });
+});

@@ -1,5 +1,5 @@
 import { relative } from "node:path";
-import type { PromptDefinition, RubricEntry } from "../types";
+import type { PromptDefinition, RubricDimension, RubricEntry } from "../types";
 
 class PromptParseError extends Error {
   constructor(filePath: string, message: string) {
@@ -77,6 +77,55 @@ function extractRubric(filePath: string, sectionBody: string | undefined): Rubri
   return entries.sort((a, b) => b.score - a.score);
 }
 
+const DIMENSION_LINE_REGEX = /^-\s+`([a-z0-9-]+)`\s+\(weight\s+(\d+)\):\s*(.+)$/gm;
+const MIN_DIMENSIONS = 2;
+const MAX_DIMENSIONS = 5;
+
+function extractDimensions(
+  filePath: string,
+  sectionBody: string | undefined,
+): RubricDimension[] | undefined {
+  if (sectionBody === undefined) return undefined;
+
+  const entries = [...sectionBody.matchAll(DIMENSION_LINE_REGEX)].map((m) => ({
+    id: m[1]!,
+    weight: Number(m[2]!),
+    description: m[3]!.trim(),
+  }));
+
+  if (entries.length === 0) {
+    throw new PromptParseError(
+      filePath,
+      "'## Scoring Dimensions' section has no entries matching '- `id` (weight N): description'",
+    );
+  }
+
+  const invalidWeights = entries.filter((e) => e.weight < 1 || e.weight > 5);
+  if (invalidWeights.length > 0) {
+    throw new PromptParseError(
+      filePath,
+      `'## Scoring Dimensions' contains invalid weight(s): ${invalidWeights
+        .map((e) => `${e.id}=${e.weight}`)
+        .join(", ")} (must be 1-5)`,
+    );
+  }
+
+  const ids = entries.map((e) => e.id);
+  const uniqueIds = new Set(ids);
+  if (uniqueIds.size !== ids.length) {
+    throw new PromptParseError(filePath, "'## Scoring Dimensions' contains duplicate dimension ids");
+  }
+
+  if (entries.length < MIN_DIMENSIONS || entries.length > MAX_DIMENSIONS) {
+    throw new PromptParseError(
+      filePath,
+      `'## Scoring Dimensions' must have between ${MIN_DIMENSIONS} and ${MAX_DIMENSIONS} entries, found ${entries.length}`,
+    );
+  }
+
+  return entries;
+}
+
 function extractVariants(sectionBody: string | undefined): PromptDefinition["variants"] {
   if (!sectionBody) return undefined;
 
@@ -117,6 +166,7 @@ export async function parsePromptFile(
     strongSignals: extractBullets(sections.get("Strong Answer Signals")),
     weakSignals: extractBullets(sections.get("Weak Answer Signals")),
     rubric: extractRubric(filePath, sections.get("Scoring Rubric")),
+    dimensions: extractDimensions(filePath, sections.get("Scoring Dimensions")),
     variants: extractVariants(sections.get("Variants")),
     notes: sections.get("Notes")?.trim() || undefined,
   };

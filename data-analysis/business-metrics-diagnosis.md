@@ -43,6 +43,12 @@ Jun   | $97,000 | 172           | 79                | 940
 - `2`: Mostly calculations or generic commentary.
 - `1`: Misreads the data or chooses the wrong concern.
 
+## Scoring Dimensions
+
+- `signal-prioritization` (weight 3): Identifies rising churn and support load as the key concern despite revenue growth, rather than drowning it in exhaustive metrics.
+- `causal-discipline` (weight 2): Avoids overclaiming causality (e.g., support tickets causing churn) from the table alone.
+- `next-steps` (weight 2): Proposes focused, relevant investigation steps rather than generic advice.
+
 ## Variants
 
 - Easier: Ask for only the biggest concern in one paragraph.

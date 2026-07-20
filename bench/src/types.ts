@@ -3,6 +3,12 @@ export interface RubricEntry {
   description: string;
 }
 
+export interface RubricDimension {
+  id: string;
+  weight: number;
+  description: string;
+}
+
 export interface PromptDefinition {
   id: string;
   filePath: string;
@@ -12,6 +18,7 @@ export interface PromptDefinition {
   strongSignals: string[];
   weakSignals: string[];
   rubric: RubricEntry[];
+  dimensions?: RubricDimension[];
   variants?: {
     easier?: string;
     harder?: string;

@@ -1,5 +1,10 @@
 import type { Database } from "bun:sqlite";
 
+export interface JudgeDimensionReportScore {
+  score: number;
+  rationale: string;
+}
+
 export interface ReportRow {
   runId: number;
   runBatchId: string;
@@ -8,6 +13,7 @@ export interface ReportRow {
   modelId: string;
   modelName: string;
   startedAt: string;
+  repeatIndex: number;
   latencyMs?: number;
   inputTokens?: number;
   outputTokens?: number;
@@ -30,6 +36,8 @@ export interface JudgeReportRow {
   judgeError?: string;
   judgeStatus: "ok" | "error";
   scoredAt: string;
+  dimensions?: Record<string, JudgeDimensionReportScore>;
+  weightedScore?: number;
 }
 
 export interface ModelSummary {
@@ -38,10 +46,17 @@ export interface ModelSummary {
   errorRuns: number;
   missingJudgeScores: number;
   avgScore?: number;
+  medianScore?: number;
+  scoreStdDev?: number;
+  /** Mean of per-cell score stddevs across repeats. Only meaningful when repeats > 1. */
+  repeatVariance?: number;
+  /** Share of judged runs (with >=2 judges) where every judge gave the identical integer score. */
+  judgeAgreementPct?: number;
   avgLatencyMs?: number;
   medianLatencyMs?: number;
   avgOutputTokens?: number;
   avgJudgeSpread?: number;
+  dimensionAverages?: Record<string, number>;
   qualityPerSecond?: number;
 }
 
@@ -58,6 +73,18 @@ export interface QueryOptions {
   allRuns?: boolean;
 }
 
+function parseDimensionScores(
+  raw: string | null,
+): Record<string, JudgeDimensionReportScore> | undefined {
+  if (!raw) return undefined;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    console.error(`[warn] ignoring malformed dimension_scores JSON: ${raw}`);
+    return undefined;
+  }
+}
+
 function rowToReportRow(row: any): ReportRow {
   return {
     runId: row.id,
@@ -67,6 +94,7 @@ function rowToReportRow(row: any): ReportRow {
     modelId: row.model_id,
     modelName: row.model_name,
     startedAt: row.started_at,
+    repeatIndex: row.repeat_index ?? 0,
     latencyMs: row.latency_ms ?? undefined,
     inputTokens: row.input_tokens ?? undefined,
     outputTokens: row.output_tokens ?? undefined,
@@ -77,12 +105,12 @@ function rowToReportRow(row: any): ReportRow {
   };
 }
 
-function average(values: number[]): number | undefined {
+export function average(values: number[]): number | undefined {
   if (values.length === 0) return undefined;
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
-function median(values: number[]): number | undefined {
+export function median(values: number[]): number | undefined {
   if (values.length === 0) return undefined;
   const sorted = [...values].sort((a, b) => a - b);
   const middle = Math.floor(sorted.length / 2);
@@ -90,17 +118,53 @@ function median(values: number[]): number | undefined {
   return (sorted[middle - 1]! + sorted[middle]!) / 2;
 }
 
+export function stddev(values: number[]): number | undefined {
+  if (values.length === 0) return undefined;
+  if (values.length === 1) return 0;
+  const mean = average(values)!;
+  const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length;
+  return Math.sqrt(variance);
+}
+
+/** A single run's judge scores, collapsed to one number so repeats/judges aggregate consistently. */
+export function judgeScoresForRow(row: ReportRow): number[] {
+  return row.judgeResults.flatMap((judge) => (judge.score === undefined ? [] : [judge.score]));
+}
+
+export function perRunMedianScore(row: ReportRow): number | undefined {
+  return median(judgeScoresForRow(row));
+}
+
 function summarize(modelIds: string[], rows: ReportRow[]): ModelSummary[] {
   return modelIds.map((modelId) => {
     const modelRows = rows.filter((row) => row.modelId === modelId);
     const okRows = modelRows.filter((row) => row.runStatus === "ok");
-    const runScores = okRows.flatMap((row) => {
-      const scores = row.judgeResults.flatMap((judge) =>
-        judge.score === undefined ? [] : [judge.score],
-      );
-      const runAverage = average(scores);
-      return runAverage === undefined ? [] : [runAverage];
-    });
+
+    // Group ok rows into (prompt) cells so repeats are aggregated before they hit the model average.
+    const cellRows = new Map<string, ReportRow[]>();
+    for (const row of okRows) {
+      const list = cellRows.get(row.promptId) ?? [];
+      list.push(row);
+      cellRows.set(row.promptId, list);
+    }
+
+    const runScores: number[] = [];
+    const cellScores: number[] = [];
+    const cellStdDevs: number[] = [];
+    for (const cellRowList of cellRows.values()) {
+      const perRunScores = cellRowList.flatMap((row) => {
+        const score = perRunMedianScore(row);
+        return score === undefined ? [] : [score];
+      });
+      runScores.push(...perRunScores);
+      const cellMedian = median(perRunScores);
+      if (cellMedian !== undefined) cellScores.push(cellMedian);
+      if (perRunScores.length > 1) {
+        const cellStdDev = stddev(perRunScores);
+        if (cellStdDev !== undefined) cellStdDevs.push(cellStdDev);
+      }
+    }
+
     const missingJudgeScores = okRows.reduce(
       (sum, row) =>
         sum + row.judgeResults.filter((judge) => judge.judgeStatus !== "ok" || judge.score === undefined).length,
@@ -113,24 +177,51 @@ function summarize(modelIds: string[], rows: ReportRow[]): ModelSummary[] {
       row.outputTokens === undefined ? [] : [row.outputTokens],
     );
     const spreads = okRows.flatMap((row) => {
-      const rowScores = row.judgeResults.flatMap((judge) =>
-        judge.score === undefined ? [] : [judge.score],
-      );
+      const rowScores = judgeScoresForRow(row);
       if (rowScores.length < 2) return [];
       return [Math.max(...rowScores) - Math.min(...rowScores)];
     });
-    const avgScore = average(runScores);
+
+    const agreementEligibleRows = okRows.filter((row) => judgeScoresForRow(row).length >= 2);
+    const agreeingRows = agreementEligibleRows.filter(
+      (row) => new Set(judgeScoresForRow(row)).size === 1,
+    );
+
+    const dimensionTotals = new Map<string, { sum: number; count: number }>();
+    for (const row of okRows) {
+      for (const judge of row.judgeResults) {
+        if (!judge.dimensions) continue;
+        for (const [dimensionId, dimensionScore] of Object.entries(judge.dimensions)) {
+          const entry = dimensionTotals.get(dimensionId) ?? { sum: 0, count: 0 };
+          entry.sum += dimensionScore.score;
+          entry.count += 1;
+          dimensionTotals.set(dimensionId, entry);
+        }
+      }
+    }
+    const dimensionAverages: Record<string, number> = Object.fromEntries(
+      [...dimensionTotals.entries()].map(([id, { sum, count }]) => [id, sum / count]),
+    );
+
+    const avgScore = average(cellScores);
     const avgLatencyMs = average(latencies);
+
     return {
       modelId,
       okRuns: okRows.length,
       errorRuns: modelRows.length - okRows.length,
       missingJudgeScores,
       avgScore,
+      medianScore: median(cellScores),
+      scoreStdDev: stddev(runScores),
+      repeatVariance: cellStdDevs.length > 0 ? average(cellStdDevs) : undefined,
+      judgeAgreementPct:
+        agreementEligibleRows.length > 0 ? agreeingRows.length / agreementEligibleRows.length : undefined,
       avgLatencyMs,
       medianLatencyMs: median(latencies),
       avgOutputTokens: average(outputTokens),
       avgJudgeSpread: average(spreads),
+      dimensionAverages: Object.keys(dimensionAverages).length > 0 ? dimensionAverages : undefined,
       qualityPerSecond:
         avgScore !== undefined && avgLatencyMs !== undefined && avgLatencyMs > 0
           ? avgScore / (avgLatencyMs / 1000)
@@ -153,7 +244,8 @@ export function queryReportData(db: Database, options: QueryOptions = {}): Repor
     .query(
       `
         SELECT run_id, judge_model_id, score, rationale,
-               error AS judge_error, status AS judge_status, scored_at
+               error AS judge_error, status AS judge_status, scored_at,
+               dimension_scores, weighted_score
         FROM scores
         ORDER BY judge_model_id ASC, scored_at ASC
       `,
@@ -169,6 +261,8 @@ export function queryReportData(db: Database, options: QueryOptions = {}): Repor
       judgeError: scoreRow.judge_error ?? undefined,
       judgeStatus: scoreRow.judge_status,
       scoredAt: scoreRow.scored_at,
+      dimensions: parseDimensionScores(scoreRow.dimension_scores),
+      weightedScore: scoreRow.weighted_score ?? undefined,
     });
     scoresByRun.set(scoreRow.run_id, list);
   }
@@ -198,7 +292,11 @@ export function queryReportData(db: Database, options: QueryOptions = {}): Repor
   if (!options.allRuns) {
     for (const byModel of grouped.values()) {
       for (const [modelId, list] of byModel) {
-        byModel.set(modelId, [list[list.length - 1]!]);
+        const latestBatchId = list[list.length - 1]!.runBatchId;
+        byModel.set(
+          modelId,
+          list.filter((row) => row.runBatchId === latestBatchId),
+        );
       }
     }
   }

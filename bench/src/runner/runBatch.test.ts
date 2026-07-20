@@ -177,4 +177,52 @@ describe("runBatch concurrency", () => {
     expect(summary.avgScoreByModel.candidate).toBe(4.5);
     db.close();
   });
+
+  test("runs each cell `repeats` times, stamping repeat_index", async () => {
+    spyOn(console, "log").mockImplementation(() => {});
+    const db = createDb();
+    let callCount = 0;
+
+    await runBatch({
+      db,
+      prompts: [prompts[0]!],
+      runners: [
+        candidate("candidate", "candidate", async () => {
+          callCount++;
+          return { outputText: "ok", raw: {}, latencyMs: 1 };
+        }),
+      ],
+      defaultConcurrency: 2,
+      repeats: 3,
+    });
+
+    expect(callCount).toBe(3);
+    const rows = db
+      .query("SELECT repeat_index FROM runs ORDER BY repeat_index")
+      .all() as { repeat_index: number }[];
+    expect(rows.map((r) => r.repeat_index)).toEqual([0, 1, 2]);
+    db.close();
+  });
+
+  test("defaults to a single run per cell when repeats is omitted", async () => {
+    spyOn(console, "log").mockImplementation(() => {});
+    const db = createDb();
+
+    await runBatch({
+      db,
+      prompts: [prompts[0]!],
+      runners: [
+        candidate("candidate", "candidate", async () => ({
+          outputText: "ok",
+          raw: {},
+          latencyMs: 1,
+        })),
+      ],
+      defaultConcurrency: 1,
+    });
+
+    const rows = db.query("SELECT repeat_index FROM runs").all() as { repeat_index: number }[];
+    expect(rows).toEqual([{ repeat_index: 0 }]);
+    db.close();
+  });
 });

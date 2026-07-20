@@ -58,6 +58,12 @@ index 1111111..2222222 100644
 - `2`: Mostly generic review with little technical substance.
 - `1`: Approves unsafe code or ignores the requested review format.
 
+## Scoring Dimensions
+
+- `correctness-risk-detection` (weight 3): Flags fractional cents and missing coupon validation (negative, over-100, non-finite).
+- `prioritization` (weight 2): Leads with findings ordered by severity rather than a diff summary.
+- `test-thinking` (weight 2): Suggests focused tests for rounding and invalid coupon inputs.
+
 ## Variants
 
 - Easier: Ask for only the top three review findings.

@@ -35,6 +35,12 @@ Plan a 3-day city break to San Francisco for someone who likes food, walking, bo
 - `2`: Impractical routing, poor pacing, or weak fit to interests.
 - `1`: Bare list of attractions with no usable plan.
 
+## Scoring Dimensions
+
+- `geographic-coherence` (weight 3): Groups activities by neighborhood instead of zigzagging across the city.
+- `personalization` (weight 3): Matches the stated interests (food, walking, bookstores, views, low-key nightlife).
+- `pacing-and-logistics` (weight 2): Leaves unscheduled space and includes realistic transit and rainy-day alternatives.
+
 ## Variants
 
 - Easier: Plan one perfect day in San Francisco.

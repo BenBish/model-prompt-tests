@@ -35,6 +35,12 @@ I have 6 hours this weekend to learn enough SQL to analyze product usage data at
 - `2`: Too broad, too vague, or poorly sequenced.
 - `1`: Not actionable for a beginner in six hours.
 
+## Scoring Dimensions
+
+- `time-realism` (weight 3): Time allocation across topics is realistic for six hours.
+- `exercise-design` (weight 3): Includes concrete exercises against product-usage-like data with checkpoints.
+- `scope-discipline` (weight 2): Keeps advanced topics explicitly out of scope while still covering joins and aggregation.
+
 ## Variants
 
 - Easier: Make a 2-hour crash course.
