@@ -144,17 +144,23 @@ export function buildAssessmentSummary(
 
 function renderModelSummaryTable(summaries: ModelSummary[]): string {
   const header =
-    "| Model | Avg score | Median score | Score stddev | Repeat variance | Judge agreement | Avg latency ms | Median latency ms | Avg output tokens | Avg judge spread | Quality/sec |\n" +
-    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |";
+    "| Model | Avg score (peer) | Self score | Median score | Score stddev | Repeat variance | Judge agreement | Avg latency ms | Median latency ms | Avg output tokens | Avg judge spread | Quality/sec | Avg cost | Total cost | Quality/$ | Truncated |\n" +
+    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |";
   const rows = summaries.map(
     (summary) =>
-      `| \`${summary.modelId}\` | ${formatNumber(summary.avgScore)} | ${formatNumber(summary.medianScore)} | ` +
+      `| \`${summary.modelId}\` | ${formatNumber(summary.avgScore)} | ${formatNumber(summary.selfScoreAvg)} | ${formatNumber(summary.medianScore)} | ` +
       `${formatNumber(summary.scoreStdDev)} | ${formatNumber(summary.repeatVariance)} | ` +
       `${formatPercent(summary.judgeAgreementPct)} | ${formatNumber(summary.avgLatencyMs, 0)} | ` +
       `${formatNumber(summary.medianLatencyMs, 0)} | ${formatNumber(summary.avgOutputTokens, 0)} | ` +
-      `${formatNumber(summary.avgJudgeSpread)} | ${formatNumber(summary.qualityPerSecond, 3)} |`,
+      `${formatNumber(summary.avgJudgeSpread)} | ${formatNumber(summary.qualityPerSecond, 3)} | ` +
+      `${formatUsd(summary.avgCostUsd)} | ${formatUsd(summary.totalCostUsd)} | ` +
+      `${formatNumber(summary.qualityPerDollar, 1)} | ${summary.truncatedRuns} |`,
   );
   return [header, ...rows].join("\n");
+}
+
+function formatUsd(value: number | undefined): string {
+  return value === undefined ? "—" : `$${value.toFixed(4)}`;
 }
 
 function renderDimensionTable(summaries: ModelSummary[]): string | undefined {

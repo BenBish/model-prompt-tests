@@ -39,14 +39,20 @@ describe("resolvePromptSelector", () => {
 });
 
 describe("discoverPromptFiles", () => {
-  test("excludes benchmark-results, swe-tasks, and playwright-mcp scratch files", async () => {
+  test("excludes benchmark-results, docs, swe-tasks, and playwright-mcp scratch files", async () => {
     const repoRoot = makeTempRepo();
     mkdirSync(join(repoRoot, "benchmark-results", "some-run"), { recursive: true });
+    mkdirSync(join(repoRoot, "docs", "runs", "some-run"), { recursive: true });
     mkdirSync(join(repoRoot, "swe-tasks", "fixture", "smoke"), { recursive: true });
     mkdirSync(join(repoRoot, ".playwright-mcp"), { recursive: true });
     writeFileSync(
       join(repoRoot, "benchmark-results", "some-run", "article.md"),
       "# Not a prompt, no rubric section\n",
+      { flush: true },
+    );
+    writeFileSync(
+      join(repoRoot, "docs", "runs", "some-run", "article.md"),
+      "# Published site artifact, not a prompt\n",
       { flush: true },
     );
     writeFileSync(

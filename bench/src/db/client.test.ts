@@ -56,6 +56,8 @@ describe("applyMigrations", () => {
     expect(tableColumns(db, "scores")).not.toContain("dimension_scores");
     expect(tableColumns(db, "runs")).not.toContain("kind");
     expect(tableColumns(db, "runs")).not.toContain("harness_id");
+    expect(tableColumns(db, "runs")).not.toContain("stop_reason");
+    expect(tableColumns(db, "runs")).not.toContain("cost_usd");
 
     applyMigrations(db);
 
@@ -64,12 +66,16 @@ describe("applyMigrations", () => {
     expect(tableColumns(db, "scores")).toContain("weighted_score");
     expect(tableColumns(db, "runs")).toContain("kind");
     expect(tableColumns(db, "runs")).toContain("harness_id");
+    expect(tableColumns(db, "runs")).toContain("stop_reason");
+    expect(tableColumns(db, "runs")).toContain("cost_usd");
 
     const run = db.query("SELECT * FROM runs WHERE id = $id").get({ $id: runId.id }) as any;
     expect(run.prompt_id).toBe("prompt-1");
     expect(run.repeat_index).toBe(0);
     expect(run.kind).toBe("prompt");
     expect(run.harness_id).toBeNull();
+    expect(run.stop_reason).toBeNull();
+    expect(run.cost_usd).toBeNull();
 
     const score = db.query("SELECT * FROM scores WHERE run_id = $id").get({ $id: runId.id }) as any;
     expect(score.score).toBe(4);

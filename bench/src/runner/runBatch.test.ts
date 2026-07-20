@@ -204,6 +204,70 @@ describe("runBatch concurrency", () => {
     db.close();
   });
 
+  test("computes cost from model pricing when the provider doesn't report it", async () => {
+    spyOn(console, "log").mockImplementation(() => {});
+    const db = createDb();
+    const runner: CandidateRunner = {
+      id: "candidate",
+      providerId: "test",
+      modelName: "candidate",
+      pricing: { inputPerMTok: 2, outputPerMTok: 10 },
+      run: async () => ({
+        outputText: "ok",
+        raw: {},
+        latencyMs: 1,
+        inputTokens: 1000,
+        outputTokens: 500,
+        stopReason: "length",
+      }),
+    };
+
+    await runBatch({
+      db,
+      prompts: [prompts[0]!],
+      runners: [runner],
+      defaultConcurrency: 1,
+    });
+
+    const row = db.query("SELECT cost_usd, stop_reason FROM runs").get() as {
+      cost_usd: number;
+      stop_reason: string;
+    };
+    expect(row.cost_usd).toBeCloseTo(0.007);
+    expect(row.stop_reason).toBe("length");
+    db.close();
+  });
+
+  test("prefers provider-reported cost over computed pricing", async () => {
+    spyOn(console, "log").mockImplementation(() => {});
+    const db = createDb();
+    const runner: CandidateRunner = {
+      id: "candidate",
+      providerId: "test",
+      modelName: "candidate",
+      pricing: { inputPerMTok: 2, outputPerMTok: 10 },
+      run: async () => ({
+        outputText: "ok",
+        raw: {},
+        latencyMs: 1,
+        inputTokens: 1000,
+        outputTokens: 500,
+        costUsd: 0.0123,
+      }),
+    };
+
+    await runBatch({
+      db,
+      prompts: [prompts[0]!],
+      runners: [runner],
+      defaultConcurrency: 1,
+    });
+
+    const row = db.query("SELECT cost_usd FROM runs").get() as { cost_usd: number };
+    expect(row.cost_usd).toBeCloseTo(0.0123);
+    db.close();
+  });
+
   test("defaults to a single run per cell when repeats is omitted", async () => {
     spyOn(console, "log").mockImplementation(() => {});
     const db = createDb();

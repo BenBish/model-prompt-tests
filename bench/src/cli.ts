@@ -13,9 +13,13 @@ import { createAdapter } from "./providers/registry";
 import { candidateRunnerFromAdapter } from "./runner/candidateRunner";
 import { runBatch } from "./runner/runBatch";
 import { openDb } from "./db/client";
+import { getLatestRunBatchId } from "./db/runsRepo";
 import { queryReportData } from "./report/queryData";
 import { renderReportHtml } from "./report/renderHtml";
+import { renderCompareHtml } from "./report/renderCompareHtml";
 import { buildAssessmentSummary, buildNarrativePrompt, renderAssessmentMarkdown } from "./report/renderAssessment";
+import { exportBatch, validateExportName } from "./export/exportBatch";
+import { publishSite } from "./publish/publishSite";
 import type { ModelMatrixEntry } from "./providers/types";
 import { resolveJudge, resolveJudges } from "./config/judgeSelection";
 import { parsePositiveInteger } from "./util/cliArgs";
@@ -26,12 +30,17 @@ import { renderSweAssessmentSection, renderSweReportSection } from "./swe/render
 const REPO_ROOT = process.cwd();
 const DB_PATH = `${REPO_ROOT}/bench/data/bench.sqlite`;
 const REPORTS_DIR = `${REPO_ROOT}/bench/reports`;
+const BENCHMARK_RESULTS_DIR = `${REPO_ROOT}/benchmark-results`;
+const DOCS_DIR = `${REPO_ROOT}/docs`;
 const DEFAULT_CONCURRENCY = 3;
 
 function usage(): void {
   console.log(`Usage:
   bun bench/src/cli.ts run <prompt-glob-or-all> [--models id1,id2] [--judge <id>] [--judges id1,id2] [--concurrency <n>] [--repeats <n>] [--dry-run] [--no-judge]
   bun bench/src/cli.ts report [--out <path>] [--batch <run_batch_id>] [--all-runs] [--narrative] [--judge <id>]
+  bun bench/src/cli.ts report --compare <batchA> --compare <batchB> [--out <path>]
+  bun bench/src/cli.ts export --name <slug> (--batch <run_batch_id> | --latest)
+  bun bench/src/cli.ts publish [--out <dir>] [--results-dir <dir>]
   bun bench/src/cli.ts models <list|init|validate|set-judge|add-openai-compatible|add-anthropic|remove>
   bun bench/src/cli.ts list
   bun bench/src/cli.ts swe list
@@ -44,6 +53,23 @@ function requireFlag(values: Record<string, unknown>, key: string): string {
     throw new Error(`missing required --${key}`);
   }
   return value;
+}
+
+function parsePricingFlags(
+  values: Record<string, unknown>,
+): { inputPerMTok: number; outputPerMTok: number } | undefined {
+  const inputRaw = values["input-per-mtok"];
+  const outputRaw = values["output-per-mtok"];
+  if (inputRaw === undefined && outputRaw === undefined) return undefined;
+  if (inputRaw === undefined || outputRaw === undefined) {
+    throw new Error("pricing requires both --input-per-mtok and --output-per-mtok");
+  }
+  const inputPerMTok = Number(inputRaw);
+  const outputPerMTok = Number(outputRaw);
+  if (!Number.isFinite(inputPerMTok) || inputPerMTok < 0 || !Number.isFinite(outputPerMTok) || outputPerMTok < 0) {
+    throw new Error("--input-per-mtok and --output-per-mtok must be non-negative numbers");
+  }
+  return { inputPerMTok, outputPerMTok };
 }
 
 function parseHeaders(value: unknown): Record<string, string> | undefined {
@@ -145,7 +171,7 @@ async function cmdRun(positionals: string[], values: Record<string, unknown>): P
   }
 
   const runners = matrix.map((entry) =>
-    candidateRunnerFromAdapter(entry.id, createAdapter(entry), entry.maxConcurrent),
+    candidateRunnerFromAdapter(entry.id, createAdapter(entry), entry.maxConcurrent, entry.pricing),
   );
 
   const db = openDb(DB_PATH);
@@ -168,7 +194,82 @@ async function cmdRun(positionals: string[], values: Record<string, unknown>): P
   }
 }
 
+async function cmdReportCompare(values: Record<string, unknown>): Promise<void> {
+  const compareFlag = values.compare;
+  if (!Array.isArray(compareFlag) || compareFlag.length !== 2) {
+    throw new Error("--compare requires exactly two batch ids: --compare <batchA> --compare <batchB>");
+  }
+  const [batchBefore, batchAfter] = compareFlag as [string, string];
+  const db = openDb(DB_PATH);
+  const dataBefore = queryReportData(db, { runBatchId: batchBefore, allRuns: true });
+  const dataAfter = queryReportData(db, { runBatchId: batchAfter, allRuns: true });
+  if (dataBefore.promptIds.length === 0) throw new Error(`no runs found for batch "${batchBefore}"`);
+  if (dataAfter.promptIds.length === 0) throw new Error(`no runs found for batch "${batchAfter}"`);
+
+  const html = renderCompareHtml(
+    batchBefore,
+    dataBefore.summaries,
+    batchAfter,
+    dataAfter.summaries,
+    new Date().toISOString(),
+  );
+  const outPath =
+    (values.out as string | undefined) ?? `${REPORTS_DIR}/compare-${batchBefore}-vs-${batchAfter}.html`;
+  await Bun.write(outPath, html);
+  console.log(`Compare report written to ${outPath}`);
+}
+
+async function cmdExport(values: Record<string, unknown>): Promise<void> {
+  const name = requireFlag(values, "name");
+  // Validate the slug before opening the DB / resolving batches so bad names fail fast.
+  validateExportName(name);
+
+  const batchFlag = values.batch as string | undefined;
+  if (batchFlag && values.latest) {
+    throw new Error("use either --batch or --latest, not both");
+  }
+  if (!batchFlag && !values.latest) {
+    throw new Error("export requires --name <slug> and either --batch <run_batch_id> or --latest");
+  }
+
+  const db = openDb(DB_PATH);
+  const runBatchId = batchFlag ?? getLatestRunBatchId(db);
+  if (!runBatchId) {
+    throw new Error("no runs found in the database yet");
+  }
+
+  const { config } = await loadModelsConfig(REPO_ROOT);
+  const outDir = `${BENCHMARK_RESULTS_DIR}/${name}`;
+  const result = await exportBatch({ db, config, runBatchId, name, outDir });
+
+  console.log(`Exported batch ${runBatchId} to ${result.outDir}/`);
+  for (const file of result.files) console.log(`  ${file}`);
+}
+
+async function cmdPublish(values: Record<string, unknown>): Promise<void> {
+  const resultsDir = (values["results-dir"] as string | undefined) ?? BENCHMARK_RESULTS_DIR;
+  const outDir = (values.out as string | undefined) ?? DOCS_DIR;
+
+  const result = await publishSite({ resultsDir, outDir });
+
+  console.log(`Published ${result.published.length} run(s) to ${result.outDir}/`);
+  for (const name of result.published) console.log(`  runs/${name}/index.html`);
+  if (result.skipped.length > 0) {
+    console.log(`Skipped ${result.skipped.length} entr${result.skipped.length === 1 ? "y" : "ies"}:`);
+    for (const s of result.skipped) console.log(`  ${s.name}: ${s.reason}`);
+  }
+  console.log(`Index written to ${outDir}/index.html`);
+  console.log(
+    `To serve on GitHub Pages: repo Settings -> Pages -> Deploy from a branch -> main / docs (one-time setup).`,
+  );
+}
+
 async function cmdReport(values: Record<string, unknown>): Promise<void> {
+  if (values.compare !== undefined) {
+    await cmdReportCompare(values);
+    return;
+  }
+
   const db = openDb(DB_PATH);
   const runBatchId = values.batch as string | undefined;
   const data = queryReportData(db, {
@@ -328,6 +429,8 @@ async function cmdModels(rest: string[]): Promise<void> {
           "max-tokens": { type: "string" },
           "timeout-ms": { type: "string" },
           "reasoning-effort": { type: "string" },
+          "input-per-mtok": { type: "string" },
+          "output-per-mtok": { type: "string" },
           disabled: { type: "boolean" },
         },
       });
@@ -347,6 +450,7 @@ async function cmdModels(rest: string[]): Promise<void> {
         maxConcurrent: parsePositiveInteger(values["max-concurrent"], "--max-concurrent"),
         maxTokens: parsePositiveInteger(values["max-tokens"], "--max-tokens"),
         timeoutMs: parsePositiveInteger(values["timeout-ms"], "--timeout-ms"),
+        pricing: parsePricingFlags(values),
         enabled: values.disabled === true ? false : undefined,
       });
       const path = saveLocalModelsConfig(REPO_ROOT, config);
@@ -365,6 +469,8 @@ async function cmdModels(rest: string[]): Promise<void> {
           "max-concurrent": { type: "string" },
           "max-tokens": { type: "string" },
           "timeout-ms": { type: "string" },
+          "input-per-mtok": { type: "string" },
+          "output-per-mtok": { type: "string" },
           disabled: { type: "boolean" },
         },
       });
@@ -381,6 +487,7 @@ async function cmdModels(rest: string[]): Promise<void> {
         maxConcurrent: parsePositiveInteger(values["max-concurrent"], "--max-concurrent"),
         maxTokens: parsePositiveInteger(values["max-tokens"], "--max-tokens"),
         timeoutMs: parsePositiveInteger(values["timeout-ms"], "--timeout-ms"),
+        pricing: parsePricingFlags(values),
         enabled: values.disabled === true ? false : undefined,
       });
       const path = saveLocalModelsConfig(REPO_ROOT, config);
@@ -393,8 +500,8 @@ async function cmdModels(rest: string[]): Promise<void> {
   bun bench/src/cli.ts models init
   bun bench/src/cli.ts models validate
   bun bench/src/cli.ts models set-judge <model-id>
-  bun bench/src/cli.ts models add-openai-compatible --id <id> --provider <provider-id> --model <name> --base-url <url> [--api-key-env <ENV>] [--header Name=Value]... [--reasoning-effort <effort>] [--max-concurrent <n>] [--max-tokens <n>] [--timeout-ms <n>] [--disabled]
-  bun bench/src/cli.ts models add-anthropic --id <id> --model <name> --api-key-env <ENV> [--base-url <url>] [--max-concurrent <n>] [--max-tokens <n>] [--timeout-ms <n>] [--disabled]
+  bun bench/src/cli.ts models add-openai-compatible --id <id> --provider <provider-id> --model <name> --base-url <url> [--api-key-env <ENV>] [--header Name=Value]... [--reasoning-effort <effort>] [--max-concurrent <n>] [--max-tokens <n>] [--timeout-ms <n>] [--input-per-mtok <n>] [--output-per-mtok <n>] [--disabled]
+  bun bench/src/cli.ts models add-anthropic --id <id> --model <name> --api-key-env <ENV> [--base-url <url>] [--max-concurrent <n>] [--max-tokens <n>] [--timeout-ms <n>] [--input-per-mtok <n>] [--output-per-mtok <n>] [--disabled]
   bun bench/src/cli.ts models remove <model-id>`);
       if (subcommand) process.exit(1);
   }
@@ -442,9 +549,35 @@ async function main(): Promise<void> {
           "all-runs": { type: "boolean" },
           narrative: { type: "boolean" },
           judge: { type: "string" },
+          compare: { type: "string", multiple: true },
         },
       });
       await cmdReport(values);
+      break;
+    }
+    case "export": {
+      const { values } = parseArgs({
+        args: rest,
+        allowPositionals: false,
+        options: {
+          name: { type: "string" },
+          batch: { type: "string" },
+          latest: { type: "boolean" },
+        },
+      });
+      await cmdExport(values);
+      break;
+    }
+    case "publish": {
+      const { values } = parseArgs({
+        args: rest,
+        allowPositionals: false,
+        options: {
+          out: { type: "string" },
+          "results-dir": { type: "string" },
+        },
+      });
+      await cmdPublish(values);
       break;
     }
     case "models": {

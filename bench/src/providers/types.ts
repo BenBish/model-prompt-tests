@@ -3,6 +3,11 @@ export interface ModelCallInput {
   userPrompt: string;
   maxTokens?: number;
   temperature?: number;
+  /**
+   * When set, adapters attempt a schema-enforced structured response
+   * (Anthropic: forced tool call; OpenAI-compatible: response_format json_schema).
+   */
+  jsonSchema?: { name: string; schema: Record<string, unknown> };
 }
 
 export interface ModelCallResult {
@@ -12,6 +17,15 @@ export interface ModelCallResult {
   outputTokens?: number;
   latencyMs: number;
   stopReason?: string;
+  /** Provider-reported billed cost in USD when available (e.g. OpenRouter usage.cost). */
+  costUsd?: number;
+}
+
+export interface ModelPricing {
+  /** USD per million input tokens. */
+  inputPerMTok: number;
+  /** USD per million output tokens. */
+  outputPerMTok: number;
 }
 
 export interface ModelAdapter {
@@ -31,6 +45,7 @@ export interface AnthropicAdapterConfig {
   maxConcurrent?: number;
   timeoutMs?: number;
   enabled?: boolean;
+  pricing?: ModelPricing;
 }
 
 export interface OpenAICompatibleAdapterConfig {
@@ -46,6 +61,7 @@ export interface OpenAICompatibleAdapterConfig {
   maxConcurrent?: number;
   timeoutMs?: number;
   enabled?: boolean;
+  pricing?: ModelPricing;
 }
 
 export type ModelMatrixEntry = AnthropicAdapterConfig | OpenAICompatibleAdapterConfig;

@@ -8,6 +8,7 @@ const EXCLUDED_PREFIXES = [
   "bench/",
   "swe-tasks/",
   "benchmark-results/",
+  "docs/",
   ".playwright-mcp/",
 ];
 const EXCLUDED_FILES = new Set(["README.md"]);

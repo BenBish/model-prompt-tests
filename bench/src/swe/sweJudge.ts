@@ -1,5 +1,5 @@
 import { buildDimensionalCorrectiveMessage, validateDimensionalResult, type DimensionalResult } from "../judge/dimensionalScoring";
-import { runStructuredLlmCall } from "../judge/structuredCall";
+import { buildJudgeResultJsonSchema, runStructuredLlmCall } from "../judge/structuredCall";
 import type { ModelAdapter } from "../providers/types";
 import { buildSweJudgeSystemPrompt, buildSweJudgeUserPrompt } from "./buildSweJudgePrompt";
 import type { SweTask } from "./taskSpec";
@@ -42,6 +42,7 @@ export async function runSweJudge(
       retry: options.retry,
       requestErrorPrefix: "swe judge request failed",
       exhaustedErrorMessage: () => "swe judge did not return a valid JSON score after 2 attempts",
+      jsonSchema: buildJudgeResultJsonSchema(task.dimensions),
     },
   );
 

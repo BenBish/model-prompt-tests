@@ -15,7 +15,9 @@ CREATE TABLE IF NOT EXISTS runs (
   status        TEXT NOT NULL CHECK (status IN ('ok', 'error')),
   repeat_index  INTEGER NOT NULL DEFAULT 0,
   kind          TEXT NOT NULL DEFAULT 'prompt' CHECK (kind IN ('prompt', 'swe')),
-  harness_id    TEXT
+  harness_id    TEXT,
+  stop_reason   TEXT,
+  cost_usd      REAL
 );
 
 CREATE TABLE IF NOT EXISTS swe_results (
@@ -56,5 +58,6 @@ CREATE TABLE IF NOT EXISTS scores (
 
 CREATE INDEX IF NOT EXISTS idx_runs_prompt ON runs(prompt_id);
 CREATE INDEX IF NOT EXISTS idx_runs_model ON runs(model_id);
+CREATE INDEX IF NOT EXISTS idx_runs_batch ON runs(run_batch_id);
 CREATE INDEX IF NOT EXISTS idx_scores_run ON scores(run_id);
 CREATE INDEX IF NOT EXISTS idx_swe_results_run ON swe_results(run_id);

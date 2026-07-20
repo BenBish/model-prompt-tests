@@ -63,7 +63,8 @@ describe("runSweJudge", () => {
     };
 
     const outcome = await runSweJudge(adapter, task, "diff", undefined, "Done");
-    expect(calls).toBe(2);
+    // 1 structured-schema attempt (invalid payload) + 2 plain-text corrective attempts.
+    expect(calls).toBe(3);
     expect(outcome.result).toBeNull();
     expect(outcome.error).toBe("swe judge did not return a valid JSON score after 2 attempts");
   });
