@@ -8,7 +8,7 @@ import {
   type ReportRow,
 } from "./queryData";
 
-function scoreBadgeColor(score: number | undefined): string {
+export function scoreBadgeColor(score: number | undefined): string {
   if (score === undefined) return "#888";
   if (score >= 5) return "#1a7f37";
   if (score >= 4) return "#4c9a2a";
@@ -98,11 +98,11 @@ function renderCell(rows: ReportRow[] | undefined): string {
   return `<td>${renderCellSummary(rows, okScores)}${details}</td>`;
 }
 
-function formatNumber(value: number | undefined, digits = 2): string {
+export function formatNumber(value: number | undefined, digits = 2): string {
   return value === undefined ? "—" : value.toFixed(digits);
 }
 
-function formatPercent(value: number | undefined): string {
+export function formatPercent(value: number | undefined): string {
   return value === undefined ? "—" : `${(value * 100).toFixed(0)}%`;
 }
 
@@ -158,7 +158,7 @@ function renderSummaryRows(summaries: ModelSummary[]): string {
     .join("");
 }
 
-export function renderReportHtml(data: ReportData, generatedAt: string): string {
+export function renderReportHtml(data: ReportData, generatedAt: string, sweSectionHtml = ""): string {
   const headerCells = data.modelIds.map((modelId) => `<th>${escapeHtml(modelId)}</th>`).join("");
 
   const bodyRows = data.promptIds
@@ -230,6 +230,7 @@ export function renderReportHtml(data: ReportData, generatedAt: string): string 
     <thead><tr><th>Prompt</th>${headerCells}</tr></thead>
     <tbody>${bodyRows}</tbody>
   </table>
+  ${sweSectionHtml}
 </body>
 </html>`;
 }
