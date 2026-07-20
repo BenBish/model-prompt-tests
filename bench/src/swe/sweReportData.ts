@@ -30,6 +30,15 @@ export interface SweReportRow {
   verifyPassed?: boolean;
   verifyOutput?: string;
   verifyDurationMs?: number;
+  reviewMetrics?: {
+    recall?: number;
+    precision?: number;
+    f1?: number;
+    truePositives?: number;
+    falseNegatives?: number;
+    falsePositives?: number;
+    matcherModelId?: string;
+  };
   judgeResults: JudgeReportRow[];
 }
 
@@ -49,6 +58,11 @@ export interface SweSummary {
   avgAgentLatencyMs?: number;
   avgDiffLines?: number;
   timeouts: number;
+  /** Mean recall/precision/F1 over code-review rows that have review_metrics. */
+  avgRecall?: number;
+  avgPrecision?: number;
+  avgF1?: number;
+  reviewRuns: number;
 }
 
 export interface SweReportData {
@@ -100,6 +114,7 @@ function rowToSweReportRow(row: any): SweReportRow {
     verifyPassed: row.verify_passed === null ? undefined : Boolean(row.verify_passed),
     verifyOutput: row.verify_output ?? undefined,
     verifyDurationMs: row.verify_duration_ms ?? undefined,
+    reviewMetrics: row.review_metrics ? JSON.parse(row.review_metrics) : undefined,
     judgeResults: [],
   };
 }
@@ -157,6 +172,17 @@ function summarizeSwe(harnessModelIds: string[], rows: SweReportRow[]): SweSumma
     );
     const timeouts = okRows.filter((row) => row.agentTimedOut === true).length;
 
+    const reviewRows = okRows.filter((row) => row.reviewMetrics !== undefined);
+    const recalls = reviewRows.flatMap((row) =>
+      row.reviewMetrics?.recall === undefined ? [] : [row.reviewMetrics.recall],
+    );
+    const precisions = reviewRows.flatMap((row) =>
+      row.reviewMetrics?.precision === undefined ? [] : [row.reviewMetrics.precision],
+    );
+    const f1s = reviewRows.flatMap((row) =>
+      row.reviewMetrics?.f1 === undefined ? [] : [row.reviewMetrics.f1],
+    );
+
     return {
       harnessModelId,
       totalRuns: cellRows.length,
@@ -171,6 +197,10 @@ function summarizeSwe(harnessModelIds: string[], rows: SweReportRow[]): SweSumma
       avgAgentLatencyMs: average(latencies),
       avgDiffLines: average(diffLines),
       timeouts,
+      avgRecall: average(recalls),
+      avgPrecision: average(precisions),
+      avgF1: average(f1s),
+      reviewRuns: reviewRows.length,
     };
   });
 }
@@ -181,7 +211,7 @@ export function querySweReportData(db: Database, options: QuerySweOptions = {}):
            swe_results.files_changed, swe_results.lines_added, swe_results.lines_removed,
            swe_results.transcript, swe_results.agent_exit_code, swe_results.agent_timed_out,
            swe_results.verify_command, swe_results.verify_exit_code, swe_results.verify_passed,
-           swe_results.verify_output, swe_results.verify_duration_ms
+           swe_results.verify_output, swe_results.verify_duration_ms, swe_results.review_metrics
     FROM runs
     LEFT JOIN swe_results ON swe_results.run_id = runs.id
     WHERE runs.kind = 'swe'

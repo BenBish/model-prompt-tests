@@ -7,13 +7,16 @@ import { insertSweResult } from "../db/sweResultsRepo";
 import { createLimiter, type Limiter } from "../util/concurrency";
 import { runSweJudge } from "./sweJudge";
 import type { SweHarness } from "./harness/types";
-import type { ExternalSweTask, FixtureSweTask, SweTask } from "./taskSpec";
+import type { CodeReviewSweTask, ExternalSweTask, FixtureSweTask, SweTask } from "./taskSpec";
 import {
   prepareExternalVerify,
   provisionExternalWorkspace,
   removeExternalWorktree,
   type ProvisionedExternalWorkspace,
 } from "./externalWorkspace";
+import { loadFindingsSpec } from "./findings";
+import { runReviewMatcher } from "./reviewMatcher";
+import { provisionCodeReviewWorkspace } from "./reviewWorkspace";
 import {
   captureDiff,
   cleanupWorkspace,
@@ -113,11 +116,7 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
 
   const cellTasks: Promise<void>[] = [];
   for (const task of tasks) {
-    if (task.type === "code-review") {
-      console.log(`[skip] ${task.id}: code-review tasks are Phase 4`);
-      continue;
-    }
-    if (task.type !== "fixture" && task.type !== "external") {
+    if (task.type !== "fixture" && task.type !== "external" && task.type !== "code-review") {
       console.log(`[skip] ${task.id}: unsupported task type`);
       continue;
     }
@@ -129,11 +128,7 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
     }
   }
 
-  async function executeCell(
-    task: FixtureSweTask | ExternalSweTask,
-    cell: SweRunnerCell,
-    repeatIndex: number,
-  ): Promise<void> {
+  async function executeCell(task: SweTask, cell: SweRunnerCell, repeatIndex: number): Promise<void> {
     const startedAt = new Date().toISOString();
     const modelId = `${cell.harnessId}:${cell.modelAlias}`;
     const label = `${task.id} x ${modelId}${repeats > 1 ? ` (repeat ${repeatIndex + 1}/${repeats})` : ""}`;
@@ -170,6 +165,17 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
     let externalMeta: ProvisionedExternalWorkspace | undefined;
 
     try {
+      if (task.type === "code-review") {
+        await executeCodeReviewCell(task, cell, repeatIndex, {
+          startedAt,
+          modelId,
+          nativeModel,
+          label,
+          workspaceDir,
+        });
+        return;
+      }
+
       let provisioned: ProvisionedWorkspace;
       if (task.type === "fixture") {
         provisioned = await provisionFixtureWorkspace(task, workspaceDir);
@@ -264,7 +270,113 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
       });
       errored++;
       console.log(`[error] ${label}: ${message}`);
-      // Workspaces from a harness/verification failure are always kept for debugging.
+    }
+  }
+
+  async function executeCodeReviewCell(
+    task: CodeReviewSweTask,
+    cell: SweRunnerCell,
+    repeatIndex: number,
+    ctx: {
+      startedAt: string;
+      modelId: string;
+      nativeModel: string;
+      label: string;
+      workspaceDir: string;
+    },
+  ): Promise<void> {
+    const { startedAt, modelId, nativeModel, label, workspaceDir } = ctx;
+    const provisioned = await provisionCodeReviewWorkspace(task, workspaceDir);
+
+    const agentResult = await cell.harness.run({
+      taskPrompt: provisioned.reviewPrompt,
+      model: nativeModel,
+      workDir: workspaceDir,
+      timeoutMs: task.agentTimeoutMs,
+      mode: "review",
+    });
+
+    // Matcher uses the primary qualitative judge when available.
+    const primaryJudge = judges[0];
+    let reviewMetrics: unknown | undefined;
+    let matcherError: string | undefined;
+    if (primaryJudge) {
+      const findingsSpec = await loadFindingsSpec(task.findingsPath);
+      const matchOutcome = await runReviewMatcher(
+        primaryJudge.adapter,
+        findingsSpec,
+        agentResult.finalMessage,
+        provisioned.diffText,
+        primaryJudge.modelId,
+      );
+      if (matchOutcome.metrics) {
+        reviewMetrics = matchOutcome.metrics;
+      } else {
+        matcherError = matchOutcome.error ?? "matcher failed";
+        judgeErrored++;
+        console.log(`[matcher-error] ${label}: ${matcherError}`);
+      }
+    }
+
+    const runId = insertRun(db, {
+      runBatchId,
+      promptId: task.id,
+      providerId: cell.harnessId,
+      modelId,
+      modelName: nativeModel,
+      startedAt,
+      latencyMs: Math.round(agentResult.latencyMs),
+      inputTokens: agentResult.inputTokens,
+      outputTokens: agentResult.outputTokens,
+      outputText: agentResult.finalMessage,
+      rawResponse: JSON.stringify(agentResult.raw),
+      status: "ok",
+      repeatIndex,
+      kind: "swe",
+      harnessId: cell.harnessId,
+      costUsd: agentResult.costUsd,
+    });
+
+    insertSweResult(db, {
+      runId,
+      taskType: "code-review",
+      workdir: workspaceDir,
+      baselineSha: provisioned.baselineSha,
+      // Store the PR under review (not the agent's workspace delta).
+      diffPatch: provisioned.diffText,
+      filesChanged: undefined,
+      linesAdded: undefined,
+      linesRemoved: undefined,
+      transcript: agentResult.transcript,
+      agentExitCode: agentResult.exitCode,
+      agentTimedOut: agentResult.timedOut,
+      // No verify step for code-review; pass/fail is undefined.
+      reviewMetrics,
+      error: matcherError,
+    });
+
+    ok++;
+    // Code-review has no verify pass/fail; do not increment passed/failed.
+    okRunIds.push({
+      runId,
+      task,
+      diffPatch: provisioned.diffText,
+      verify: undefined,
+      finalMessage: agentResult.finalMessage,
+    });
+
+    const f1 =
+      reviewMetrics && typeof reviewMetrics === "object" && "f1" in reviewMetrics
+        ? (reviewMetrics as { f1: number }).f1
+        : undefined;
+    console.log(
+      `[review] ${label} (${Math.round(agentResult.latencyMs)}ms agent` +
+        (f1 !== undefined ? `, F1 ${f1.toFixed(2)}` : ", no matcher") +
+        `)`,
+    );
+
+    if (!options.keepWorkspaces) {
+      await cleanupWorkspace(workspaceDir);
     }
   }
 

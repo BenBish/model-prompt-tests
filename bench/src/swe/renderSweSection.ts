@@ -4,9 +4,25 @@ import type { SweReportData, SweReportRow, SweSummary } from "./sweReportData";
 
 function passBadgeColor(row: SweReportRow): string {
   if (row.runStatus === "error") return "#888";
+  if (row.reviewMetrics) {
+    const f1 = row.reviewMetrics.f1 ?? 0;
+    if (f1 >= 0.75) return "#1a7f37";
+    if (f1 >= 0.4) return "#b8860b";
+    return "#c62828";
+  }
   if (row.verifyPassed === true) return "#1a7f37";
   if (row.verifyPassed === false) return "#c62828";
   return "#888";
+}
+
+function runBadgeLabel(row: SweReportRow): string {
+  if (row.reviewMetrics) {
+    const f1 = row.reviewMetrics.f1;
+    return f1 === undefined ? "review" : `F1 ${formatNumber(f1)}`;
+  }
+  if (row.verifyPassed === true) return "pass";
+  if (row.verifyPassed === false) return "fail";
+  return "?";
 }
 
 function renderSweRunDetails(row: SweReportRow): string {
@@ -15,13 +31,16 @@ function renderSweRunDetails(row: SweReportRow): string {
   }
 
   const badgeColor = passBadgeColor(row);
-  const label = row.verifyPassed === true ? "pass" : row.verifyPassed === false ? "fail" : "?";
+  const label = runBadgeLabel(row);
   const meta = [
     row.startedAt,
     `batch ${row.runBatchId}`,
     row.repeatIndex > 0 ? `repeat ${row.repeatIndex + 1}` : undefined,
     row.latencyMs !== undefined ? `${row.latencyMs}ms agent` : undefined,
     row.agentTimedOut ? "agent timed out" : undefined,
+    row.reviewMetrics
+      ? `R ${formatNumber(row.reviewMetrics.recall)} · P ${formatNumber(row.reviewMetrics.precision)} · F1 ${formatNumber(row.reviewMetrics.f1)}`
+      : undefined,
     row.filesChanged !== undefined
       ? `${row.filesChanged} file(s), +${row.linesAdded ?? 0}/-${row.linesRemoved ?? 0}`
       : undefined,
@@ -47,16 +66,25 @@ function renderSweRunDetails(row: SweReportRow): string {
     })
     .join("");
 
+  const reviewMetricsHtml = row.reviewMetrics
+    ? `<h4>Review metrics</h4><pre>${escapeHtml(JSON.stringify(row.reviewMetrics, null, 2))}</pre>`
+    : "";
+
+  const verifyHtml = row.reviewMetrics
+    ? ""
+    : `<h4>Verify (${escapeHtml(row.verifyCommand ?? "?")})</h4>
+        <pre>${escapeHtml(row.verifyOutput || "(no output)")}</pre>`;
+
   return `
     <details>
-      <summary><span class="badge" style="background:${badgeColor}">${label}</span> ${escapeHtml(meta)}</summary>
+      <summary><span class="badge" style="background:${badgeColor}">${escapeHtml(label)}</span> ${escapeHtml(meta)}</summary>
       <div class="run-detail">
         <h4>Agent final message</h4>
         <pre>${escapeHtml(row.finalMessage ?? "")}</pre>
         <h4>Diff</h4>
         <pre>${escapeHtml(row.diffPatch || "(no changes)")}</pre>
-        <h4>Verify (${escapeHtml(row.verifyCommand ?? "?")})</h4>
-        <pre>${escapeHtml(row.verifyOutput || "(no output)")}</pre>
+        ${verifyHtml}
+        ${reviewMetricsHtml}
         ${judgeHtml}
       </div>
     </details>
@@ -82,6 +110,9 @@ function renderSweSummaryRows(summaries: SweSummary[]): string {
           <td>${formatPercent(summary.passRate)}</td>
           <td>${formatNumber(summary.avgJudgeScore)}</td>
           <td>${formatNumber(summary.medianJudgeScore)}</td>
+          <td>${formatNumber(summary.avgRecall)}</td>
+          <td>${formatNumber(summary.avgPrecision)}</td>
+          <td>${formatNumber(summary.avgF1)}</td>
           <td>${formatNumber(summary.avgAgentLatencyMs, 0)}</td>
           <td>${formatNumber(summary.avgDiffLines, 1)}</td>
           <td>${summary.timeouts}</td>
@@ -95,13 +126,14 @@ export function renderSweAssessmentSection(data: SweReportData): string {
   if (data.taskIds.length === 0) return "";
 
   const header =
-    "| Harness:Model | Total | OK | Errors | Passed | Failed | Pass rate | Avg judge score | Median judge score | Avg agent ms | Avg diff lines | Timeouts |\n" +
-    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |";
+    "| Harness:Model | Total | OK | Errors | Passed | Failed | Pass rate | Avg judge | Median judge | Avg recall | Avg precision | Avg F1 | Avg agent ms | Avg diff lines | Timeouts |\n" +
+    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |";
   const rows = data.summaries.map(
     (summary) =>
       `| \`${summary.harnessModelId}\` | ${summary.totalRuns} | ${summary.okRuns} | ${summary.errorRuns} | ` +
       `${summary.passedRuns} | ${summary.failedRuns} | ${formatPercent(summary.passRate)} | ` +
       `${formatNumber(summary.avgJudgeScore)} | ${formatNumber(summary.medianJudgeScore)} | ` +
+      `${formatNumber(summary.avgRecall)} | ${formatNumber(summary.avgPrecision)} | ${formatNumber(summary.avgF1)} | ` +
       `${formatNumber(summary.avgAgentLatencyMs, 0)} | ${formatNumber(summary.avgDiffLines, 1)} | ${summary.timeouts} |`,
   );
 
@@ -151,6 +183,9 @@ export function renderSweReportSection(data: SweReportData): string {
         <th>Pass rate</th>
         <th>Avg judge score</th>
         <th>Median judge score</th>
+        <th>Avg recall</th>
+        <th>Avg precision</th>
+        <th>Avg F1</th>
         <th>Avg agent ms</th>
         <th>Avg diff lines</th>
         <th>Timeouts</th>

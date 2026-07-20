@@ -1,0 +1,22 @@
+diff --git a/src/cart.ts b/src/cart.ts
+index 1111111..2222222 100644
+--- a/src/cart.ts
++++ b/src/cart.ts
+@@ -1,11 +1,20 @@
+ export type CartItem = {
+   sku: string;
+   priceCents: number;
+   quantity: number;
+ };
+ 
+-export function totalCents(items: CartItem[]) {
+-  return items.reduce((sum, item) => sum + item.priceCents * item.quantity, 0);
++export function totalCents(items: CartItem[], couponPercent?: number) {
++  const subtotal = items.reduce((sum, item) => sum + item.priceCents * item.quantity, 0);
++  if (!couponPercent) return subtotal;
++  return subtotal - subtotal * couponPercent / 100;
+ }
+ 
+ export function itemCount(items: CartItem[]) {
+   return items.reduce((sum, item) => sum + item.quantity, 0);
+ }

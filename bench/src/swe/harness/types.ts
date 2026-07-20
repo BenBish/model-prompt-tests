@@ -4,6 +4,11 @@ export interface SweHarnessInput {
   model: string;
   workDir: string;
   timeoutMs: number;
+  /**
+   * `edit` (default): agent is expected to change the workspace (raw-api applies a patch).
+   * `review`: agent produces a text review; raw-api captures message text without git apply.
+   */
+  mode?: "edit" | "review";
 }
 
 export interface SweHarnessResult {

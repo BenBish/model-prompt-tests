@@ -213,6 +213,10 @@ swe-tasks/
   external/<name>/
     task.md       # repoUrl + commitSha (+ optional holdoutPatch, testPaths)
     source.bundle # optional offline seed (git bundle); or any cloneable URL/path
+  code-review/<name>/
+    task.md       # type: code-review
+    diff.patch    # unified diff under review
+    findings.json # ground-truth findings + optional redHerrings
 ```
 
 `task.md` frontmatter is flat `key: value` (plus indented `- item` lists for
@@ -263,6 +267,35 @@ the task directory) at `commitSha`. Provisioning:
 Only listed `testPaths` are defended against agent tampering — authors are responsible
 for listing every grader path. Seed example: `swe-tasks/external/tiny-add/` (offline
 `source.bundle` + `holdout.patch`).
+
+#### Code-review tasks
+
+Diff-only reviews (no hidden-test verify). Workspace is minimal: `DIFF.patch` + README
+instructions; the harness prompt embeds the unified diff. Agent output is the review text
+(`mode: review` — raw-api returns text without applying a patch).
+
+Ground truth lives in `findings.json`:
+
+```json
+{
+  "findings": [
+    {
+      "id": "fractional-cents",
+      "severity": "high",
+      "summary": "Coupon math can produce fractional cents.",
+      "matchHints": ["fractional", "cents", "rounding"]
+    }
+  ],
+  "redHerrings": [{ "summary": "Rename for style only" }]
+}
+```
+
+After the agent runs, the **primary `--judge` model** also acts as matcher: one structured
+call maps the review onto findings. Severity-weighted recall (high=3, med=2, low=1),
+precision, and F1 land in `swe_results.review_metrics` and the SWE report columns.
+Qualitative SWE judging still runs for process/quality dimensions.
+
+Seeds: `swe-tasks/code-review/{cart-coupon,auth-timing}/`.
 
 ### Harness config (`bench/harnesses.json`)
 

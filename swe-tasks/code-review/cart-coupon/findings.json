@@ -1,0 +1,30 @@
+{
+  "findings": [
+    {
+      "id": "fractional-cents",
+      "severity": "high",
+      "summary": "Coupon math uses floating division and can produce fractional cents instead of integer cents.",
+      "locations": ["src/cart.ts:totalCents"],
+      "matchHints": ["fractional", "cents", "float", "rounding", "integer"]
+    },
+    {
+      "id": "coupon-validation",
+      "severity": "high",
+      "summary": "No validation that couponPercent is finite, non-negative, and not greater than 100.",
+      "locations": ["src/cart.ts:totalCents"],
+      "matchHints": ["validation", "negative", "over 100", "NaN", "non-finite", "coupon"]
+    },
+    {
+      "id": "missing-tests",
+      "severity": "med",
+      "summary": "No focused tests for rounding behavior or invalid coupon inputs.",
+      "matchHints": ["test", "unit test", "rounding", "invalid coupon"]
+    }
+  ],
+  "redHerrings": [
+    {
+      "summary": "Function should be renamed for style only",
+      "note": "Cosmetic rename is not a correctness finding"
+    }
+  ]
+}
