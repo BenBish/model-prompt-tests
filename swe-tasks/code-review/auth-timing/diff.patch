@@ -1,0 +1,20 @@
+diff --git a/src/auth.ts b/src/auth.ts
+index aaaaaaa..bbbbbbb 100644
+--- a/src/auth.ts
++++ b/src/auth.ts
+@@ -1,8 +1,14 @@
+ export async function login(email: string, password: string, db: { findUser(email: string): Promise<{ hash: string } | null> }) {
+   const user = await db.findUser(email);
+-  if (!user) return { ok: false as const, reason: "unknown_user" };
+-  const match = password === user.hash;
+-  if (!match) return { ok: false as const, reason: "bad_password" };
++  if (!user) return { ok: false as const, reason: "unknown_user" };
++  // "Constant-time" check
++  let match = true;
++  for (let i = 0; i < password.length; i++) {
++    if (password[i] !== user.hash[i]) match = false;
++  }
++  if (password.length !== user.hash.length) match = false;
++  if (!match) return { ok: false as const, reason: "bad_password" };
+   return { ok: true as const };
+ }

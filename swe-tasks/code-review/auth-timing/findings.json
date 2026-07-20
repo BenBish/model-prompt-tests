@@ -1,0 +1,31 @@
+{
+  "findings": [
+    {
+      "id": "plaintext-compare",
+      "severity": "high",
+      "summary": "Password is compared to a stored hash with string equality semantics, implying plaintext or reversible storage rather than a proper password hash verify API.",
+      "locations": ["src/auth.ts"],
+      "matchHints": ["plaintext", "hash", "bcrypt", "argon", "password hash", "verify"]
+    },
+    {
+      "id": "timing-leak",
+      "severity": "high",
+      "summary": "Loop still leaks length/timing information; not a real constant-time compare and exits early patterns remain risky.",
+      "locations": ["src/auth.ts"],
+      "matchHints": ["timing", "constant-time", "side channel", "length"]
+    },
+    {
+      "id": "user-enumeration",
+      "severity": "med",
+      "summary": "Different failure reasons for unknown_user vs bad_password enable user enumeration.",
+      "locations": ["src/auth.ts"],
+      "matchHints": ["enumeration", "unknown_user", "reason", "distinct error"]
+    }
+  ],
+  "redHerrings": [
+    {
+      "summary": "Prefer const over let for match only",
+      "note": "Style-only"
+    }
+  ]
+}

@@ -180,27 +180,209 @@ describe("runSweBatch", () => {
     expect(getSweResultForRun(db, run.id)).toBeUndefined();
   });
 
-  test("skips code-review tasks (Phase 4)", async () => {
+  test("code-review: runs harness, stores review metrics from matcher", async () => {
     spyOn(console, "log").mockImplementation(() => {});
     const db = createDb();
-    const reviewTask = {
-      ...makeFixtureTask(),
-      type: "code-review" as const,
-      diffPatchPath: "/tmp/diff.patch",
-      findingsPath: "/tmp/findings.json",
+    const taskDir = join(makeTempDir(), "code-review-task");
+    mkdirSync(taskDir, { recursive: true });
+    writeFileSync(
+      join(taskDir, "diff.patch"),
+      "diff --git a/x.ts b/x.ts\n--- a/x.ts\n+++ b/x.ts\n@@ -1 +1 @@\n-old\n+new\n",
+    );
+    writeFileSync(
+      join(taskDir, "findings.json"),
+      JSON.stringify({
+        findings: [
+          {
+            id: "frac",
+            severity: "high",
+            summary: "Fractional cents risk",
+            matchHints: ["fractional", "cents"],
+          },
+          {
+            id: "validate",
+            severity: "high",
+            summary: "Missing coupon validation",
+            matchHints: ["validation", "coupon"],
+          },
+        ],
+        redHerrings: [],
+      }),
+    );
+
+    const task: import("./taskSpec").CodeReviewSweTask = {
+      id: "code-review/test",
+      filePath: join(taskDir, "task.md"),
+      taskDir,
+      title: "Review coupon",
+      taskText: "Review this PR as a senior engineer.",
+      judgingGuidance: ["Find money risks"],
+      verifyTimeoutMs: 10_000,
+      agentTimeoutMs: 20_000,
+      tags: [],
+      ignorePaths: [],
+      envPassthrough: [],
+      type: "code-review",
+      diffPatchPath: join(taskDir, "diff.patch"),
+      findingsPath: join(taskDir, "findings.json"),
+      dimensions: [
+        { id: "correctness-risk-detection", weight: 3, description: "Finds risks" },
+      ],
     };
+
     const workspacesRoot = join(makeTempDir(), "workspaces");
-    const harness = fakeHarness("fake-cc", { sonnet: "fake-model" }, async () => {
-      throw new Error("should not be called");
+    const harness = fakeHarness("fake-cc", { sonnet: "fake-model" }, async (input) => {
+      expect(input.mode).toBe("review");
+      expect(input.taskPrompt).toContain("diff --git");
+      return {
+        finalMessage:
+          "High: totals can become fractional cents with coupon math. High: no validation for invalid couponPercent. Suggest unit tests for rounding.",
+        exitCode: 0,
+        latencyMs: 9,
+        timedOut: false,
+        raw: {},
+      };
     });
     const cells: SweRunnerCell[] = [{ harnessId: "fake-cc", harness, modelAlias: "sonnet" }];
 
-    const summary = await runSweBatch({ db, tasks: [reviewTask as any], cells, workspacesRoot });
-    expect(summary.ok).toBe(0);
+    const matcherAdapter: ModelAdapter = {
+      providerId: "judge",
+      modelName: "matcher",
+      async call() {
+        return {
+          text: JSON.stringify({
+            matches: [
+              { findingId: "frac", matched: true, evidenceQuote: "fractional cents" },
+              { findingId: "validate", matched: true, evidenceQuote: "no validation" },
+            ],
+            extraFindings: [],
+          }),
+          raw: {},
+          latencyMs: 1,
+        };
+      },
+    };
+
+    const qualitativeAdapter: ModelAdapter = {
+      providerId: "judge",
+      modelName: "qual",
+      async call() {
+        return {
+          text: JSON.stringify({
+            score: 5,
+            rationale: "strong review",
+            dimensions: {
+              "correctness-risk-detection": { score: 5, rationale: "found both risks" },
+            },
+          }),
+          raw: {},
+          latencyMs: 1,
+        };
+      },
+    };
+
+    // Primary judge is used for matcher; both judges score qualitatively.
+    const summary = await runSweBatch({
+      db,
+      tasks: [task],
+      cells,
+      workspacesRoot,
+      judges: [
+        { adapter: matcherAdapter, modelId: "judge:matcher" },
+        { adapter: qualitativeAdapter, modelId: "judge:qual" },
+      ],
+    });
+
+    expect(summary.ok).toBe(1);
     expect(summary.errored).toBe(0);
-    expect(db.query("SELECT COUNT(*) as c FROM runs").get()).toEqual({ c: 0 });
+    // No verify pass/fail for code-review.
+    expect(summary.passed).toBe(0);
+    expect(summary.failed).toBe(0);
+
+    const run = db.query("SELECT * FROM runs").get() as any;
+    expect(run.status).toBe("ok");
+    const sweResult = getSweResultForRun(db, run.id);
+    expect(sweResult?.taskType).toBe("code-review");
+    expect(sweResult?.reviewMetrics).toMatchObject({
+      recall: 1,
+      precision: 1,
+      f1: 1,
+      matcherModelId: "judge:matcher",
+    });
+    expect(sweResult?.verifyPassed).toBeUndefined();
+
+    const scores = db.query("SELECT judge_model_id, score FROM scores ORDER BY judge_model_id").all() as any[];
+    expect(scores.length).toBe(2);
   });
 
+  test("code-review: matcher failure with --judge marks the run as error", async () => {
+    spyOn(console, "log").mockImplementation(() => {});
+    const db = createDb();
+    const taskDir = join(makeTempDir(), "code-review-task-fail");
+    mkdirSync(taskDir, { recursive: true });
+    writeFileSync(join(taskDir, "diff.patch"), "diff --git a/x.ts b/x.ts\n");
+    writeFileSync(
+      join(taskDir, "findings.json"),
+      JSON.stringify({
+        findings: [{ id: "a", severity: "high", summary: "A" }],
+        redHerrings: [],
+      }),
+    );
+
+    const task: import("./taskSpec").CodeReviewSweTask = {
+      id: "code-review/fail-match",
+      filePath: join(taskDir, "task.md"),
+      taskDir,
+      title: "Review",
+      taskText: "Review it.",
+      judgingGuidance: [],
+      verifyTimeoutMs: 10_000,
+      agentTimeoutMs: 20_000,
+      tags: [],
+      ignorePaths: [],
+      envPassthrough: [],
+      type: "code-review",
+      diffPatchPath: join(taskDir, "diff.patch"),
+      findingsPath: join(taskDir, "findings.json"),
+    };
+
+    const harness = fakeHarness("fake-cc", { sonnet: "fake-model" }, async () => ({
+      finalMessage: "Looks fine.",
+      exitCode: 0,
+      latencyMs: 3,
+      timedOut: false,
+      raw: {},
+    }));
+
+    const badMatcher: ModelAdapter = {
+      providerId: "judge",
+      modelName: "bad",
+      async call() {
+        return { text: "not-json-at-all", raw: {}, latencyMs: 1 };
+      },
+    };
+
+    const summary = await runSweBatch({
+      db,
+      tasks: [task],
+      cells: [{ harnessId: "fake-cc", harness, modelAlias: "sonnet" }],
+      workspacesRoot: join(makeTempDir(), "workspaces"),
+      judges: [{ adapter: badMatcher, modelId: "judge:bad" }],
+      keepWorkspaces: true,
+    });
+
+    expect(summary.ok).toBe(0);
+    expect(summary.errored).toBe(1);
+    expect(summary.judgeErrored).toBe(1);
+
+    const run = db.query("SELECT status, error, output_text FROM runs").get() as any;
+    expect(run.status).toBe("error");
+    expect(run.error).toMatch(/valid JSON|matcher|failed/i);
+    // Agent output preserved for debugging.
+    expect(run.output_text).toBe("Looks fine.");
+    // No qualitative scores when matcher fails (run not queued for judges).
+    expect(db.query("SELECT COUNT(*) as c FROM scores").get()).toEqual({ c: 0 });
+  });
   test("scores completed runs with a judge, including dimensions", async () => {
     spyOn(console, "log").mockImplementation(() => {});
     const db = createDb();
