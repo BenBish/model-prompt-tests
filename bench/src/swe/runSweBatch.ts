@@ -144,6 +144,8 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
         repeatIndex,
         kind: "swe",
         harnessId: cell.harnessId,
+        // claude-code (and other harnesses) may report total_cost_usd via costUsd.
+        costUsd: agentResult.costUsd,
       });
 
       insertSweResult(db, {

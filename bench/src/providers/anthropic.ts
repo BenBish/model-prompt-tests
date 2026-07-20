@@ -24,6 +24,29 @@ export function createAnthropicAdapter(config: AnthropicAdapterConfig): ModelAda
         throw new Error(`missing env var ${config.apiKeyEnvVar} for anthropic model ${config.modelName}`);
       }
 
+      const requestBody: Record<string, unknown> = {
+        model: config.modelName,
+        max_tokens: input.maxTokens ?? config.maxTokens ?? DEFAULT_MAX_TOKENS,
+        temperature: input.temperature,
+        system: input.systemPrompt,
+        messages: [
+          {
+            role: "user",
+            content: [{ type: "text", text: input.userPrompt }],
+          },
+        ],
+      };
+      if (input.jsonSchema) {
+        requestBody.tools = [
+          {
+            name: input.jsonSchema.name,
+            description: "Submit the structured result for this request.",
+            input_schema: input.jsonSchema.schema,
+          },
+        ];
+        requestBody.tool_choice = { type: "tool", name: input.jsonSchema.name };
+      }
+
       const started = performance.now();
       const response = await fetch(`${baseUrl}/v1/messages`, {
         method: "POST",
@@ -33,18 +56,7 @@ export function createAnthropicAdapter(config: AnthropicAdapterConfig): ModelAda
           "anthropic-version": anthropicVersion,
           "content-type": "application/json",
         },
-        body: JSON.stringify({
-          model: config.modelName,
-          max_tokens: input.maxTokens ?? config.maxTokens ?? DEFAULT_MAX_TOKENS,
-          temperature: input.temperature,
-          system: input.systemPrompt,
-          messages: [
-            {
-              role: "user",
-              content: [{ type: "text", text: input.userPrompt }],
-            },
-          ],
-        }),
+        body: JSON.stringify(requestBody),
       });
       const latencyMs = performance.now() - started;
 
@@ -66,6 +78,23 @@ export function createAnthropicAdapter(config: AnthropicAdapterConfig): ModelAda
       }
       if (body === undefined) {
         throw new Error("anthropic API returned a non-JSON success response");
+      }
+
+      if (input.jsonSchema) {
+        const toolUseBlock = Array.isArray(body.content)
+          ? body.content.find((block: { type: string }) => block.type === "tool_use")
+          : undefined;
+        if (typeof toolUseBlock?.input !== "object" || toolUseBlock.input === null) {
+          throw new Error("anthropic API response did not contain the expected tool_use block");
+        }
+        return {
+          text: JSON.stringify(toolUseBlock.input),
+          raw: body,
+          inputTokens: body.usage?.input_tokens,
+          outputTokens: body.usage?.output_tokens,
+          latencyMs,
+          stopReason: body.stop_reason,
+        };
       }
 
       const textBlock = Array.isArray(body.content)

@@ -20,6 +20,8 @@ export interface ReportRow {
   outputText?: string;
   error?: string;
   runStatus: "ok" | "error";
+  stopReason?: string;
+  costUsd?: number;
   judgeResults: JudgeReportRow[];
   score?: number;
   rationale?: string;
@@ -27,6 +29,12 @@ export interface ReportRow {
   judgeError?: string;
   judgeStatus?: "ok" | "error";
   scoredAt?: string;
+}
+
+const TRUNCATION_STOP_REASONS = new Set(["length", "max_tokens", "max_output_tokens"]);
+
+function isTruncated(stopReason: string | undefined): boolean {
+  return stopReason !== undefined && TRUNCATION_STOP_REASONS.has(stopReason);
 }
 
 export interface JudgeReportRow {
@@ -45,19 +53,26 @@ export interface ModelSummary {
   okRuns: number;
   errorRuns: number;
   missingJudgeScores: number;
+  /** Headline average: peer judges only (self-judging excluded). */
   avgScore?: number;
   medianScore?: number;
   scoreStdDev?: number;
   /** Mean of per-cell score stddevs across repeats. Only meaningful when repeats > 1. */
   repeatVariance?: number;
-  /** Share of judged runs (with >=2 judges) where every judge gave the identical integer score. */
+  /** Share of judged runs (with >=2 peer judges) where every peer judge gave the identical integer score. */
   judgeAgreementPct?: number;
+  /** Mean of self-judge scores when a model scored its own output. Not blended into avgScore. */
+  selfScoreAvg?: number;
   avgLatencyMs?: number;
   medianLatencyMs?: number;
   avgOutputTokens?: number;
   avgJudgeSpread?: number;
   dimensionAverages?: Record<string, number>;
   qualityPerSecond?: number;
+  totalCostUsd?: number;
+  avgCostUsd?: number;
+  qualityPerDollar?: number;
+  truncatedRuns: number;
 }
 
 export interface ReportData {
@@ -101,6 +116,8 @@ function rowToReportRow(row: any): ReportRow {
     outputText: row.output_text ?? undefined,
     error: row.error ?? undefined,
     runStatus: row.status,
+    stopReason: row.stop_reason ?? undefined,
+    costUsd: row.cost_usd ?? undefined,
     judgeResults: [],
   };
 }
@@ -126,13 +143,30 @@ export function stddev(values: number[]): number | undefined {
   return Math.sqrt(variance);
 }
 
-/** A single run's judge scores, collapsed to one number so repeats/judges aggregate consistently. */
+/** Peer (non-self) judge scores for a run. Headline aggregates use only these. */
+export function peerScores(row: ReportRow): number[] {
+  return row.judgeResults.flatMap((judge) =>
+    judge.score === undefined || judge.judgeModelId === row.modelId ? [] : [judge.score],
+  );
+}
+
+/** Self-judge scores where the judge model is the same as the candidate. */
+export function selfScores(row: ReportRow): number[] {
+  return row.judgeResults.flatMap((judge) =>
+    judge.score === undefined || judge.judgeModelId !== row.modelId ? [] : [judge.score],
+  );
+}
+
+/**
+ * A single run's peer judge scores. Self-judging is excluded so a model that
+ * also judges cannot inflate its own headline score.
+ */
 export function judgeScoresForRow(row: ReportRow): number[] {
-  return row.judgeResults.flatMap((judge) => (judge.score === undefined ? [] : [judge.score]));
+  return peerScores(row);
 }
 
 export function perRunMedianScore(row: ReportRow): number | undefined {
-  return median(judgeScoresForRow(row));
+  return median(peerScores(row));
 }
 
 function summarize(modelIds: string[], rows: ReportRow[]): ModelSummary[] {
@@ -165,6 +199,11 @@ function summarize(modelIds: string[], rows: ReportRow[]): ModelSummary[] {
       }
     }
 
+    const selfRunScores = okRows.flatMap((row) => {
+      const runSelf = average(selfScores(row));
+      return runSelf === undefined ? [] : [runSelf];
+    });
+
     const missingJudgeScores = okRows.reduce(
       (sum, row) =>
         sum + row.judgeResults.filter((judge) => judge.judgeStatus !== "ok" || judge.score === undefined).length,
@@ -176,21 +215,25 @@ function summarize(modelIds: string[], rows: ReportRow[]): ModelSummary[] {
     const outputTokens = okRows.flatMap((row) =>
       row.outputTokens === undefined ? [] : [row.outputTokens],
     );
+    const costs = okRows.flatMap((row) => (row.costUsd === undefined ? [] : [row.costUsd]));
+    const truncatedRuns = okRows.filter((row) => isTruncated(row.stopReason)).length;
     const spreads = okRows.flatMap((row) => {
-      const rowScores = judgeScoresForRow(row);
+      const rowScores = peerScores(row);
       if (rowScores.length < 2) return [];
       return [Math.max(...rowScores) - Math.min(...rowScores)];
     });
 
-    const agreementEligibleRows = okRows.filter((row) => judgeScoresForRow(row).length >= 2);
+    const agreementEligibleRows = okRows.filter((row) => peerScores(row).length >= 2);
     const agreeingRows = agreementEligibleRows.filter(
-      (row) => new Set(judgeScoresForRow(row)).size === 1,
+      (row) => new Set(peerScores(row)).size === 1,
     );
 
+    // Dimension averages from peer judges only (same inflation defense as overall scores).
     const dimensionTotals = new Map<string, { sum: number; count: number }>();
     for (const row of okRows) {
       for (const judge of row.judgeResults) {
         if (!judge.dimensions) continue;
+        if (judge.judgeModelId === row.modelId) continue;
         for (const [dimensionId, dimensionScore] of Object.entries(judge.dimensions)) {
           const entry = dimensionTotals.get(dimensionId) ?? { sum: 0, count: 0 };
           entry.sum += dimensionScore.score;
@@ -205,6 +248,7 @@ function summarize(modelIds: string[], rows: ReportRow[]): ModelSummary[] {
 
     const avgScore = average(cellScores);
     const avgLatencyMs = average(latencies);
+    const avgCostUsd = average(costs);
 
     return {
       modelId,
@@ -217,6 +261,7 @@ function summarize(modelIds: string[], rows: ReportRow[]): ModelSummary[] {
       repeatVariance: cellStdDevs.length > 0 ? average(cellStdDevs) : undefined,
       judgeAgreementPct:
         agreementEligibleRows.length > 0 ? agreeingRows.length / agreementEligibleRows.length : undefined,
+      selfScoreAvg: average(selfRunScores),
       avgLatencyMs,
       medianLatencyMs: median(latencies),
       avgOutputTokens: average(outputTokens),
@@ -226,6 +271,13 @@ function summarize(modelIds: string[], rows: ReportRow[]): ModelSummary[] {
         avgScore !== undefined && avgLatencyMs !== undefined && avgLatencyMs > 0
           ? avgScore / (avgLatencyMs / 1000)
           : undefined,
+      totalCostUsd: costs.length > 0 ? costs.reduce((sum, cost) => sum + cost, 0) : undefined,
+      avgCostUsd,
+      qualityPerDollar:
+        avgScore !== undefined && avgCostUsd !== undefined && avgCostUsd > 0
+          ? avgScore / avgCostUsd
+          : undefined,
+      truncatedRuns,
     };
   });
 }

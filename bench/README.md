@@ -59,8 +59,14 @@ bun run bench models add-openai-compatible \
   --provider llama-swap \
   --model my-model-name \
   --base-url http://localhost:8080/v1 \
-  --max-concurrent 1
+  --max-concurrent 1 \
+  --input-per-mtok 0.5 \
+  --output-per-mtok 1.5
 ```
+
+Optional `--input-per-mtok` / `--output-per-mtok` (both required together) store
+per-model pricing used to estimate `cost_usd` when the provider does not report a
+billed cost. OpenRouter (and similar) billed costs on `usage.cost` take precedence.
 
 For providers that require extra headers, repeat `--header Name=Value`:
 
@@ -108,25 +114,43 @@ failed, while still storing successful and failed results for reporting.
 - `--all-runs` — show full run history per (prompt, model) instead of just the latest batch per cell.
 - `--narrative` — append an LLM-written analysis paragraph to the assessment (see below); calls the default judge model, so this makes network calls. Off by default.
 - `--judge <id>` — which judge model writes the `--narrative` analysis (default: the same judge resolution as `run`).
+- `--compare <batchA> --compare <batchB>` — write a batch-vs-batch comparison HTML (score/cost/latency deltas) instead of the normal report.
 
-Every `report` invocation writes three files (plus `latest.*` mirrors):
-`<timestamp>.html` (the prompt x model matrix), `<timestamp>.summary.json` (per-model
-`ModelSummary` stats), and `<timestamp>.assessment.md` (a deterministic markdown writeup —
-model summary table, per-dimension averages, per-prompt winners, judge-disagreement
-flags, and an error inventory — generated from the same data as the HTML report).
+Every normal `report` invocation writes three files (plus `latest.*` mirrors):
+`<timestamp>.html` (interactive report with charts, sortable summary, theme toggle),
+`<timestamp>.summary.json` (per-model `ModelSummary` stats), and
+`<timestamp>.assessment.md` (deterministic markdown writeup).
+
+### `export` / `publish`
+
+Package a batch into a shareable directory, then assemble exported runs into a static
+site under `docs/` (GitHub Pages):
+
+```
+bun run bench export --name grok-45-vs-sonnet-5 --latest
+bun run bench export --name my-run --batch <run_batch_id>
+bun run bench publish
+```
+
+Export names must be lowercase kebab-case (`^[a-z0-9][a-z0-9-]*$`). `docs/` is excluded
+from prompt discovery so published pages cannot break `run all`.
 
 ## Aggregation
 
 By default `report` shows only the most recent `run` batch for each (prompt, model)
 cell, but keeps every repeat within that batch (`--all-runs` shows full history instead).
-A single run's judge scores collapse to one number via the **median across judges**
-(not the mean), so one outlier judge doesn't skew a run's score. When `--repeats > 1`,
-a cell's repeats collapse the same way: **median across repeats**. A model's `avgScore`
-is the mean of its per-cell medians, so a prompt run many times doesn't dominate a
-prompt run once. `scoreStdDev` is computed across all individual run scores;
+A single run's judge scores collapse to one number via the **median across peer judges**
+(not the mean), so one outlier judge doesn't skew a run's score. **Self-judging is
+excluded from headline scores** (`avgScore`, badges, charts, agreement, dimension
+averages): when a judge's model id equals the candidate's model id, that score is
+reported only as `selfScoreAvg`. When `--repeats > 1`, a cell's repeats collapse the
+same way: **median across repeats**. A model's `avgScore` is the mean of its per-cell
+medians. `scoreStdDev` is computed across all individual peer run scores;
 `repeatVariance` is the mean of per-cell score stddevs (only meaningful once
-`--repeats > 1`); `judgeAgreementPct` is the share of multi-judge runs where every judge
-gave the exact same integer score.
+`--repeats > 1`); `judgeAgreementPct` is the share of multi-peer-judge runs where every
+peer judge gave the exact same integer score. Cost columns use provider-reported USD
+when present, otherwise pricing × tokens; `truncatedRuns` counts stop reasons
+`length` / `max_tokens` / `max_output_tokens`.
 
 ## Scoring Dimensions
 

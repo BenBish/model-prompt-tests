@@ -1,6 +1,6 @@
 import { copyFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import type { ModelMatrixEntry } from "../providers/types";
+import type { ModelMatrixEntry, ModelPricing } from "../providers/types";
 
 export interface BenchModelsConfig {
   models: ModelMatrixEntry[];
@@ -80,6 +80,38 @@ function optionalStringRecord(
   return record as Record<string, string>;
 }
 
+function optionalPositiveNumber(
+  obj: Record<string, unknown>,
+  key: string,
+  context: string,
+): number | undefined {
+  const value = obj[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    throw new Error(`${context}: "${key}" must be a non-negative number when present`);
+  }
+  return value;
+}
+
+function optionalPricing(
+  obj: Record<string, unknown>,
+  key: string,
+  context: string,
+): ModelPricing | undefined {
+  const value = obj[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${context}: "${key}" must be an object when present`);
+  }
+  const record = value as Record<string, unknown>;
+  const inputPerMTok = optionalPositiveNumber(record, "inputPerMTok", `${context}.${key}`);
+  const outputPerMTok = optionalPositiveNumber(record, "outputPerMTok", `${context}.${key}`);
+  if (inputPerMTok === undefined || outputPerMTok === undefined) {
+    throw new Error(`${context}: "${key}" must specify both "inputPerMTok" and "outputPerMTok"`);
+  }
+  return { inputPerMTok, outputPerMTok };
+}
+
 function normalizeModel(raw: unknown, index: number): ModelMatrixEntry {
   const context = `models[${index}]`;
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
@@ -94,6 +126,7 @@ function normalizeModel(raw: unknown, index: number): ModelMatrixEntry {
     maxConcurrent: optionalPositiveInteger(obj, "maxConcurrent", context),
     timeoutMs: optionalPositiveInteger(obj, "timeoutMs", context),
     enabled: optionalBoolean(obj, "enabled", context),
+    pricing: optionalPricing(obj, "pricing", context),
   };
 
   if (kind === "anthropic") {

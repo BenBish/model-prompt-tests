@@ -41,8 +41,11 @@ export interface SweSummary {
   passedRuns: number;
   failedRuns: number;
   passRate?: number;
+  /** Peer judges only (self-judging excluded). */
   avgJudgeScore?: number;
   medianJudgeScore?: number;
+  /** Mean of self-judge scores when present; not blended into avgJudgeScore. */
+  selfScoreAvg?: number;
   avgAgentLatencyMs?: number;
   avgDiffLines?: number;
   timeouts: number;
@@ -101,8 +104,17 @@ function rowToSweReportRow(row: any): SweReportRow {
   };
 }
 
-function judgeScoresForSweRow(row: SweReportRow): number[] {
-  return row.judgeResults.flatMap((judge) => (judge.score === undefined ? [] : [judge.score]));
+/** Peer (non-self) judge scores for a SWE run. */
+function peerScoresForSweRow(row: SweReportRow): number[] {
+  return row.judgeResults.flatMap((judge) =>
+    judge.score === undefined || judge.judgeModelId === row.harnessModelId ? [] : [judge.score],
+  );
+}
+
+function selfScoresForSweRow(row: SweReportRow): number[] {
+  return row.judgeResults.flatMap((judge) =>
+    judge.score === undefined || judge.judgeModelId !== row.harnessModelId ? [] : [judge.score],
+  );
 }
 
 function summarizeSwe(harnessModelIds: string[], rows: SweReportRow[]): SweSummary[] {
@@ -113,9 +125,14 @@ function summarizeSwe(harnessModelIds: string[], rows: SweReportRow[]): SweSumma
     const failedRuns = okRows.filter((row) => row.verifyPassed === false).length;
     const verifiedTotal = passedRuns + failedRuns;
 
+    // Headline judge scores exclude self-judging (judge model == candidate harness:model).
     const judgeScores = okRows.flatMap((row) => {
-      const rowScore = median(judgeScoresForSweRow(row));
+      const rowScore = median(peerScoresForSweRow(row));
       return rowScore === undefined ? [] : [rowScore];
+    });
+    const selfRunScores = okRows.flatMap((row) => {
+      const runSelf = average(selfScoresForSweRow(row));
+      return runSelf === undefined ? [] : [runSelf];
     });
 
     const latencies = okRows.flatMap((row) => (row.latencyMs === undefined ? [] : [row.latencyMs]));
@@ -136,6 +153,7 @@ function summarizeSwe(harnessModelIds: string[], rows: SweReportRow[]): SweSumma
       passRate: verifiedTotal > 0 ? passedRuns / verifiedTotal : undefined,
       avgJudgeScore: average(judgeScores),
       medianJudgeScore: median(judgeScores),
+      selfScoreAvg: average(selfRunScores),
       avgAgentLatencyMs: average(latencies),
       avgDiffLines: average(diffLines),
       timeouts,

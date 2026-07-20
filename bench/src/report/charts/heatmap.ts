@@ -1,0 +1,68 @@
+import { escapeHtml } from "../../util/html";
+import { scoreDivergingColor, textColorForFill } from "./palette";
+
+export interface HeatmapCell {
+  promptId: string;
+  modelId: string;
+  avgScore?: number;
+  okRuns: number;
+  errorRuns: number;
+}
+
+function tipAttr(cell: HeatmapCell): string {
+  const lines = [
+    cell.avgScore !== undefined ? `avg score ${cell.avgScore.toFixed(2)}` : "no score",
+    `${cell.okRuns} ok / ${cell.errorRuns} error`,
+  ];
+  return escapeHtml(JSON.stringify({ title: `${cell.promptId} × ${cell.modelId}`, lines }));
+}
+
+/**
+ * Models x prompts score matrix. Cell color is a diverging blue<->red scale
+ * on the score itself (a magnitude/polarity value, not an entity), centered
+ * on the rubric's neutral midpoint (3). Model identity colors live in the
+ * other charts; this one is deliberately not categorical.
+ */
+export function renderScoreHeatmap(promptIds: string[], modelIds: string[], cells: HeatmapCell[]): string {
+  if (promptIds.length === 0 || modelIds.length === 0) {
+    return `<p class="chart-empty">No runs yet.</p>`;
+  }
+  const byKey = new Map(cells.map((cell) => [`${cell.promptId} ${cell.modelId}`, cell]));
+
+  const headerCells = modelIds.map((modelId) => `<th class="heatmap-col-label">${escapeHtml(modelId)}</th>`).join("");
+
+  const bodyRows = promptIds
+    .map((promptId) => {
+      const rowCells = modelIds
+        .map((modelId) => {
+          const cell = byKey.get(`${promptId} ${modelId}`);
+          if (!cell || (cell.okRuns === 0 && cell.errorRuns === 0)) {
+            return `<td class="heatmap-cell heatmap-empty" data-model="${escapeHtml(modelId)}">–</td>`;
+          }
+          if (cell.avgScore === undefined) {
+            return `<td class="heatmap-cell heatmap-empty" data-model="${escapeHtml(modelId)}" tabindex="0" data-tip='${tipAttr(cell)}'>err</td>`;
+          }
+          const fillLight = scoreDivergingColor(cell.avgScore, "light");
+          const fillDark = scoreDivergingColor(cell.avgScore, "dark");
+          const style = [
+            `--cell-light:${fillLight}`,
+            `--cell-dark:${fillDark}`,
+            `--cell-ink-light:${textColorForFill(fillLight)}`,
+            `--cell-ink-dark:${textColorForFill(fillDark)}`,
+          ].join(";");
+          return `<td class="heatmap-cell" data-model="${escapeHtml(modelId)}" tabindex="0" data-tip='${tipAttr(cell)}' style="${style}">${cell.avgScore.toFixed(1)}</td>`;
+        })
+        .join("");
+      return `<tr><th class="heatmap-row-label">${escapeHtml(promptId)}</th>${rowCells}</tr>`;
+    })
+    .join("");
+
+  return `
+    <div class="heatmap-scroll">
+      <table class="heatmap">
+        <thead><tr><th></th>${headerCells}</tr></thead>
+        <tbody>${bodyRows}</tbody>
+      </table>
+    </div>
+  `;
+}

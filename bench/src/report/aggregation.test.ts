@@ -3,7 +3,7 @@ import { Database } from "bun:sqlite";
 import { readFileSync } from "node:fs";
 import { insertRun } from "../db/runsRepo";
 import { insertScore } from "../db/scoresRepo";
-import { queryReportData } from "./queryData";
+import { perRunMedianScore, queryReportData } from "./queryData";
 
 function createDb(): Database {
   const db = new Database(":memory:");
@@ -236,6 +236,92 @@ describe("judge agreement", () => {
 
     const data = queryReportData(db, { allRuns: true });
     expect(data.summaries[0]?.judgeAgreementPct).toBe(0.5);
+    db.close();
+  });
+});
+
+describe("self-judging exclusion", () => {
+  test("excludes self-judging from headline avgScore but reports selfScoreAvg", () => {
+    const db = createDb();
+    // Candidate is also a judge. Peer gives 2; self gives 5. Without exclusion,
+    // median of [2, 5] = 3.5 and the model inflates its own headline score.
+    const runId = insertRun(db, {
+      runBatchId: "batch-1",
+      promptId: "test/prompt",
+      providerId: "test",
+      modelId: "test:model",
+      modelName: "model",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      outputText: "output",
+      status: "ok",
+    });
+    insertScore(db, {
+      runId,
+      judgeModelId: "peer:judge",
+      score: 2,
+      rationale: "peer",
+      scoredAt: "t",
+      status: "ok",
+    });
+    insertScore(db, {
+      runId,
+      judgeModelId: "test:model",
+      score: 5,
+      rationale: "self",
+      scoredAt: "t",
+      status: "ok",
+    });
+
+    const data = queryReportData(db, { allRuns: true });
+    const summary = data.summaries[0]!;
+    expect(summary.avgScore).toBe(2);
+    expect(summary.medianScore).toBe(2);
+    expect(summary.selfScoreAvg).toBe(5);
+
+    // Per-run badge / cell score must also be peer-only (not blended).
+    const row = data.rows.get("test/prompt")?.get("test:model")?.[0];
+    expect(row).toBeDefined();
+    expect(perRunMedianScore(row!)).toBe(2);
+    db.close();
+  });
+
+  test("dimension averages ignore self-judge dimensions", () => {
+    const db = createDb();
+    const runId = insertRun(db, {
+      runBatchId: "batch-1",
+      promptId: "test/prompt",
+      providerId: "test",
+      modelId: "test:model",
+      modelName: "model",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      outputText: "output",
+      status: "ok",
+    });
+    insertScore(db, {
+      runId,
+      judgeModelId: "peer:judge",
+      score: 3,
+      rationale: "peer",
+      scoredAt: "t",
+      status: "ok",
+      dimensionScores: {
+        correctness: { score: 3, rationale: "peer" },
+      },
+    });
+    insertScore(db, {
+      runId,
+      judgeModelId: "test:model",
+      score: 5,
+      rationale: "self",
+      scoredAt: "t",
+      status: "ok",
+      dimensionScores: {
+        correctness: { score: 5, rationale: "self" },
+      },
+    });
+
+    const data = queryReportData(db, { allRuns: true });
+    expect(data.summaries[0]?.dimensionAverages).toEqual({ correctness: 3 });
     db.close();
   });
 });

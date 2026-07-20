@@ -7,7 +7,7 @@ import {
   type DimensionScore,
   type DimensionalResult,
 } from "./dimensionalScoring";
-import { runStructuredLlmCall } from "./structuredCall";
+import { buildJudgeResultJsonSchema, runStructuredLlmCall } from "./structuredCall";
 
 export type JudgeDimensionScore = DimensionScore;
 export type JudgeResult = DimensionalResult;
@@ -45,6 +45,7 @@ export async function runJudge(
       retry: options.retry,
       requestErrorPrefix: "judge request failed",
       exhaustedErrorMessage: () => "judge did not return a valid JSON score after 2 attempts",
+      jsonSchema: buildJudgeResultJsonSchema(prompt.dimensions),
     },
   );
 

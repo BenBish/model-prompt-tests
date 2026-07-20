@@ -44,6 +44,16 @@ export function createOpenAICompatibleAdapter(
       if (config.reasoningEffort) {
         requestBody.reasoning = { effort: config.reasoningEffort };
       }
+      if (input.jsonSchema) {
+        requestBody.response_format = {
+          type: "json_schema",
+          json_schema: {
+            name: input.jsonSchema.name,
+            schema: input.jsonSchema.schema,
+            strict: true,
+          },
+        };
+      }
 
       const response = await fetch(`${config.baseUrl}/chat/completions`, {
         method: "POST",
@@ -85,6 +95,8 @@ export function createOpenAICompatibleAdapter(
         outputTokens: body.usage?.completion_tokens,
         latencyMs,
         stopReason: choice?.finish_reason,
+        // OpenRouter (and some gateways) report billed USD on usage.cost.
+        costUsd: typeof body.usage?.cost === "number" ? body.usage.cost : undefined,
       };
     },
   };

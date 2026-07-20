@@ -1,4 +1,4 @@
-import type { ModelAdapter } from "../providers/types";
+import type { ModelAdapter, ModelPricing } from "../providers/types";
 import type { PromptDefinition } from "../types";
 
 export interface CandidateRunResult {
@@ -7,6 +7,8 @@ export interface CandidateRunResult {
   latencyMs: number;
   inputTokens?: number;
   outputTokens?: number;
+  stopReason?: string;
+  costUsd?: number;
 }
 
 export interface CandidateRunner {
@@ -14,6 +16,7 @@ export interface CandidateRunner {
   providerId: string;
   modelName: string;
   maxConcurrent?: number;
+  pricing?: ModelPricing;
   run(prompt: PromptDefinition): Promise<CandidateRunResult>;
 }
 
@@ -21,12 +24,14 @@ export function candidateRunnerFromAdapter(
   id: string,
   adapter: ModelAdapter,
   maxConcurrent?: number,
+  pricing?: ModelPricing,
 ): CandidateRunner {
   return {
     id,
     providerId: adapter.providerId,
     modelName: adapter.modelName,
     maxConcurrent,
+    pricing,
     async run(prompt: PromptDefinition): Promise<CandidateRunResult> {
       const result = await adapter.call({ userPrompt: prompt.promptText });
       return {
@@ -35,6 +40,8 @@ export function candidateRunnerFromAdapter(
         latencyMs: result.latencyMs,
         inputTokens: result.inputTokens,
         outputTokens: result.outputTokens,
+        stopReason: result.stopReason,
+        costUsd: result.costUsd,
       };
     },
   };

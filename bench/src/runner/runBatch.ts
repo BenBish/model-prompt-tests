@@ -42,6 +42,18 @@ function makeRunBatchId(): string {
   return `${now}-${suffix}`;
 }
 
+/** Provider-reported cost is authoritative; else pricing × tokens. */
+export function resolveCostUsd(
+  runner: CandidateRunner,
+  result: { costUsd?: number; inputTokens?: number; outputTokens?: number },
+): number | undefined {
+  if (result.costUsd !== undefined) return result.costUsd;
+  if (!runner.pricing) return undefined;
+  if (result.inputTokens === undefined || result.outputTokens === undefined) return undefined;
+  const { inputPerMTok, outputPerMTok } = runner.pricing;
+  return (result.inputTokens * inputPerMTok + result.outputTokens * outputPerMTok) / 1_000_000;
+}
+
 export async function runBatch(options: RunBatchOptions): Promise<RunBatchSummary> {
   const { db, prompts, runners, defaultConcurrency } = options;
   const repeats = options.repeats ?? 1;
@@ -121,6 +133,8 @@ export async function runBatch(options: RunBatchOptions): Promise<RunBatchSummar
         rawResponse: JSON.stringify(result.raw),
         status: "ok",
         repeatIndex,
+        stopReason: result.stopReason,
+        costUsd: resolveCostUsd(runner, result),
       };
       const runId = insertRun(db, record);
       ok++;
