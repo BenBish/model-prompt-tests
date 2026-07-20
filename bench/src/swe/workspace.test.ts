@@ -74,6 +74,12 @@ describe("provisionFixtureWorkspace", () => {
     expect(provisioned.postSetupSha).toBe(provisioned.baselineSha);
   });
 
+  test("throws when setup exits non-zero", async () => {
+    const task = makeFixtureTask({ setup: "exit 7" });
+    const workspaceDir = join(makeTempDir(), "ws-setup-fail");
+    await expect(provisionFixtureWorkspace(task, workspaceDir)).rejects.toThrow(/setup failed/);
+  });
+
   test("commits a separate post-setup SHA only when setup changes files", async () => {
     const task = makeFixtureTask({ setup: "echo generated > generated.txt" });
     const workspaceDir = join(makeTempDir(), "ws");

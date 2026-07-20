@@ -66,9 +66,10 @@ export function createCodexHarness(config: CodexHarnessConfig): SweHarness {
           cmd.push("--ignore-user-config");
         }
 
+        // configOverrides values are passed to `codex -c key=value` and TOML-parsed by Codex.
+        // Simple strings are auto-quoted; for complex TOML (arrays/tables), pre-quote in config.
         if (config.configOverrides) {
           for (const [key, value] of Object.entries(config.configOverrides)) {
-            // Codex -c value is TOML-parsed; quote strings that need it.
             const needsQuotes = !/^(true|false|null|-?\d+(\.\d+)?)$/i.test(value) && !value.startsWith('"');
             const encoded = needsQuotes ? `"${value.replaceAll('"', '\\"')}"` : value;
             cmd.push("-c", `${key}=${encoded}`);

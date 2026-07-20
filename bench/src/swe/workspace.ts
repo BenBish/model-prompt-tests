@@ -115,6 +115,12 @@ export async function provisionFixtureWorkspace(
       exitCode: setupResult.exitCode,
       timedOut: setupResult.timedOut,
     };
+    if (setupResult.timedOut || setupResult.exitCode !== 0) {
+      const detail = setupResult.timedOut
+        ? "timed out"
+        : `exit ${setupResult.exitCode}: ${setupResult.stderr || setupResult.stdout}`.trim();
+      throw new Error(`fixture task setup failed (${detail})`);
+    }
   }
 
   await runCommand({ cmd: ["git", "add", "-A"], cwd: workspaceDir, env, timeoutMs: 10_000 });

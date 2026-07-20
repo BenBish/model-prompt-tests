@@ -160,6 +160,11 @@ export async function provisionExternalWorkspace(
   if (existsSync(workspaceDir)) {
     await removeExternalWorktree(workspaceDir, cacheDir);
   }
+  if (existsSync(workspaceDir)) {
+    throw new Error(
+      `failed to clear stale external workspace before worktree add: ${workspaceDir}`,
+    );
+  }
 
   const env = gitEnv();
   const add = await runCommand({
@@ -192,6 +197,12 @@ export async function provisionExternalWorkspace(
       exitCode: setupResult.exitCode,
       timedOut: setupResult.timedOut,
     };
+    if (setupResult.timedOut || setupResult.exitCode !== 0) {
+      const detail = setupResult.timedOut
+        ? "timed out"
+        : `exit ${setupResult.exitCode}: ${setupResult.stderr || setupResult.stdout}`.trim();
+      throw new Error(`external task setup failed (${detail})`);
+    }
   }
 
   let postSetupSha = baselineSha;

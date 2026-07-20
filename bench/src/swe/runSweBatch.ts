@@ -73,9 +73,8 @@ function makeRunBatchId(): string {
  */
 export function defaultRepoCacheRoot(workspacesRoot: string): string {
   const normalized = workspacesRoot.replace(/\/+$/, "");
-  const base = normalized.endsWith("/workspaces") || normalized.endsWith("workspaces")
-    ? dirname(normalized)
-    : normalized;
+  // Match a final path segment of exactly "workspaces", not suffixes like "myworkspaces".
+  const base = /(^|\/)workspaces$/.test(normalized) ? dirname(normalized) : normalized;
   return join(base, "repo-cache");
 }
 

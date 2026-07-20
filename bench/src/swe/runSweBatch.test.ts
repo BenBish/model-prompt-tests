@@ -393,4 +393,8 @@ describe("defaultRepoCacheRoot", () => {
   test("does not reuse a non-workspaces path as the cache root itself", () => {
     expect(defaultRepoCacheRoot("/tmp/cells")).toBe("/tmp/cells/repo-cache");
   });
+
+  test("does not treat path suffixes like myworkspaces as the workspaces segment", () => {
+    expect(defaultRepoCacheRoot("/tmp/myworkspaces")).toBe("/tmp/myworkspaces/repo-cache");
+  });
 });

@@ -224,6 +224,16 @@ test("hidden", () => { expect(add(1, 1)).toBe(2); });
     await removeExternalWorktree(a.dir, a.cacheDir);
     await removeExternalWorktree(b.dir, b.cacheDir);
   });
+
+  test("throws when external setup exits non-zero", async () => {
+    const { repoPath, commitSha } = await makeLocalSourceRepo();
+    const task = makeExternalTask(repoPath, commitSha, { setup: "exit 9" });
+    const cacheRoot = join(makeTempDir(), "repo-cache");
+    const workspaceDir = join(makeTempDir(), "ws-setup-fail");
+    await expect(provisionExternalWorkspace(task, workspaceDir, cacheRoot)).rejects.toThrow(
+      /setup failed/,
+    );
+  });
 });
 
 describe("resolveHoldoutPatchPath", () => {

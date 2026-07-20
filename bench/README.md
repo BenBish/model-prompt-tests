@@ -292,6 +292,9 @@ Model alias → native name maps in `harnesses.example.json` are **placeholders*
 `bench/harnesses.json` and edit for the models installed on your machine, then validate with
 `bun run bench swe doctor` (non-empty parsed `finalMessage` is required to pass).
 
+`bun test` ignores `bench/data/workspaces/**` and `bench/data/repo-cache/**` (see `bunfig.toml`)
+so `--keep-workspaces` trees cannot pollute the unit suite with agent-written `*.test.ts` files.
+
 - **`claude-code`** runs `claude -p --output-format json --dangerously-skip-permissions`
   headlessly, prompt on stdin, in an isolated workspace directory. It does **not** pass
   `--bare` by default — `--bare` skips normal OAuth/subscription session-credential
