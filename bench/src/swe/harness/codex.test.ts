@@ -115,4 +115,38 @@ fi
     });
     expect(bypass.finalMessage).toBe("bypass");
   });
+
+  test("forwards configOverrides as -c flags and ignoreUserConfig", async () => {
+    writeFakeCodex(`
+args_file=""
+prev=""
+for arg in "$@"; do
+  if [[ "$prev" == "-o" ]]; then args_file="$arg"; fi
+  prev="$arg"
+done
+printf '%s\\n' "$@" > "\${args_file}.argv"
+# Values are TOML-quoted by the harness (model_provider="llamaswap").
+if [[ "$*" == *"--ignore-user-config"* ]] && [[ "$*" == *'model_provider="llamaswap"'* ]] && [[ "$*" == *'https://example.test/v1'* ]]; then
+  echo 'from-overrides' > "$args_file"
+else
+  echo "missing-overrides: $*" > "$args_file"
+fi
+`);
+    const harness = createCodexHarness(
+      baseConfig({
+        ignoreUserConfig: true,
+        configOverrides: {
+          "model_providers.llamaswap.base_url": "https://example.test/v1",
+          model_provider: "llamaswap",
+        },
+      }),
+    );
+    const result = await harness.run({
+      taskPrompt: "x",
+      model: "o4-mini",
+      workDir: process.cwd(),
+      timeoutMs: 5000,
+    });
+    expect(result.finalMessage).toBe("from-overrides");
+  });
 });

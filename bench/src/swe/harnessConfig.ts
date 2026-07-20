@@ -40,6 +40,13 @@ export interface CodexHarnessConfig {
   oss?: boolean;
   /** With oss: lmstudio | ollama. */
   localProvider?: string;
+  /**
+   * Extra `codex -c key=value` overrides (e.g. custom OpenAI-compatible providers for
+   * llama-swap). Values are passed as TOML-ish raw strings to codex.
+   */
+  configOverrides?: Record<string, string>;
+  /** Pass `--ignore-user-config` for hermetic provider config (only overrides apply). */
+  ignoreUserConfig?: boolean;
   enabled?: boolean;
 }
 
@@ -213,6 +220,19 @@ function normalizeHarness(raw: unknown, index: number): HarnessMatrixEntry {
     if (localProvider !== undefined && (typeof localProvider !== "string" || localProvider.trim() === "")) {
       throw new Error(`${context}: "localProvider" must be a non-empty string when present`);
     }
+    let configOverrides: Record<string, string> | undefined;
+    if (obj.configOverrides !== undefined) {
+      if (typeof obj.configOverrides !== "object" || obj.configOverrides === null || Array.isArray(obj.configOverrides)) {
+        throw new Error(`${context}: "configOverrides" must be an object of string values when present`);
+      }
+      configOverrides = {};
+      for (const [k, v] of Object.entries(obj.configOverrides as Record<string, unknown>)) {
+        if (typeof v !== "string" || v.trim() === "") {
+          throw new Error(`${context}: "configOverrides.${k}" must be a non-empty string`);
+        }
+        configOverrides[k] = v;
+      }
+    }
     return {
       kind,
       ...common,
@@ -221,6 +241,8 @@ function normalizeHarness(raw: unknown, index: number): HarnessMatrixEntry {
       dangerouslyBypassApprovalsAndSandbox: optionalBoolean(obj, "dangerouslyBypassApprovalsAndSandbox", context),
       oss: optionalBoolean(obj, "oss", context),
       localProvider: typeof localProvider === "string" ? localProvider : undefined,
+      configOverrides,
+      ignoreUserConfig: optionalBoolean(obj, "ignoreUserConfig", context),
     };
   }
 

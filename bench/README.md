@@ -300,7 +300,11 @@ Model alias → native name maps in `harnesses.example.json` are **placeholders*
 - **`codex`** runs `codex exec --cd <workDir> --ephemeral --skip-git-repo-check -m <model>
   --json -o <file outside workdir> -s workspace-write` (default sandbox). Set
   `"dangerouslyBypassApprovalsAndSandbox": true` only in externally sandboxed environments.
-  Optional `"oss": true` / `"localProvider": "ollama"` for local models.
+  Optional `"oss": true` / `"localProvider": "ollama"` for local models. For OpenAI-compatible
+  local servers (e.g. llama-swap), use `"ignoreUserConfig": true` plus
+  `"configOverrides": { "model_providers.llamaswap.base_url": "https://host/v1",
+  "model_providers.llamaswap.wire_api": "responses", "model_provider": "llamaswap" }`
+  (and a matching models map).
 - **`generic-cli`** is a config-driven adapter for tools like **Grok** and **omp**: a
   `command` argv template with `{model}` / `{workdir}` / `{promptFile}` placeholders,
   `promptVia: stdin|arg|file`, and optional `resultPath` into the JSON/JSONL output

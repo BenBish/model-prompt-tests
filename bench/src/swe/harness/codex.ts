@@ -62,8 +62,21 @@ export function createCodexHarness(config: CodexHarnessConfig): SweHarness {
           }
         }
 
+        if (config.ignoreUserConfig) {
+          cmd.push("--ignore-user-config");
+        }
+
+        if (config.configOverrides) {
+          for (const [key, value] of Object.entries(config.configOverrides)) {
+            // Codex -c value is TOML-parsed; quote strings that need it.
+            const needsQuotes = !/^(true|false|null|-?\d+(\.\d+)?)$/i.test(value) && !value.startsWith('"');
+            const encoded = needsQuotes ? `"${value.replaceAll('"', '\\"')}"` : value;
+            cmd.push("-c", `${key}=${encoded}`);
+          }
+        }
+
         const env = buildHarnessEnv({
-          extraKeys: ["OPENAI_API_KEY", "CODEX_API_KEY", "CODEX_HOME"],
+          extraKeys: ["OPENAI_API_KEY", "CODEX_API_KEY", "CODEX_HOME", "LOCAL_LLAMACPP_API_KEY"],
           stripPrefixes: ["CLAUDE_CODE_", "CLAUDECODE"],
         });
 

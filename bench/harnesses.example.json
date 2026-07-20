@@ -42,7 +42,7 @@
       "promptVia": "file",
       "resultPath": "text",
       "models": {
-        "default": "grok-4"
+        "default": "grok-4.5"
       },
       "extraEnvKeys": ["XAI_API_KEY"]
     },

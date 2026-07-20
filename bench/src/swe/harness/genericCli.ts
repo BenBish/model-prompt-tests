@@ -47,13 +47,28 @@ export function createGenericCliHarness(config: GenericCliHarnessConfig): SweHar
     async run(input: SweHarnessInput): Promise<SweHarnessResult> {
       const tempDir = mkdtempSync(join(tmpdir(), "bench-generic-cli-"));
       const promptFile = join(tempDir, "prompt.txt");
-      writeFileSync(promptFile, input.taskPrompt);
+      const templateHasPromptFile = config.command.some((part) => part.includes("{promptFile}"));
+
+      if (promptVia === "file" && !templateHasPromptFile) {
+        throw new Error(
+          `generic-cli harness "${config.id}": promptVia "file" requires {promptFile} in command`,
+        );
+      }
+      if (promptVia !== "file" && templateHasPromptFile) {
+        throw new Error(
+          `generic-cli harness "${config.id}": command includes {promptFile} but promptVia is "${promptVia}" (use promptVia "file")`,
+        );
+      }
+
+      if (promptVia === "file") {
+        writeFileSync(promptFile, input.taskPrompt);
+      }
 
       try {
         let cmd = expandCommandTemplate(config.command, {
           model: input.model,
           workdir: input.workDir,
-          promptFile,
+          promptFile: promptVia === "file" ? promptFile : "",
         });
 
         let stdin: string | undefined;
@@ -61,13 +76,6 @@ export function createGenericCliHarness(config: GenericCliHarnessConfig): SweHar
           stdin = input.taskPrompt;
         } else if (promptVia === "arg") {
           cmd = [...cmd, input.taskPrompt];
-        } else if (promptVia === "file") {
-          // prompt already written; {promptFile} must appear in the template
-          if (!config.command.some((part) => part.includes("{promptFile}"))) {
-            throw new Error(
-              `generic-cli harness "${config.id}": promptVia "file" requires {promptFile} in command`,
-            );
-          }
         }
 
         const env = buildHarnessEnv({

@@ -102,4 +102,22 @@ describe("createGenericCliHarness", () => {
     });
     expect(result.finalMessage.trim()).toBe("plain-out");
   });
+
+  test("rejects {promptFile} in the template when promptVia is not file", async () => {
+    writeFakeBinary("fake-grok", "echo ok");
+    const harness = createGenericCliHarness(
+      grokishConfig({
+        command: ["fake-grok", "--file", "{promptFile}"],
+        promptVia: "stdin",
+      }),
+    );
+    await expect(
+      harness.run({
+        taskPrompt: "x",
+        model: "grok-4",
+        workDir: process.cwd(),
+        timeoutMs: 5000,
+      }),
+    ).rejects.toThrow(/promptVia is "stdin"/);
+  });
 });
