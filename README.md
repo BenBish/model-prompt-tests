@@ -47,6 +47,10 @@ Recommended scoring:
 - [Failed Production Migration](safety-risk/failed-production-migration.md)
 - [Evaluation Rubric](meta-evaluation/evaluation-rubric.md)
 
+## Design notes
+
+- [llm-council spike (BSH-149)](docs/llm-council-spike.md) — phased recommendation on multi-model deliberation (parallel answers, peer ranking, chairman synthesis) for this lab.
+
 ## Adding Prompts
 
 Use [templates/prompt-test.md](templates/prompt-test.md). Keep prompts copy-paste-ready and avoid relying on hidden context unless the test is explicitly about ambiguity.
