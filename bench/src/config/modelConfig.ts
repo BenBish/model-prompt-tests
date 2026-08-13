@@ -7,6 +7,10 @@ export interface BenchModelsConfig {
   judge: {
     modelId: string;
   };
+  /** Optional Stage 3 chairman. Falls back to judge.modelId when omitted. */
+  chairman?: {
+    modelId: string;
+  };
 }
 
 export interface LoadedModelsConfig {
@@ -180,7 +184,19 @@ export function validateModelsConfig(raw: unknown): BenchModelsConfig {
     throw new Error(`judge.modelId references unknown model "${modelId}"`);
   }
 
-  return { models, judge: { modelId } };
+  let chairman: { modelId: string } | undefined;
+  if (obj.chairman !== undefined) {
+    if (typeof obj.chairman !== "object" || obj.chairman === null || Array.isArray(obj.chairman)) {
+      throw new Error('models config "chairman" must be an object when present');
+    }
+    const chairmanId = requireString(obj.chairman as Record<string, unknown>, "modelId", "chairman");
+    if (!ids.has(chairmanId)) {
+      throw new Error(`chairman.modelId references unknown model "${chairmanId}"`);
+    }
+    chairman = { modelId: chairmanId };
+  }
+
+  return { models, judge: { modelId }, chairman };
 }
 
 export async function loadModelsConfig(repoRoot: string): Promise<LoadedModelsConfig> {

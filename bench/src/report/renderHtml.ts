@@ -363,6 +363,7 @@ export function renderReportHtml(
   generatedAt: string,
   sweSectionHtml = "",
   peerRankSectionHtml = "",
+  synthesisSectionHtml = "",
 ): string {
   const seriesSlots = assignSeriesSlots(data.modelIds);
   const headerCells = data.modelIds.map((modelId) => `<th>${escapeHtml(modelId)}</th>`).join("");
@@ -451,6 +452,7 @@ th, td { border: 1px solid #ccc; padding: 0.5rem; vertical-align: top; text-alig
     </table>
     ${sweSectionHtml}
     ${peerRankSectionHtml}
+    ${synthesisSectionHtml}
 
     <footer class="methodology">
       <h2>Methodology notes</h2>

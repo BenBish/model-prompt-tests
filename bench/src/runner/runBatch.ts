@@ -6,6 +6,8 @@ import { insertScore } from "../db/scoresRepo";
 import { insertPeerRank } from "../db/peerRanksRepo";
 import { runJudge } from "../judge/judge";
 import { runOnePeerRank, type PeerRanker } from "../peerRank/runPeerRank";
+import { groupsFromBatch, runSynthesisForGroups } from "../synthesize/groups";
+import type { Chairman } from "../synthesize/runSynthesis";
 import { createLimiter, type Limiter } from "../util/concurrency";
 import { withRetry } from "../util/retry";
 import type { CandidateRunner } from "./candidateRunner";
@@ -36,6 +38,14 @@ export interface RunBatchOptions {
   peerRank?: {
     rankers: PeerRanker[];
   };
+  /**
+   * When set, after candidates (+ optional judges/peer ranks), run one chairman
+   * synthesis per (prompt, repeat) with ≥2 ok outputs. Answer production only —
+   * does not change rubric scores.
+   */
+  synthesize?: {
+    chairman: Chairman;
+  };
 }
 
 export interface RunBatchSummary {
@@ -45,6 +55,8 @@ export interface RunBatchSummary {
   judgeErrored: number;
   peerRankOk: number;
   peerRankErrored: number;
+  synthesizeOk: number;
+  synthesizeErrored: number;
   avgScoreByModel: Record<string, number>;
   wallClockMs: number;
 }
@@ -108,6 +120,8 @@ export async function runBatch(options: RunBatchOptions): Promise<RunBatchSummar
   let judgeErrored = 0;
   let peerRankOk = 0;
   let peerRankErrored = 0;
+  let synthesizeOk = 0;
+  let synthesizeErrored = 0;
   const okRunIds: {
     runId: number;
     modelId: string;
@@ -321,12 +335,27 @@ export async function runBatch(options: RunBatchOptions): Promise<RunBatchSummar
     }
   }
 
+  if (options.synthesize) {
+    const promptTextById = new Map(prompts.map((p) => [p.id, p.promptText]));
+    const groups = groupsFromBatch(db, runBatchId, promptTextById);
+    const syn = await runSynthesisForGroups(
+      db,
+      runBatchId,
+      groups,
+      options.synthesize.chairman,
+      defaultConcurrency,
+    );
+    synthesizeOk = syn.ok;
+    synthesizeErrored = syn.errored;
+  }
+
   const wallClockMs = performance.now() - started;
 
   console.log(
     `\nBatch ${runBatchId}: ${ok} ok, ${errored} run errors, ` +
       `${judgeErrored} judge errors, ${peerRankOk} peer-rank ok, ` +
-      `${peerRankErrored} peer-rank errors, ${Math.round(wallClockMs)}ms`,
+      `${peerRankErrored} peer-rank errors, ${synthesizeOk} synthesize ok, ` +
+      `${synthesizeErrored} synthesize errors, ${Math.round(wallClockMs)}ms`,
   );
   for (const [modelId, avg] of Object.entries(avgScoreByModel)) {
     console.log(`  ${modelId}: avg score ${avg.toFixed(2)}`);
@@ -339,6 +368,8 @@ export async function runBatch(options: RunBatchOptions): Promise<RunBatchSummar
     judgeErrored,
     peerRankOk,
     peerRankErrored,
+    synthesizeOk,
+    synthesizeErrored,
     avgScoreByModel,
     wallClockMs,
   };

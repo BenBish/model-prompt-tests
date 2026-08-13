@@ -231,3 +231,37 @@ describe("bench calibrate CLI", () => {
     expect(result.stdout.toString()).toContain("Recommendation: side signal only");
   });
 });
+
+describe("bench synthesize CLI", () => {
+  test("run --synthesize --dry-run names the chairman and does not call the network", () => {
+    const repoRoot = makeTempRepo();
+    const result = runCli(repoRoot, [
+      "run",
+      "test-prompt",
+      "--models",
+      "local:test",
+      "--synthesize",
+      "--dry-run",
+    ]);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.toString()).toContain("synthesize: chairman local:test");
+    expect(result.stdout.toString()).toContain("dry run");
+  });
+
+  test("synthesize --latest --dry-run reports no groups on an empty db", () => {
+    const repoRoot = makeTempRepo();
+    createBenchDb(repoRoot);
+    const result = runCli(repoRoot, ["synthesize", "--latest", "--dry-run"]);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.toString()).toContain("Would synthesize 0 group(s)");
+    expect(result.stdout.toString()).toContain("no run batches");
+  });
+
+  test("models set-chairman persists chairman.modelId", () => {
+    const repoRoot = makeTempRepo();
+    const result = runCli(repoRoot, ["models", "set-chairman", "local:test"]);
+    expect(result.exitCode).toBe(0);
+    const saved = JSON.parse(readFileSync(join(repoRoot, "bench", "models.json"), "utf8"));
+    expect(saved.chairman.modelId).toBe("local:test");
+  });
+});

@@ -25,6 +25,7 @@ bun bench/src/cli.ts models list
 bun bench/src/cli.ts models init
 bun bench/src/cli.ts run all --dry-run
 bun bench/src/cli.ts run debugging/javascript-debounce --models anthropic:sonnet,openai:gpt-4o-mini
+bun bench/src/cli.ts synthesize --latest --dry-run
 bun bench/src/cli.ts report
 ```
 
@@ -49,6 +50,12 @@ Set the default judge:
 
 ```
 bun run bench models set-judge local:gemma
+```
+
+Set the default chairman (optional Stage 3 synthesis; falls back to the judge when unset):
+
+```
+bun run bench models set-chairman judge:opus
 ```
 
 Add a local or hosted OpenAI-compatible model:
@@ -102,11 +109,24 @@ Judge-only models can be added with `--disabled`, which keeps them available for
 - `--repeats <n>` — run each (prompt, model) cell `n` times independently (default 1). Useful for measuring variance; see "Aggregation" below for how repeats factor into the report.
 - `--dry-run` — resolve and print the prompt x model matrix with zero network calls.
 - `--no-judge` — skip LLM-judge scoring.
+- `--synthesize` — after candidates (and optional judges / `--peer-rank`), run **chairman synthesis** (council Stage 3): one configurable chairman model writes a combined answer plus provenance for each (prompt, repeat) with ≥2 ok candidates. Stored in `syntheses` with its own tokens/cost. Does **not** change rubric `avgScore`. See [`docs/chairman-synthesis.md`](../docs/chairman-synthesis.md) for when to use vs when not to.
+- `--chairman <id>` — chairman model for `--synthesize` (default: `chairman.modelId`, else `judge.modelId`, else `BENCH_CHAIRMAN_MODEL_ID`).
 - `--peer-rank` — after candidates (and optional judges), run **anonymized peer ranking** (council Stage 2): each successful candidate model ranks all anonymized answers for that (prompt, repeat) group. Labels are shuffled per ranker so brand identity is hidden. Results land in `peer_ranks` (mapping, rank vectors, tokens/cost) and show as a **secondary** report section — they do **not** replace rubric `avgScore`.
 
   **Cost warning:** peer ranking adds roughly **+N large-context calls** per prompt/repeat when N models succeed (each ranker re-reads every answer). Expect call count and tokens to roughly double versus parallel-only runs; do not use as the default for large `run all` matrices.
 
 The selector `calibration` is a fixed four-prompt subset used to calibrate peer ranks against multi-judge rubric medians (BSH-151). It is not `run all`. See [`docs/peer-rank-calibration.md`](../docs/peer-rank-calibration.md) and `calibrate` below.
+
+### `synthesize`
+
+Follow-on chairman synthesis (council Stage 3) over an existing prompt batch. Same storage and report section as `run --synthesize`. Does **not** re-run candidates or change `avgScore`.
+
+```
+bun run bench synthesize --latest --dry-run
+bun run bench synthesize --batch <run_batch_id> --chairman judge:opus
+```
+
+See [`docs/chairman-synthesis.md`](../docs/chairman-synthesis.md).
 
 ### `calibrate`
 
