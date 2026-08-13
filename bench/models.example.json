@@ -56,6 +56,40 @@
       "modelName": "claude-opus-4-8",
       "apiKeyEnvVar": "ANTHROPIC_API_KEY",
       "enabled": false
+    },
+    {
+      "id": "openrouter:deepseek-v4-flash",
+      "kind": "openai-compatible",
+      "providerId": "openrouter",
+      "modelName": "deepseek/deepseek-v4-flash-0731",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "apiKeyEnvVar": "OPENROUTER_API_KEY",
+      "extraHeaders": {
+        "HTTP-Referer": "https://github.com/model-prompt-tests",
+        "X-Title": "model-prompt-tests bench"
+      },
+      "maxConcurrent": 1,
+      "timeoutMs": 600000,
+      "maxTokens": 32768,
+      "pricing": { "inputPerMTok": 0.08, "outputPerMTok": 0.18 },
+      "enabled": false
+    },
+    {
+      "id": "openrouter:deepseek-v4-pro",
+      "kind": "openai-compatible",
+      "providerId": "openrouter",
+      "modelName": "deepseek/deepseek-v4-pro-0813",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "apiKeyEnvVar": "OPENROUTER_API_KEY",
+      "extraHeaders": {
+        "HTTP-Referer": "https://github.com/model-prompt-tests",
+        "X-Title": "model-prompt-tests bench"
+      },
+      "maxConcurrent": 1,
+      "timeoutMs": 600000,
+      "maxTokens": 32768,
+      "pricing": { "inputPerMTok": 0.435, "outputPerMTok": 0.87 },
+      "enabled": false
     }
   ],
   "judge": {

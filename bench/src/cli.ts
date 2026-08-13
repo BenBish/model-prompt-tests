@@ -46,7 +46,7 @@ const DEFAULT_CONCURRENCY = 3;
 function usage(): void {
   console.log(`Usage:
   bun bench/src/cli.ts run <prompt-glob-or-all|calibration> [--models id1,id2] [--judge <id>] [--judges id1,id2] [--concurrency <n>] [--repeats <n>] [--dry-run] [--no-judge] [--peer-rank] [--synthesize] [--chairman <id>]
-  bun bench/src/cli.ts synthesize (--batch <run_batch_id> | --latest) [--chairman <id>] [--dry-run]
+  bun bench/src/cli.ts synthesize (--batch <run_batch_id> | --latest) [--prompts id1,id2] [--chairman <id>] [--dry-run]
   bun bench/src/cli.ts calibrate [--batch <run_batch_id>] [--all-runs] [--human <file.json>] [--out <path>] [--subset]
   bun bench/src/cli.ts report [--out <path>] [--batch <run_batch_id>] [--all-runs] [--narrative] [--judge <id>]
   bun bench/src/cli.ts report --compare <batchA> --compare <batchB> [--out <path>]
@@ -65,6 +65,21 @@ function requireFlag(values: Record<string, unknown>, key: string): string {
     throw new Error(`missing required --${key}`);
   }
   return value;
+}
+
+function parseCommaSeparatedIds(value: unknown, flag: string): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string") {
+    throw new Error(`${flag} must be a comma-separated list of ids`);
+  }
+  const ids = value
+    .split(",")
+    .map((id) => id.trim())
+    .filter((id) => id.length > 0);
+  if (ids.length === 0) {
+    throw new Error(`${flag} must be a comma-separated list of ids`);
+  }
+  return ids;
 }
 
 function parsePricingFlags(
@@ -270,6 +285,16 @@ async function cmdRun(positionals: string[], values: Record<string, unknown>): P
 async function cmdSynthesize(values: Record<string, unknown>): Promise<void> {
   const { config } = await loadModelsConfig(REPO_ROOT);
   const chairmanEntry = resolveChairman(config, values.chairman as string | undefined);
+  const prompts = await loadPrompts(REPO_ROOT, "all");
+  const promptTextById = new Map(prompts.map((p) => [p.id, p.promptText]));
+  const promptFilter = parseCommaSeparatedIds(values.prompts, "--prompts");
+  if (promptFilter) {
+    const unknown = promptFilter.filter((id) => !promptTextById.has(id));
+    if (unknown.length > 0) {
+      throw new Error(`unknown prompt id(s) in --prompts: ${unknown.join(", ")}`);
+    }
+  }
+
   const db = openDb(DB_PATH);
   const runBatchId =
     typeof values.batch === "string"
@@ -288,9 +313,11 @@ async function cmdSynthesize(values: Record<string, unknown>): Promise<void> {
     throw new Error("synthesize requires --batch <run_batch_id> or --latest");
   }
 
-  const prompts = await loadPrompts(REPO_ROOT, "all");
-  const promptTextById = new Map(prompts.map((p) => [p.id, p.promptText]));
-  const groups = groupsFromBatch(db, runBatchId, promptTextById);
+  let groups = groupsFromBatch(db, runBatchId, promptTextById);
+  if (promptFilter) {
+    const wanted = new Set(promptFilter);
+    groups = groups.filter((g) => wanted.has(g.promptId));
+  }
   const eligible = groups.filter((g) => g.candidates.length >= 2);
 
   if (values["dry-run"] === true) {
@@ -737,6 +764,7 @@ async function main(): Promise<void> {
         options: {
           batch: { type: "string" },
           latest: { type: "boolean" },
+          prompts: { type: "string" },
           chairman: { type: "string" },
           "dry-run": { type: "boolean" },
         },

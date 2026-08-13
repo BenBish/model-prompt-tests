@@ -47,6 +47,46 @@ describe("runOnePeerRank", () => {
     expect(result.costUsd).toBe(0.001);
   });
 
+  test("falls back to plain JSON when the provider rejects json_schema", async () => {
+    let sawSchema = false;
+    let sawPlain = false;
+    const adapter: ModelAdapter = {
+      providerId: "test",
+      modelName: "no-schema",
+      async call(input) {
+        if (input.jsonSchema) {
+          sawSchema = true;
+          const err = new Error("response_format json_schema unavailable") as Error & { status?: number };
+          err.status = 400;
+          throw err;
+        }
+        sawPlain = true;
+        const labels = [...input.userPrompt.matchAll(/### Response ([A-Z])/g)].map((m) => m[1]!);
+        return {
+          text: JSON.stringify({ ranking: labels, rationale: "plain fallback" }),
+          raw: {},
+          latencyMs: 2,
+        };
+      },
+    };
+
+    const result = await runOnePeerRank(
+      { adapter, modelId: "r1" },
+      "prompt",
+      [
+        { modelId: "r1", outputText: "a" },
+        { modelId: "r2", outputText: "b" },
+      ],
+      () => 0,
+    );
+
+    expect(sawSchema).toBe(true);
+    expect(sawPlain).toBe(true);
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") return;
+    expect(result.rationale).toBe("plain fallback");
+  });
+
   test("records error when ranking is invalid after retry", async () => {
     const adapter: ModelAdapter = {
       providerId: "test",

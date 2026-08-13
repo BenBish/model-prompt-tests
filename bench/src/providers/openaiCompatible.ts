@@ -8,6 +8,26 @@ import type {
 const DEFAULT_MAX_TOKENS = 4096;
 const DEFAULT_TIMEOUT_MS = 120_000;
 
+/** Pull a usable string from OpenAI-style message.content (string or text parts). */
+export function extractOpenAICompatibleText(message: unknown): string | undefined {
+  if (message === null || typeof message !== "object") return undefined;
+  const content = (message as { content?: unknown }).content;
+  if (typeof content === "string") {
+    return content;
+  }
+  if (Array.isArray(content)) {
+    const parts = content.flatMap((part) => {
+      if (typeof part === "string") return [part];
+      if (part && typeof part === "object" && typeof (part as { text?: unknown }).text === "string") {
+        return [(part as { text: string }).text];
+      }
+      return [];
+    });
+    if (parts.length > 0) return parts.join("");
+  }
+  return undefined;
+}
+
 export function createOpenAICompatibleAdapter(
   config: OpenAICompatibleAdapterConfig,
 ): ModelAdapter {
@@ -84,12 +104,22 @@ export function createOpenAICompatibleAdapter(
       }
 
       const choice = body.choices?.[0];
-      if (typeof choice?.message?.content !== "string") {
-        throw new Error(`${config.providerId} API response did not contain message content`);
+      const text = extractOpenAICompatibleText(choice?.message);
+      if (text === undefined) {
+        const finishReason = typeof choice?.finish_reason === "string" ? choice.finish_reason : "unknown";
+        const reasoningTokens = body.usage?.completion_tokens_details?.reasoning_tokens;
+        const reasoningHint =
+          finishReason === "length" && typeof reasoningTokens === "number"
+            ? ` (truncated during reasoning, ${reasoningTokens} reasoning tokens)`
+            : "";
+        throw new Error(
+          `${config.providerId} API response did not contain message content` +
+            `; finish_reason=${finishReason}${reasoningHint}`,
+        );
       }
 
       return {
-        text: choice.message.content,
+        text,
         raw: body,
         inputTokens: body.usage?.prompt_tokens,
         outputTokens: body.usage?.completion_tokens,

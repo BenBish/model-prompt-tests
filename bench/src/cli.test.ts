@@ -257,6 +257,20 @@ describe("bench synthesize CLI", () => {
     expect(result.stdout.toString()).toContain("no run batches");
   });
 
+  test("synthesize --prompts rejects unknown prompt ids", () => {
+    const repoRoot = makeTempRepo();
+    createBenchDb(repoRoot);
+    const result = runCli(repoRoot, [
+      "synthesize",
+      "--latest",
+      "--dry-run",
+      "--prompts",
+      "not-a-real-prompt",
+    ]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr.toString()).toContain("unknown prompt id(s) in --prompts: not-a-real-prompt");
+  });
+
   test("models set-chairman persists chairman.modelId", () => {
     const repoRoot = makeTempRepo();
     const result = runCli(repoRoot, ["models", "set-chairman", "local:test"]);
