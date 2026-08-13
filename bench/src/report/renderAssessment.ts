@@ -183,6 +183,7 @@ export function renderAssessmentMarkdown(
   data: ReportData,
   meta: AssessmentMeta,
   sweSectionMarkdown = "",
+  peerRankSectionMarkdown = "",
 ): string {
   const summary = buildAssessmentSummary(data, meta);
   const sections: string[] = [];
@@ -234,6 +235,10 @@ export function renderAssessmentMarkdown(
 
   if (sweSectionMarkdown) {
     sections.push(sweSectionMarkdown);
+  }
+
+  if (peerRankSectionMarkdown) {
+    sections.push(peerRankSectionMarkdown.trimEnd());
   }
 
   return `${sections.join("\n\n")}\n`;

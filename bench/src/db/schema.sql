@@ -56,8 +56,30 @@ CREATE TABLE IF NOT EXISTS scores (
   weighted_score   REAL
 );
 
+CREATE TABLE IF NOT EXISTS peer_ranks (
+  id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+  run_batch_id       TEXT NOT NULL,
+  prompt_id          TEXT NOT NULL,
+  repeat_index       INTEGER NOT NULL DEFAULT 0,
+  ranker_model_id    TEXT NOT NULL,
+  label_mapping      TEXT NOT NULL,
+  ranking_labels     TEXT,
+  ranking_model_ids  TEXT,
+  rationale          TEXT,
+  raw_output         TEXT,
+  latency_ms         INTEGER,
+  input_tokens       INTEGER,
+  output_tokens      INTEGER,
+  cost_usd           REAL,
+  status             TEXT NOT NULL CHECK (status IN ('ok', 'error')),
+  error              TEXT,
+  ranked_at          TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_runs_prompt ON runs(prompt_id);
 CREATE INDEX IF NOT EXISTS idx_runs_model ON runs(model_id);
 CREATE INDEX IF NOT EXISTS idx_runs_batch ON runs(run_batch_id);
 CREATE INDEX IF NOT EXISTS idx_scores_run ON scores(run_id);
 CREATE INDEX IF NOT EXISTS idx_swe_results_run ON swe_results(run_id);
+CREATE INDEX IF NOT EXISTS idx_peer_ranks_batch ON peer_ranks(run_batch_id);
+CREATE INDEX IF NOT EXISTS idx_peer_ranks_prompt ON peer_ranks(prompt_id);

@@ -358,7 +358,12 @@ function renderChartsSection(data: ReportData, slots: Map<string, number>): stri
   `;
 }
 
-export function renderReportHtml(data: ReportData, generatedAt: string, sweSectionHtml = ""): string {
+export function renderReportHtml(
+  data: ReportData,
+  generatedAt: string,
+  sweSectionHtml = "",
+  peerRankSectionHtml = "",
+): string {
   const seriesSlots = assignSeriesSlots(data.modelIds);
   const headerCells = data.modelIds.map((modelId) => `<th>${escapeHtml(modelId)}</th>`).join("");
 
@@ -445,6 +450,7 @@ th, td { border: 1px solid #ccc; padding: 0.5rem; vertical-align: top; text-alig
       <tbody>${bodyRows}</tbody>
     </table>
     ${sweSectionHtml}
+    ${peerRankSectionHtml}
 
     <footer class="methodology">
       <h2>Methodology notes</h2>
@@ -453,8 +459,10 @@ th, td { border: 1px solid #ccc; padding: 0.5rem; vertical-align: top; text-alig
         <dd>Median of peer judge scores per run (self-judging excluded), then aggregated across cells. This is the headline number used in charts and badges.</dd>
         <dt>Score (self)</dt>
         <dd>Mean of scores a model gave its own output, shown separately because self-judging is a known bias risk.</dd>
+        <dt>Peer ranking</dt>
+        <dd>Optional anonymized multi-model ranking (council Stage 2). Secondary signal only; not blended into avg score.</dd>
         <dt>Cost</dt>
-        <dd>Provider-reported billed cost when available (e.g. OpenRouter); otherwise computed from optional per-model pricing × tokens.</dd>
+        <dd>Provider-reported billed cost when available (e.g. OpenRouter); otherwise computed from optional per-model pricing × tokens. Ranking calls store their own cost rows separately.</dd>
       </dl>
     </footer>
   </div>
