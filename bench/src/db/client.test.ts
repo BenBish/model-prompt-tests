@@ -69,6 +69,11 @@ describe("applyMigrations", () => {
     expect(tableColumns(db, "runs")).toContain("stop_reason");
     expect(tableColumns(db, "runs")).toContain("cost_usd");
 
+    const tables = (
+      db.query(`SELECT name FROM sqlite_master WHERE type='table'`).all() as { name: string }[]
+    ).map((t) => t.name);
+    expect(tables).toContain("peer_ranks");
+
     const run = db.query("SELECT * FROM runs WHERE id = $id").get({ $id: runId.id }) as any;
     expect(run.prompt_id).toBe("prompt-1");
     expect(run.repeat_index).toBe(0);

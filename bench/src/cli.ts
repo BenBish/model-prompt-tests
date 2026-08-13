@@ -26,6 +26,11 @@ import { parsePositiveInteger } from "./util/cliArgs";
 import { cmdSweDoctor, cmdSweList, cmdSweRun } from "./swe/cli";
 import { querySweReportData } from "./swe/sweReportData";
 import { renderSweAssessmentSection, renderSweReportSection } from "./swe/renderSweSection";
+import { queryPeerRankReportData, queryPeerRankReportForReportBatches } from "./peerRank/reportData";
+import {
+  renderPeerRankAssessmentSection,
+  renderPeerRankHtmlSection,
+} from "./peerRank/renderPeerRankSection";
 
 const REPO_ROOT = process.cwd();
 const DB_PATH = `${REPO_ROOT}/bench/data/bench.sqlite`;
@@ -36,7 +41,7 @@ const DEFAULT_CONCURRENCY = 3;
 
 function usage(): void {
   console.log(`Usage:
-  bun bench/src/cli.ts run <prompt-glob-or-all> [--models id1,id2] [--judge <id>] [--judges id1,id2] [--concurrency <n>] [--repeats <n>] [--dry-run] [--no-judge]
+  bun bench/src/cli.ts run <prompt-glob-or-all> [--models id1,id2] [--judge <id>] [--judges id1,id2] [--concurrency <n>] [--repeats <n>] [--dry-run] [--no-judge] [--peer-rank]
   bun bench/src/cli.ts report [--out <path>] [--batch <run_batch_id>] [--all-runs] [--narrative] [--judge <id>]
   bun bench/src/cli.ts report --compare <batchA> --compare <batchB> [--out <path>]
   bun bench/src/cli.ts export --name <slug> (--batch <run_batch_id> | --latest)
@@ -159,6 +164,8 @@ async function cmdRun(positionals: string[], values: Record<string, unknown>): P
 
   const repeats = parsePositiveInteger(values.repeats, "--repeats") ?? 1;
 
+  const peerRank = values["peer-rank"] === true;
+
   if (values["dry-run"]) {
     console.log(
       `Would run ${prompts.length} prompt(s) x ${matrix.length} model(s)` +
@@ -167,8 +174,21 @@ async function cmdRun(positionals: string[], values: Record<string, unknown>): P
     for (const prompt of prompts) console.log(`  prompt: ${prompt.id}`);
     for (const entry of matrix) console.log(`  model:  ${entry.id}`);
     for (const entry of judgeEntries) console.log(`  judge:  ${entry.id}`);
+    if (peerRank) {
+      console.log(
+        `  peer-rank: enabled (≈ +${matrix.length} large-context ranking call(s) per prompt/repeat with ≥2 ok models)`,
+      );
+    }
     console.log("(dry run — no network calls made)");
     return;
+  }
+
+  if (peerRank) {
+    console.warn(
+      "[warn] --peer-rank adds roughly one large-context ranking call per successful candidate " +
+        "per prompt/repeat (≈ +N calls when N models succeed). Cost and latency can more than double " +
+        "versus parallel-only runs. Rankings are a secondary signal and do not replace rubric scores.",
+    );
   }
 
   const runners = matrix.map((entry) =>
@@ -189,8 +209,18 @@ async function cmdRun(positionals: string[], values: Record<string, unknown>): P
       modelId: entry.id,
       maxConcurrent: entry.maxConcurrent,
     })),
+    peerRank: peerRank
+      ? {
+          rankers: matrix.map((entry) => ({
+            adapter: createAdapter(entry),
+            modelId: entry.id,
+            maxConcurrent: entry.maxConcurrent,
+            pricing: entry.pricing,
+          })),
+        }
+      : undefined,
   });
-  if (summary.errored > 0 || summary.judgeErrored > 0) {
+  if (summary.errored > 0 || summary.judgeErrored > 0 || summary.peerRankErrored > 0) {
     process.exitCode = 1;
   }
 }
@@ -285,8 +315,23 @@ async function cmdReport(values: Record<string, unknown>): Promise<void> {
   const sweHtmlSection = renderSweReportSection(sweData);
   const sweAssessmentSection = renderSweAssessmentSection(sweData);
 
+  const reportBatchIds = new Set<string>();
+  for (const byModel of data.rows.values()) {
+    for (const rows of byModel.values()) {
+      for (const row of rows) reportBatchIds.add(row.runBatchId);
+    }
+  }
+  const peerRankData =
+    runBatchId !== undefined
+      ? queryPeerRankReportData(db, { runBatchId })
+      : reportBatchIds.size > 0
+        ? queryPeerRankReportForReportBatches(db, [...reportBatchIds])
+        : queryPeerRankReportData(db, { allRuns: values["all-runs"] === true });
+  const peerRankHtmlSection = renderPeerRankHtmlSection(peerRankData);
+  const peerRankAssessmentSection = renderPeerRankAssessmentSection(peerRankData);
+
   const generatedAt = new Date().toISOString();
-  const html = renderReportHtml(data, generatedAt, sweHtmlSection);
+  const html = renderReportHtml(data, generatedAt, sweHtmlSection, peerRankHtmlSection);
 
   const timestamp = generatedAt.replace(/[:.]/g, "-");
   const outPath = (values.out as string | undefined) ?? `${REPORTS_DIR}/${timestamp}.html`;
@@ -306,6 +351,7 @@ async function cmdReport(values: Record<string, unknown>): Promise<void> {
       runBatchId,
     },
     sweAssessmentSection,
+    peerRankAssessmentSection,
   );
 
   // Write the deterministic outputs first: they're fully computable from the local DB and
@@ -535,6 +581,7 @@ async function main(): Promise<void> {
           repeats: { type: "string" },
           "dry-run": { type: "boolean" },
           "no-judge": { type: "boolean" },
+          "peer-rank": { type: "boolean" },
         },
       });
       await cmdRun(positionals, values);

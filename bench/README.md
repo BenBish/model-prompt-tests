@@ -102,6 +102,9 @@ Judge-only models can be added with `--disabled`, which keeps them available for
 - `--repeats <n>` — run each (prompt, model) cell `n` times independently (default 1). Useful for measuring variance; see "Aggregation" below for how repeats factor into the report.
 - `--dry-run` — resolve and print the prompt x model matrix with zero network calls.
 - `--no-judge` — skip LLM-judge scoring.
+- `--peer-rank` — after candidates (and optional judges), run **anonymized peer ranking** (council Stage 2): each successful candidate model ranks all anonymized answers for that (prompt, repeat) group. Labels are shuffled per ranker so brand identity is hidden. Results land in `peer_ranks` (mapping, rank vectors, tokens/cost) and show as a **secondary** report section — they do **not** replace rubric `avgScore`.
+
+  **Cost warning:** peer ranking adds roughly **+N large-context calls** per prompt/repeat when N models succeed (each ranker re-reads every answer). Expect call count and tokens to roughly double versus parallel-only runs; do not use as the default for large `run all` matrices.
 
 Provider calls time out after 120 seconds by default. Matrix entries can override this
 with `timeoutMs`. A completed batch exits nonzero if any candidate or judge request

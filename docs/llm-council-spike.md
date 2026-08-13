@@ -123,7 +123,7 @@ Filed from this spike (parent [BSH-149](https://linear.app/bshp/issue/BSH-149)):
 
 | Priority | Issue | Scope |
 | --- | --- | --- |
-| P1 | [BSH-153](https://linear.app/bshp/issue/BSH-153) | Optional anonymized peer ranking (Stage 2) in bench |
+| P1 | [BSH-153](https://linear.app/bshp/issue/BSH-153) | Optional anonymized peer ranking (Stage 2) in bench — `run --peer-rank` |
 | P2 | [BSH-150](https://linear.app/bshp/issue/BSH-150) | Optional chairman synthesis mode (Stage 3) |
 | P3 | [BSH-151](https://linear.app/bshp/issue/BSH-151) | Meta-eval: ranks vs multi-judge calibration |
 | P4 | [BSH-152](https://linear.app/bshp/issue/BSH-152) | Optional MC telemetry export (consumer only) |

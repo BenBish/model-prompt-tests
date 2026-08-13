@@ -3,7 +3,9 @@ import type { ModelAdapter } from "../providers/types";
 import type { PromptDefinition } from "../types";
 import { insertRun, type RunRecord } from "../db/runsRepo";
 import { insertScore } from "../db/scoresRepo";
+import { insertPeerRank } from "../db/peerRanksRepo";
 import { runJudge } from "../judge/judge";
+import { runOnePeerRank, type PeerRanker } from "../peerRank/runPeerRank";
 import { createLimiter, type Limiter } from "../util/concurrency";
 import { withRetry } from "../util/retry";
 import type { CandidateRunner } from "./candidateRunner";
@@ -25,6 +27,15 @@ export interface RunBatchOptions {
     modelId: string;
     maxConcurrent?: number;
   }[];
+  /**
+   * When set, after candidates (+ judges), run anonymized peer ranking for each
+   * (prompt, repeat) group with ≥2 ok outputs. Rankers are the provided adapters
+   * (typically one per candidate model id). Secondary signal only — does not
+   * change rubric scores.
+   */
+  peerRank?: {
+    rankers: PeerRanker[];
+  };
 }
 
 export interface RunBatchSummary {
@@ -32,6 +43,8 @@ export interface RunBatchSummary {
   ok: number;
   errored: number;
   judgeErrored: number;
+  peerRankOk: number;
+  peerRankErrored: number;
   avgScoreByModel: Record<string, number>;
   wallClockMs: number;
 }
@@ -93,7 +106,15 @@ export async function runBatch(options: RunBatchOptions): Promise<RunBatchSummar
   let ok = 0;
   let errored = 0;
   let judgeErrored = 0;
-  const okRunIds: { runId: number; modelId: string; outputText: string; promptId: string }[] = [];
+  let peerRankOk = 0;
+  let peerRankErrored = 0;
+  const okRunIds: {
+    runId: number;
+    modelId: string;
+    outputText: string;
+    promptId: string;
+    repeatIndex: number;
+  }[] = [];
 
   const candidateTasks: Promise<void>[] = [];
   for (const prompt of prompts) {
@@ -143,6 +164,7 @@ export async function runBatch(options: RunBatchOptions): Promise<RunBatchSummar
         modelId: runner.id,
         outputText: result.outputText,
         promptId: prompt.id,
+        repeatIndex,
       });
       console.log(`[ok] ${label} (${Math.round(result.latencyMs)}ms)`);
     } catch (err) {
@@ -209,15 +231,115 @@ export async function runBatch(options: RunBatchOptions): Promise<RunBatchSummar
     }
   }
 
+  if (options.peerRank && options.peerRank.rankers.length > 0) {
+    const rankerById = new Map(options.peerRank.rankers.map((r) => [r.modelId, r]));
+    const groups = new Map<string, typeof okRunIds>();
+    for (const entry of okRunIds) {
+      const key = `${entry.promptId}\0${entry.repeatIndex}`;
+      const list = groups.get(key) ?? [];
+      list.push(entry);
+      groups.set(key, list);
+    }
+
+    const peerRankLimiters = new Map(
+      options.peerRank.rankers.map((ranker) => [
+        ranker.modelId,
+        createLimiter(ranker.maxConcurrent ?? defaultConcurrency),
+      ]),
+    );
+
+    const peerTasks: Promise<void>[] = [];
+    for (const [, group] of groups) {
+      if (group.length < 2) continue;
+      // One response per model in the group (if a model somehow duplicated, keep first).
+      const byModel = new Map<string, (typeof group)[number]>();
+      for (const entry of group) {
+        if (!byModel.has(entry.modelId)) byModel.set(entry.modelId, entry);
+      }
+      const candidates = [...byModel.values()].map((e) => ({
+        modelId: e.modelId,
+        outputText: e.outputText,
+      }));
+      if (candidates.length < 2) continue;
+
+      const promptId = group[0]!.promptId;
+      const repeatIndex = group[0]!.repeatIndex;
+      const prompt = prompts.find((p) => p.id === promptId)!;
+
+      for (const candidate of candidates) {
+        const ranker = rankerById.get(candidate.modelId);
+        if (!ranker) continue;
+        const limiter = peerRankLimiters.get(ranker.modelId)!;
+        peerTasks.push(
+          limiter(async () => {
+            const result = await runOnePeerRank(ranker, prompt.promptText, candidates);
+            insertPeerRank(db, {
+              runBatchId,
+              promptId,
+              repeatIndex,
+              rankerModelId: result.rankerModelId,
+              labelMapping: JSON.stringify(result.labelToModelId),
+              rankingLabels:
+                result.status === "ok" ? JSON.stringify(result.rankingLabels) : undefined,
+              rankingModelIds:
+                result.status === "ok" ? JSON.stringify(result.rankingModelIds) : undefined,
+              rationale: result.status === "ok" ? result.rationale : undefined,
+              rawOutput: result.rawOutput || undefined,
+              latencyMs: result.latencyMs,
+              inputTokens: result.inputTokens,
+              outputTokens: result.outputTokens,
+              costUsd: result.costUsd,
+              status: result.status,
+              error: result.status === "error" ? result.error : undefined,
+              rankedAt: new Date().toISOString(),
+            });
+            // Counter updates are safe under concurrent async tasks: JS is single-threaded,
+            // so ++ cannot interleave mid-statement (same pattern as judgeErrored).
+            if (result.status === "ok") {
+              peerRankOk++;
+              console.log(
+                `[peer-rank] ${promptId} ranked by ${result.rankerModelId}: ${result.rankingModelIds.join(" > ")}`,
+              );
+            } else {
+              peerRankErrored++;
+              console.log(
+                `[peer-rank-error] ${promptId} ranked by ${result.rankerModelId}: ${result.error}`,
+              );
+            }
+          }),
+        );
+      }
+    }
+
+    if (peerTasks.length > 0) {
+      console.warn(
+        `[warn] --peer-rank: about to run ${peerTasks.length} ranking call(s) ` +
+          `(≈ one large-context call per successful candidate per prompt/repeat). ` +
+          "This is a secondary signal and does not replace rubric scores.",
+      );
+      await Promise.all(peerTasks);
+    }
+  }
+
   const wallClockMs = performance.now() - started;
 
   console.log(
     `\nBatch ${runBatchId}: ${ok} ok, ${errored} run errors, ` +
-      `${judgeErrored} judge errors, ${Math.round(wallClockMs)}ms`,
+      `${judgeErrored} judge errors, ${peerRankOk} peer-rank ok, ` +
+      `${peerRankErrored} peer-rank errors, ${Math.round(wallClockMs)}ms`,
   );
   for (const [modelId, avg] of Object.entries(avgScoreByModel)) {
     console.log(`  ${modelId}: avg score ${avg.toFixed(2)}`);
   }
 
-  return { runBatchId, ok, errored, judgeErrored, avgScoreByModel, wallClockMs };
+  return {
+    runBatchId,
+    ok,
+    errored,
+    judgeErrored,
+    peerRankOk,
+    peerRankErrored,
+    avgScoreByModel,
+    wallClockMs,
+  };
 }
