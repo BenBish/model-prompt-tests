@@ -1,5 +1,5 @@
 import type { ModelAdapter, ModelPricing } from "../providers/types";
-import { extractFirstJsonObject } from "../judge/structuredCall";
+import { extractFirstJsonObject, looksLikeUnsupportedStructuredOutput } from "../judge/structuredCall";
 import { withRetry } from "../util/retry";
 import {
   buildSynthesisSystemPrompt,
@@ -71,14 +71,26 @@ export async function runOneSynthesis(
   const jsonSchema = synthesisJsonSchema();
 
   try {
-    const response = await withRetry(() =>
-      chairman.adapter.call({
-        systemPrompt,
-        userPrompt,
-        temperature: 0,
-        jsonSchema,
-      }),
-    );
+    let response;
+    try {
+      response = await withRetry(() =>
+        chairman.adapter.call({
+          systemPrompt,
+          userPrompt,
+          temperature: 0,
+          jsonSchema,
+        }),
+      );
+    } catch (err) {
+      if (!looksLikeUnsupportedStructuredOutput(err)) throw err;
+      response = await withRetry(() =>
+        chairman.adapter.call({
+          systemPrompt,
+          userPrompt,
+          temperature: 0,
+        }),
+      );
+    }
 
     let rawOutput = response.text;
     let latencyMs = response.latencyMs;

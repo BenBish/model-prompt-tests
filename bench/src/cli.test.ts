@@ -257,6 +257,33 @@ describe("bench synthesize CLI", () => {
     expect(result.stdout.toString()).toContain("no run batches");
   });
 
+  test("synthesize --prompts dry-run lists only the requested groups", () => {
+    const repoRoot = makeTempRepo();
+    createBenchDb(repoRoot);
+    const db = new Database(join(repoRoot, "bench", "data", "bench.sqlite"));
+    for (const modelId of ["local:test", "local:other"]) {
+      db.run(
+        `INSERT INTO runs (run_batch_id, prompt_id, provider_id, model_id, model_name, started_at, status, output_text, kind)
+         VALUES ('batch-1', 'test-prompt', 'local', ?, 'm', '2026-01-01T00:00:00Z', 'ok', 'answer', 'prompt')`,
+        [modelId],
+      );
+    }
+    db.close();
+
+    const result = runCli(repoRoot, [
+      "synthesize",
+      "--batch",
+      "batch-1",
+      "--dry-run",
+      "--prompts",
+      "test-prompt",
+    ]);
+    expect(result.exitCode).toBe(0);
+    const out = result.stdout.toString();
+    expect(out).toContain("Would synthesize 1 group(s)");
+    expect(out).toContain("test-prompt");
+  });
+
   test("synthesize --prompts rejects unknown prompt ids", () => {
     const repoRoot = makeTempRepo();
     createBenchDb(repoRoot);

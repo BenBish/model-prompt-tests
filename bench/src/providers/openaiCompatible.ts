@@ -13,7 +13,7 @@ export function extractOpenAICompatibleText(message: unknown): string | undefine
   if (message === null || typeof message !== "object") return undefined;
   const content = (message as { content?: unknown }).content;
   if (typeof content === "string") {
-    return content;
+    return content.trim().length > 0 ? content : undefined;
   }
   if (Array.isArray(content)) {
     const parts = content.flatMap((part) => {
@@ -23,7 +23,8 @@ export function extractOpenAICompatibleText(message: unknown): string | undefine
       }
       return [];
     });
-    if (parts.length > 0) return parts.join("");
+    const joined = parts.join("");
+    if (joined.trim().length > 0) return joined;
   }
   return undefined;
 }

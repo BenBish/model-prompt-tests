@@ -83,6 +83,28 @@ describe("provider adapters", () => {
     expect(result.text).toBe("hello world");
   });
 
+  test("treats blank string content as missing", async () => {
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: "   " }, finish_reason: "length" }],
+          usage: { completion_tokens_details: { reasoning_tokens: 100 } },
+        }),
+        { status: 200 },
+      )) as unknown as typeof fetch;
+    const adapter = createOpenAICompatibleAdapter({
+      kind: "openai-compatible",
+      id: "test",
+      providerId: "test",
+      modelName: "test",
+      baseUrl: "https://example.test/v1",
+    });
+
+    await expect(adapter.call({ userPrompt: "test" })).rejects.toThrow(
+      "truncated during reasoning, 100 reasoning tokens",
+    );
+  });
+
   test("mentions reasoning truncation when content is empty", async () => {
     globalThis.fetch = (async () =>
       new Response(
