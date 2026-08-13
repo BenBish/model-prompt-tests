@@ -2,6 +2,19 @@ import { findModel, type BenchModelsConfig } from "./modelConfig";
 import type { ModelMatrixEntry } from "../providers/types";
 import { findDuplicate } from "../util/cliArgs";
 
+export function resolveChairman(
+  config: BenchModelsConfig,
+  chairmanFlag: string | undefined,
+): ModelMatrixEntry {
+  const chairmanId =
+    chairmanFlag ?? process.env.BENCH_CHAIRMAN_MODEL_ID ?? config.chairman?.modelId ?? config.judge.modelId;
+  const found = findModel(config, chairmanId);
+  if (!found) {
+    throw new Error(`unknown chairman model id: ${chairmanId}`);
+  }
+  return found;
+}
+
 export function resolveJudge(config: BenchModelsConfig, judgeFlag: string | undefined): ModelMatrixEntry {
   const judgeId = judgeFlag ?? process.env.BENCH_JUDGE_MODEL_ID ?? config.judge.modelId;
   const found = findModel(config, judgeId);

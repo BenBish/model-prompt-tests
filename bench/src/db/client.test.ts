@@ -73,6 +73,7 @@ describe("applyMigrations", () => {
       db.query(`SELECT name FROM sqlite_master WHERE type='table'`).all() as { name: string }[]
     ).map((t) => t.name);
     expect(tables).toContain("peer_ranks");
+    expect(tables).toContain("syntheses");
 
     const run = db.query("SELECT * FROM runs WHERE id = $id").get({ $id: runId.id }) as any;
     expect(run.prompt_id).toBe("prompt-1");

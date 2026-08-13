@@ -60,5 +60,8 @@
   ],
   "judge": {
     "modelId": "judge:opus"
+  },
+  "chairman": {
+    "modelId": "judge:opus"
   }
 }

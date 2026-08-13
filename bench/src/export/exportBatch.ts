@@ -10,6 +10,8 @@ import {
   type ReportRow,
 } from "../report/queryData";
 import { renderReportHtml } from "../report/renderHtml";
+import { querySynthesisReportData } from "../synthesize/reportData";
+import { renderSynthesisHtmlSection } from "../synthesize/renderSection";
 
 const NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
@@ -355,7 +357,16 @@ export async function exportBatch(options: ExportBatchOptions): Promise<ExportBa
     { path: "raw-outputs-and-scores.json", content: `${JSON.stringify(rawRows, null, 2)}\n` },
     { path: "per-prompt-results.md", content: buildPerPromptResultsMd(data) },
     { path: "run-config.md", content: buildRunConfigMd(options.name, options.runBatchId, generatedAt, data, options.config) },
-    { path: "report.html", content: renderReportHtml(data, generatedAt) },
+    {
+      path: "report.html",
+      content: renderReportHtml(
+        data,
+        generatedAt,
+        "",
+        "",
+        renderSynthesisHtmlSection(querySynthesisReportData(options.db, { runBatchId: options.runBatchId })),
+      ),
+    },
     { path: "data.json", content: `${JSON.stringify(sitePayload, null, 2)}\n` },
     { path: "article.md", content: buildArticleSkeleton(options.name, data) },
     { path: "x-thread.md", content: buildXThreadSkeleton(options.name, data) },

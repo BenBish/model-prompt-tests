@@ -81,5 +81,25 @@ CREATE INDEX IF NOT EXISTS idx_runs_model ON runs(model_id);
 CREATE INDEX IF NOT EXISTS idx_runs_batch ON runs(run_batch_id);
 CREATE INDEX IF NOT EXISTS idx_scores_run ON scores(run_id);
 CREATE INDEX IF NOT EXISTS idx_swe_results_run ON swe_results(run_id);
+CREATE TABLE IF NOT EXISTS syntheses (
+  id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+  run_batch_id       TEXT NOT NULL,
+  prompt_id          TEXT NOT NULL,
+  repeat_index       INTEGER NOT NULL DEFAULT 0,
+  chairman_model_id  TEXT NOT NULL,
+  synthesis_text     TEXT,
+  provenance         TEXT,
+  raw_output         TEXT,
+  latency_ms         INTEGER,
+  input_tokens       INTEGER,
+  output_tokens      INTEGER,
+  cost_usd           REAL,
+  status             TEXT NOT NULL CHECK (status IN ('ok', 'error')),
+  error              TEXT,
+  synthesized_at     TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_peer_ranks_batch ON peer_ranks(run_batch_id);
 CREATE INDEX IF NOT EXISTS idx_peer_ranks_prompt ON peer_ranks(prompt_id);
+CREATE INDEX IF NOT EXISTS idx_syntheses_batch ON syntheses(run_batch_id);
+CREATE INDEX IF NOT EXISTS idx_syntheses_prompt ON syntheses(prompt_id);

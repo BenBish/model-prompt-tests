@@ -63,6 +63,28 @@ CREATE INDEX IF NOT EXISTS idx_peer_ranks_batch ON peer_ranks(run_batch_id);
 CREATE INDEX IF NOT EXISTS idx_peer_ranks_prompt ON peer_ranks(prompt_id);
 `;
 
+const SYNTHESES_DDL = `
+CREATE TABLE IF NOT EXISTS syntheses (
+  id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+  run_batch_id       TEXT NOT NULL,
+  prompt_id          TEXT NOT NULL,
+  repeat_index       INTEGER NOT NULL DEFAULT 0,
+  chairman_model_id  TEXT NOT NULL,
+  synthesis_text     TEXT,
+  provenance         TEXT,
+  raw_output         TEXT,
+  latency_ms         INTEGER,
+  input_tokens       INTEGER,
+  output_tokens      INTEGER,
+  cost_usd           REAL,
+  status             TEXT NOT NULL CHECK (status IN ('ok', 'error')),
+  error              TEXT,
+  synthesized_at     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_syntheses_batch ON syntheses(run_batch_id);
+CREATE INDEX IF NOT EXISTS idx_syntheses_prompt ON syntheses(prompt_id);
+`;
+
 export function applyMigrations(target: Database): void {
   for (const migration of COLUMN_MIGRATIONS) {
     ensureColumn(target, migration);
@@ -70,6 +92,8 @@ export function applyMigrations(target: Database): void {
   target.exec("CREATE INDEX IF NOT EXISTS idx_runs_batch ON runs(run_batch_id)");
   // New table for BSH-153 peer ranking; CREATE IF NOT EXISTS is safe on existing DBs.
   target.exec(PEER_RANKS_DDL);
+  // New table for BSH-150 chairman synthesis.
+  target.exec(SYNTHESES_DDL);
 }
 
 export function openDb(dbPath: string): Database {

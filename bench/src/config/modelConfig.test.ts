@@ -80,6 +80,19 @@ describe("model config", () => {
     expect(() => validateModelsConfig(config)).toThrow('duplicate model id "local:test"');
   });
 
+  test("accepts an optional chairman that references a known model", () => {
+    const config = validConfig();
+    const raw = { ...config, chairman: { modelId: "local:test" } };
+    expect(validateModelsConfig(raw).chairman).toEqual({ modelId: "local:test" });
+  });
+
+  test("rejects a chairman model id that does not exist", () => {
+    const config = validConfig();
+    expect(() => validateModelsConfig({ ...config, chairman: { modelId: "nope" } })).toThrow(
+      'chairman.modelId references unknown model "nope"',
+    );
+  });
+
   test("rejects a judge model id that does not exist", () => {
     const config = validConfig();
     config.judge.modelId = "missing:model";

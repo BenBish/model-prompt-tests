@@ -21,7 +21,7 @@ import { buildAssessmentSummary, buildNarrativePrompt, renderAssessmentMarkdown 
 import { exportBatch, validateExportName } from "./export/exportBatch";
 import { publishSite } from "./publish/publishSite";
 import type { ModelMatrixEntry } from "./providers/types";
-import { resolveJudge, resolveJudges } from "./config/judgeSelection";
+import { resolveChairman, resolveJudge, resolveJudges } from "./config/judgeSelection";
 import { parsePositiveInteger } from "./util/cliArgs";
 import { cmdSweDoctor, cmdSweList, cmdSweRun } from "./swe/cli";
 import { querySweReportData } from "./swe/sweReportData";
@@ -32,6 +32,9 @@ import {
   renderPeerRankHtmlSection,
 } from "./peerRank/renderPeerRankSection";
 import { cmdCalibrate } from "./calibrate/cmd";
+import { querySynthesisReportData, querySynthesisReportForReportBatches } from "./synthesize/reportData";
+import { renderSynthesisAssessmentSection, renderSynthesisHtmlSection } from "./synthesize/renderSection";
+import { groupsFromBatch, runSynthesisForGroups } from "./synthesize/groups";
 
 const REPO_ROOT = process.cwd();
 const DB_PATH = `${REPO_ROOT}/bench/data/bench.sqlite`;
@@ -42,7 +45,8 @@ const DEFAULT_CONCURRENCY = 3;
 
 function usage(): void {
   console.log(`Usage:
-  bun bench/src/cli.ts run <prompt-glob-or-all|calibration> [--models id1,id2] [--judge <id>] [--judges id1,id2] [--concurrency <n>] [--repeats <n>] [--dry-run] [--no-judge] [--peer-rank]
+  bun bench/src/cli.ts run <prompt-glob-or-all|calibration> [--models id1,id2] [--judge <id>] [--judges id1,id2] [--concurrency <n>] [--repeats <n>] [--dry-run] [--no-judge] [--peer-rank] [--synthesize] [--chairman <id>]
+  bun bench/src/cli.ts synthesize (--batch <run_batch_id> | --latest) [--chairman <id>] [--dry-run]
   bun bench/src/cli.ts calibrate [--batch <run_batch_id>] [--all-runs] [--human <file.json>] [--out <path>] [--subset]
   bun bench/src/cli.ts report [--out <path>] [--batch <run_batch_id>] [--all-runs] [--narrative] [--judge <id>]
   bun bench/src/cli.ts report --compare <batchA> --compare <batchB> [--out <path>]
@@ -136,7 +140,9 @@ async function cmdList(): Promise<void> {
   }
 
   const judge = resolveJudge(config, undefined);
+  const chairman = resolveChairman(config, undefined);
   console.log(`\nDefault judge: ${judge.id} (${judge.modelName})`);
+  console.log(`Default chairman: ${chairman.id} (${chairman.modelName})`);
 }
 
 async function cmdRun(positionals: string[], values: Record<string, unknown>): Promise<void> {
@@ -167,6 +173,10 @@ async function cmdRun(positionals: string[], values: Record<string, unknown>): P
   const repeats = parsePositiveInteger(values.repeats, "--repeats") ?? 1;
 
   const peerRank = values["peer-rank"] === true;
+  const synthesize = values.synthesize === true;
+  const chairmanEntry = synthesize
+    ? resolveChairman(config, values.chairman as string | undefined)
+    : undefined;
 
   if (values["dry-run"]) {
     console.log(
@@ -181,6 +191,11 @@ async function cmdRun(positionals: string[], values: Record<string, unknown>): P
         `  peer-rank: enabled (≈ +${matrix.length} large-context ranking call(s) per prompt/repeat with ≥2 ok models)`,
       );
     }
+    if (synthesize && chairmanEntry) {
+      console.log(
+        `  synthesize: chairman ${chairmanEntry.id} (≈ +1 large-context call per prompt/repeat with ≥2 ok models)`,
+      );
+    }
     console.log("(dry run — no network calls made)");
     return;
   }
@@ -191,6 +206,15 @@ async function cmdRun(positionals: string[], values: Record<string, unknown>): P
         "per prompt/repeat (≈ +N calls when N models succeed). Cost and latency can more than double " +
         "versus parallel-only runs. Rankings are a secondary signal and do not replace rubric scores.",
     );
+  }
+  if (synthesize) {
+    console.warn(
+      "[warn] --synthesize adds one large-context chairman call per prompt/repeat with ≥2 ok models. " +
+        "This produces a combined answer for a human reader and does not change rubric scores.",
+    );
+  }
+  if (values.chairman && !synthesize) {
+    console.warn("[warn] --chairman is ignored without --synthesize");
   }
 
   const runners = matrix.map((entry) =>
@@ -221,10 +245,93 @@ async function cmdRun(positionals: string[], values: Record<string, unknown>): P
           })),
         }
       : undefined,
+    synthesize:
+      synthesize && chairmanEntry
+        ? {
+            chairman: {
+              adapter: createAdapter(chairmanEntry),
+              modelId: chairmanEntry.id,
+              maxConcurrent: chairmanEntry.maxConcurrent,
+              pricing: chairmanEntry.pricing,
+            },
+          }
+        : undefined,
   });
-  if (summary.errored > 0 || summary.judgeErrored > 0 || summary.peerRankErrored > 0) {
+  if (
+    summary.errored > 0 ||
+    summary.judgeErrored > 0 ||
+    summary.peerRankErrored > 0 ||
+    summary.synthesizeErrored > 0
+  ) {
     process.exitCode = 1;
   }
+}
+
+async function cmdSynthesize(values: Record<string, unknown>): Promise<void> {
+  const { config } = await loadModelsConfig(REPO_ROOT);
+  const chairmanEntry = resolveChairman(config, values.chairman as string | undefined);
+  const db = openDb(DB_PATH);
+  const runBatchId =
+    typeof values.batch === "string"
+      ? values.batch
+      : values.latest === true
+        ? getLatestRunBatchId(db)
+        : undefined;
+  if (!runBatchId) {
+    if (values.latest === true) {
+      if (values["dry-run"] === true) {
+        console.log("Would synthesize 0 group(s) (no run batches in the database).");
+        return;
+      }
+      throw new Error("no run batches found; run a bench first");
+    }
+    throw new Error("synthesize requires --batch <run_batch_id> or --latest");
+  }
+
+  const prompts = await loadPrompts(REPO_ROOT, "all");
+  const promptTextById = new Map(prompts.map((p) => [p.id, p.promptText]));
+  const groups = groupsFromBatch(db, runBatchId, promptTextById);
+  const eligible = groups.filter((g) => g.candidates.length >= 2);
+
+  if (values["dry-run"] === true) {
+    console.log(
+      `Would synthesize ${eligible.length} group(s) from batch ${runBatchId} with chairman ${chairmanEntry.id}` +
+        (eligible.length !== groups.length ? ` (${groups.length - eligible.length} skipped, <2 candidates)` : "") +
+        ":",
+    );
+    for (const group of eligible) {
+      console.log(
+        `  ${group.promptId}` +
+          (group.repeatIndex > 0 ? ` repeat ${group.repeatIndex}` : "") +
+          ` (${group.candidates.map((c) => c.modelId).join(", ")})`,
+      );
+    }
+    console.log("(dry run — no network calls made)");
+    return;
+  }
+
+  if (eligible.length === 0) {
+    console.log(`No synthesizable groups in batch ${runBatchId} (need ≥2 ok prompt candidates).`);
+    return;
+  }
+
+  const summary = await runSynthesisForGroups(
+    db,
+    runBatchId,
+    groups,
+    {
+      adapter: createAdapter(chairmanEntry),
+      modelId: chairmanEntry.id,
+      maxConcurrent: chairmanEntry.maxConcurrent,
+      pricing: chairmanEntry.pricing,
+    },
+    DEFAULT_CONCURRENCY,
+  );
+  console.log(
+    `Synthesize ${runBatchId}: ${summary.ok} ok, ${summary.errored} errors, ${summary.skipped} skipped. ` +
+      "Does not change avgScore.",
+  );
+  if (summary.errored > 0) process.exitCode = 1;
 }
 
 async function cmdReportCompare(values: Record<string, unknown>): Promise<void> {
@@ -332,8 +439,23 @@ async function cmdReport(values: Record<string, unknown>): Promise<void> {
   const peerRankHtmlSection = renderPeerRankHtmlSection(peerRankData);
   const peerRankAssessmentSection = renderPeerRankAssessmentSection(peerRankData);
 
+  const synthesisData =
+    runBatchId !== undefined
+      ? querySynthesisReportData(db, { runBatchId })
+      : reportBatchIds.size > 0
+        ? querySynthesisReportForReportBatches(db, [...reportBatchIds])
+        : querySynthesisReportData(db, { allRuns: values["all-runs"] === true });
+  const synthesisHtmlSection = renderSynthesisHtmlSection(synthesisData);
+  const synthesisAssessmentSection = renderSynthesisAssessmentSection(synthesisData);
+
   const generatedAt = new Date().toISOString();
-  const html = renderReportHtml(data, generatedAt, sweHtmlSection, peerRankHtmlSection);
+  const html = renderReportHtml(
+    data,
+    generatedAt,
+    sweHtmlSection,
+    peerRankHtmlSection,
+    synthesisHtmlSection,
+  );
 
   const timestamp = generatedAt.replace(/[:.]/g, "-");
   const outPath = (values.out as string | undefined) ?? `${REPORTS_DIR}/${timestamp}.html`;
@@ -354,6 +476,7 @@ async function cmdReport(values: Record<string, unknown>): Promise<void> {
     },
     sweAssessmentSection,
     peerRankAssessmentSection,
+    synthesisAssessmentSection,
   );
 
   // Write the deterministic outputs first: they're fully computable from the local DB and
@@ -420,7 +543,9 @@ async function cmdModels(rest: string[]): Promise<void> {
         );
       }
       const judge = resolveJudge(config, undefined);
+      const chairman = resolveChairman(config, undefined);
       console.log(`\nDefault judge: ${judge.id} (${judge.modelName})`);
+      console.log(`Default chairman: ${chairman.id} (${chairman.modelName})`);
       break;
     }
     case "init": {
@@ -445,6 +570,19 @@ async function cmdModels(rest: string[]): Promise<void> {
       config.judge.modelId = modelId;
       const path = saveLocalModelsConfig(REPO_ROOT, config);
       console.log(`Default judge set to ${modelId} in ${path}`);
+      break;
+    }
+    case "set-chairman": {
+      const modelId = args[0];
+      if (!modelId) throw new Error("usage: bun run bench models set-chairman <model-id>");
+      ensureLocalModelsConfig(REPO_ROOT);
+      const { config } = await loadModelsConfig(REPO_ROOT);
+      if (!findModel(config, modelId)) {
+        throw new Error(`unknown model id: ${modelId}`);
+      }
+      config.chairman = { modelId };
+      const path = saveLocalModelsConfig(REPO_ROOT, config);
+      console.log(`Default chairman set to ${modelId} in ${path}`);
       break;
     }
     case "remove": {
@@ -549,6 +687,7 @@ async function cmdModels(rest: string[]): Promise<void> {
   bun bench/src/cli.ts models init
   bun bench/src/cli.ts models validate
   bun bench/src/cli.ts models set-judge <model-id>
+  bun bench/src/cli.ts models set-chairman <model-id>
   bun bench/src/cli.ts models add-openai-compatible --id <id> --provider <provider-id> --model <name> --base-url <url> [--api-key-env <ENV>] [--header Name=Value]... [--reasoning-effort <effort>] [--max-concurrent <n>] [--max-tokens <n>] [--timeout-ms <n>] [--input-per-mtok <n>] [--output-per-mtok <n>] [--disabled]
   bun bench/src/cli.ts models add-anthropic --id <id> --model <name> --api-key-env <ENV> [--base-url <url>] [--max-concurrent <n>] [--max-tokens <n>] [--timeout-ms <n>] [--input-per-mtok <n>] [--output-per-mtok <n>] [--disabled]
   bun bench/src/cli.ts models remove <model-id>`);
@@ -584,9 +723,25 @@ async function main(): Promise<void> {
           "dry-run": { type: "boolean" },
           "no-judge": { type: "boolean" },
           "peer-rank": { type: "boolean" },
+          synthesize: { type: "boolean" },
+          chairman: { type: "string" },
         },
       });
       await cmdRun(positionals, values);
+      break;
+    }
+    case "synthesize": {
+      const { values } = parseArgs({
+        args: rest,
+        allowPositionals: false,
+        options: {
+          batch: { type: "string" },
+          latest: { type: "boolean" },
+          chairman: { type: "string" },
+          "dry-run": { type: "boolean" },
+        },
+      });
+      await cmdSynthesize(values);
       break;
     }
     case "calibrate": {
