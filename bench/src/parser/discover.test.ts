@@ -19,6 +19,25 @@ afterEach(() => {
 });
 
 describe("resolvePromptSelector", () => {
+  test("calibration selector resolves the fixed subset when files exist", async () => {
+    const repoRoot = makeTempRepo();
+    const ids = [
+      "instruction-following/five-bullet-summary",
+      "debugging/javascript-debounce",
+      "safety-risk/failed-production-migration",
+      "code-review/senior-pr-review",
+    ];
+    for (const id of ids) {
+      const dir = join(repoRoot, id.split("/").slice(0, -1).join("/"));
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(repoRoot, `${id}.md`), "# Prompt\n", { flush: true });
+    }
+    writeFileSync(join(repoRoot, "other.md"), "# Other\n", { flush: true });
+
+    const files = await resolvePromptSelector(repoRoot, "calibration");
+    expect(files).toEqual(ids.map((id) => join(repoRoot, `${id}.md`)));
+  });
+
   test("does not allow direct selectors to bypass excluded paths", async () => {
     const repoRoot = makeTempRepo();
     const excludedReadme = join(repoRoot, "bench", "README.md");

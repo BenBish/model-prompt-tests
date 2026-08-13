@@ -31,6 +31,7 @@ import {
   renderPeerRankAssessmentSection,
   renderPeerRankHtmlSection,
 } from "./peerRank/renderPeerRankSection";
+import { cmdCalibrate } from "./calibrate/cmd";
 
 const REPO_ROOT = process.cwd();
 const DB_PATH = `${REPO_ROOT}/bench/data/bench.sqlite`;
@@ -41,7 +42,8 @@ const DEFAULT_CONCURRENCY = 3;
 
 function usage(): void {
   console.log(`Usage:
-  bun bench/src/cli.ts run <prompt-glob-or-all> [--models id1,id2] [--judge <id>] [--judges id1,id2] [--concurrency <n>] [--repeats <n>] [--dry-run] [--no-judge] [--peer-rank]
+  bun bench/src/cli.ts run <prompt-glob-or-all|calibration> [--models id1,id2] [--judge <id>] [--judges id1,id2] [--concurrency <n>] [--repeats <n>] [--dry-run] [--no-judge] [--peer-rank]
+  bun bench/src/cli.ts calibrate [--batch <run_batch_id>] [--all-runs] [--human <file.json>] [--out <path>] [--subset]
   bun bench/src/cli.ts report [--out <path>] [--batch <run_batch_id>] [--all-runs] [--narrative] [--judge <id>]
   bun bench/src/cli.ts report --compare <batchA> --compare <batchB> [--out <path>]
   bun bench/src/cli.ts export --name <slug> (--batch <run_batch_id> | --latest)
@@ -585,6 +587,21 @@ async function main(): Promise<void> {
         },
       });
       await cmdRun(positionals, values);
+      break;
+    }
+    case "calibrate": {
+      const { values } = parseArgs({
+        args: rest,
+        allowPositionals: false,
+        options: {
+          batch: { type: "string" },
+          "all-runs": { type: "boolean" },
+          human: { type: "string" },
+          out: { type: "string" },
+          subset: { type: "boolean" },
+        },
+      });
+      await cmdCalibrate(REPO_ROOT, values);
       break;
     }
     case "report": {
