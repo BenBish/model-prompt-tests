@@ -50,6 +50,7 @@ Recommended scoring:
 ## Design notes
 
 - [llm-council spike (BSH-149)](docs/llm-council-spike.md) — phased recommendation on multi-model deliberation (parallel answers, peer ranking, chairman synthesis) for this lab.
+- [Peer-rank vs multi-judge calibration (BSH-151)](docs/peer-rank-calibration.md) — ranks stay a side signal; do not blend into `avgScore` headlines.
 
 ## Adding Prompts
 

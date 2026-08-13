@@ -1,6 +1,7 @@
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { parsePromptFile } from "./promptTemplate";
 import type { PromptDefinition } from "../types";
+import { CALIBRATION_PROMPT_IDS, isCalibrationSelector } from "../calibrate/subset";
 
 const EXCLUDED_PREFIXES = [
   "templates/",
@@ -48,6 +49,25 @@ export async function resolvePromptSelector(
 ): Promise<string[]> {
   if (selector === "all") {
     return discoverPromptFiles(repoRoot);
+  }
+  if (isCalibrationSelector(selector)) {
+    const files: string[] = [];
+    const missing: string[] = [];
+    for (const id of CALIBRATION_PROMPT_IDS) {
+      const direct = join(repoRoot, `${id}.md`);
+      const relPath = repoRelativePath(repoRoot, direct);
+      if (relPath && !isExcluded(relPath) && (await Bun.file(direct).exists())) {
+        files.push(direct);
+      } else {
+        missing.push(`${id}.md`);
+      }
+    }
+    if (missing.length > 0) {
+      throw new Error(
+        `calibration subset is incomplete; missing ${missing.join(", ")} (expected ${CALIBRATION_PROMPT_IDS.length} prompts)`,
+      );
+    }
+    return files;
   }
   if (isUnsafeSelector(selector)) {
     return [];

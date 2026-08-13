@@ -202,3 +202,32 @@ describe("bench models CLI", () => {
     expect(assessment).toContain("Narrative generation failed");
   });
 });
+
+describe("bench calibrate CLI", () => {
+  test("--subset prints the fixed prompt ids and command sequence", () => {
+    const repoRoot = makeTempRepo();
+    const result = runCli(repoRoot, ["calibrate", "--subset"]);
+    expect(result.exitCode).toBe(0);
+    const out = result.stdout.toString();
+    expect(out).toContain("instruction-following/five-bullet-summary");
+    expect(out).toContain("debugging/javascript-debounce");
+    expect(out).toContain("safety-risk/failed-production-migration");
+    expect(out).toContain("code-review/senior-pr-review");
+    expect(out).toContain("bun run bench run calibration");
+    expect(out).toContain("--peer-rank");
+    expect(out).toContain("bun run bench calibrate");
+  });
+
+  test("writes a side-signal-only report even when the batch is empty", () => {
+    const repoRoot = makeTempRepo();
+    createBenchDb(repoRoot);
+    const outPath = join(repoRoot, "docs", "peer-rank-calibration.md");
+    const result = runCli(repoRoot, ["calibrate", "--out", outPath]);
+    expect(result.exitCode).toBe(0);
+    const markdown = readFileSync(outPath, "utf8");
+    expect(markdown).toContain("# Peer-rank vs multi-judge calibration");
+    expect(markdown).toContain("side signal only");
+    expect(markdown).toContain("No comparable groups");
+    expect(result.stdout.toString()).toContain("Recommendation: side signal only");
+  });
+});

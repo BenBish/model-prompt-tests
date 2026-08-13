@@ -93,7 +93,7 @@ bun run bench models add-anthropic \
 Judge-only models can be added with `--disabled`, which keeps them available for
 `--judge` / `BENCH_JUDGE_MODEL_ID` without including them in default `run all`.
 
-### `run <prompt-glob-or-all>`
+### `run <prompt-glob-or-all|calibration>`
 
 - `--models id1,id2` — restrict to specific model matrix ids (default: enabled configured models).
 - `--judge <id>` — override the judge model for this run (default: `judge.modelId` in model config, or `BENCH_JUDGE_MODEL_ID`).
@@ -105,6 +105,27 @@ Judge-only models can be added with `--disabled`, which keeps them available for
 - `--peer-rank` — after candidates (and optional judges), run **anonymized peer ranking** (council Stage 2): each successful candidate model ranks all anonymized answers for that (prompt, repeat) group. Labels are shuffled per ranker so brand identity is hidden. Results land in `peer_ranks` (mapping, rank vectors, tokens/cost) and show as a **secondary** report section — they do **not** replace rubric `avgScore`.
 
   **Cost warning:** peer ranking adds roughly **+N large-context calls** per prompt/repeat when N models succeed (each ranker re-reads every answer). Expect call count and tokens to roughly double versus parallel-only runs; do not use as the default for large `run all` matrices.
+
+The selector `calibration` is a fixed four-prompt subset used to calibrate peer ranks against multi-judge rubric medians (BSH-151). It is not `run all`. See [`docs/peer-rank-calibration.md`](../docs/peer-rank-calibration.md) and `calibrate` below.
+
+### `calibrate`
+
+Compare stored anonymized peer ranks against peer-only multi-judge medians (and optional human labels). Writes a markdown correlation / disagreement report. **Does not change `avgScore` headlines.**
+
+```
+bun run bench run calibration --models id1,id2,id3 --judges j1,j2 --peer-rank
+bun run bench calibrate --batch <run_batch_id> --out docs/peer-rank-calibration.md
+bun run bench calibrate --subset
+bun run bench calibrate --batch <run_batch_id> --human path/to/labels.json --out docs/peer-rank-calibration.md
+```
+
+- `--batch <run_batch_id>` — default: latest batch that has `peer_ranks` rows.
+- `--all-runs` — include every stored peer-rank group instead of one batch.
+- `--human <file.json>` — optional gold labels: `{ "groups": [{ "promptId", "repeatIndex?", "ranking" | "scores" }] }`.
+- `--out <path>` — write the report (stdout if omitted).
+- `--subset` — print the fixed prompt ids and command sequence; no database needed.
+
+Recommendation from this command is always **ranks as a side signal only** — see the generated report.
 
 Provider calls time out after 120 seconds by default. Matrix entries can override this
 with `timeoutMs`. A completed batch exits nonzero if any candidate or judge request
