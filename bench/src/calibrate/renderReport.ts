@@ -50,7 +50,9 @@ export function renderCalibrationMarkdown(result: CalibrationResult): string {
   const humanNote =
     result.humanLabelCount === 0
       ? "No human labels supplied. Optional `--human <file.json>` comparison is omitted."
-      : `${result.humanLabelCount} human-labeled group(s) loaded.`;
+      : result.unmatchedHumanGroups.length === 0
+        ? `${result.humanGroupsMatched}/${result.humanLabelCount} human-labeled group(s) matched a comparable peer-rank cell.`
+        : `${result.humanGroupsMatched}/${result.humanLabelCount} human-labeled group(s) matched a comparable peer-rank cell. Unmatched: ${result.unmatchedHumanGroups.map((id) => `\`${id}\``).join(", ")}.`;
 
   const perGroupRows = result.groups
     .map(
@@ -149,15 +151,15 @@ ${humanNote}
 | --- | --- |
 | Groups compared | ${result.groups.length} |
 | Groups skipped (<2 models with both signals) | ${result.skippedGroups} |
-| Mean Spearman ρ (peer rank vs judge rank) | ${fmt(result.meanSpearmanPeerVsJudge)} |
-| Mean Kendall τ-b (peer rank vs judge) | ${fmt(result.meanKendallPeerVsJudge)} |
+| Unweighted mean Spearman ρ (peer rank vs judge rank) | ${fmt(result.meanSpearmanPeerVsJudge)} |
+| Unweighted mean Kendall τ-b (peer rank vs judge) | ${fmt(result.meanKendallPeerVsJudge)} |
 | Pairwise inversion rate (peer vs judge) | ${fmtPct(result.inversionRatePeerVsJudge)} |
 | Mean Spearman ρ (peer vs human) | ${fmt(result.meanSpearmanPeerVsHuman)} |
 | Pairwise inversion rate (peer vs human) | ${fmtPct(result.inversionRatePeerVsHuman)} |
 | Mean Spearman ρ (judge vs human) | ${fmt(result.meanSpearmanJudgeVsHuman)} |
 | Pairwise inversion rate (judge vs human) | ${fmtPct(result.inversionRateJudgeVsHuman)} |
 
-Spearman/Kendall are computed per (prompt, repeat) on models that have both a peer-rank aggregate and a peer-only multi-judge median, then averaged. +1 = same order, 0 = unrelated, −1 = reversed. Inversions count strict pairwise disagreements only (ties ignored).
+Spearman/Kendall are computed per (prompt, repeat) on models that have both a peer-rank aggregate and a peer-only multi-judge median, then **averaged unweighted across groups** (a 2-model cell counts the same as a 4-model cell). The inversion *rate* is pair-weighted. +1 = same order, 0 = unrelated, −1 = reversed. Inversions count strict pairwise disagreements only (ties ignored).
 
 ## Per-prompt correlation
 

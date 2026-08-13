@@ -38,6 +38,18 @@ describe("resolvePromptSelector", () => {
     expect(files).toEqual(ids.map((id) => join(repoRoot, `${id}.md`)));
   });
 
+  test("calibration selector fails when any subset file is missing", async () => {
+    const repoRoot = makeTempRepo();
+    mkdirSync(join(repoRoot, "debugging"), { recursive: true });
+    writeFileSync(join(repoRoot, "debugging", "javascript-debounce.md"), "# Prompt\n", {
+      flush: true,
+    });
+
+    await expect(resolvePromptSelector(repoRoot, "calibration")).rejects.toThrow(
+      /calibration subset is incomplete/,
+    );
+  });
+
   test("does not allow direct selectors to bypass excluded paths", async () => {
     const repoRoot = makeTempRepo();
     const excludedReadme = join(repoRoot, "bench", "README.md");

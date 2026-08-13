@@ -8,6 +8,8 @@ const empty: CalibrationResult = {
   groups: [],
   skippedGroups: 0,
   humanLabelCount: 0,
+  humanGroupsMatched: 0,
+  unmatchedHumanGroups: [],
   recommendation: SIDE_SIGNAL_RECOMMENDATION,
 };
 
@@ -20,6 +22,7 @@ describe("renderCalibrationMarkdown", () => {
     expect(md).toContain("instruction-following/five-bullet-summary");
     expect(md).toContain("No comparable groups");
     expect(md).toContain("Headline `avgScore` is never rewritten");
+    expect(md).toContain("averaged unweighted across groups");
   });
 
   test("lists inversions for a disagreeing group", () => {

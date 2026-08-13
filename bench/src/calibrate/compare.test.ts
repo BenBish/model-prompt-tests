@@ -208,6 +208,37 @@ describe("comparePeerRanksToJudges", () => {
     expect(result.groups[0]!.spearmanPeerVsHuman).toBeCloseTo(1);
     expect(result.groups[0]!.spearmanJudgeVsHuman).toBeCloseTo(1);
     expect(result.humanLabelCount).toBe(1);
+    expect(result.humanGroupsMatched).toBe(1);
+    expect(result.unmatchedHumanGroups).toEqual([]);
+  });
+
+  test("reports human groups that do not match a comparable cell", () => {
+    const db = createDb();
+    seedCell(db, {
+      batch: "b1",
+      promptId: "p",
+      modelId: "m:a",
+      scores: [{ judge: "j:1", score: 5 }],
+      ranking: ["m:a", "m:b"],
+      ranker: "m:a",
+    });
+    seedCell(db, {
+      batch: "b1",
+      promptId: "p",
+      modelId: "m:b",
+      scores: [{ judge: "j:1", score: 2 }],
+      ranking: ["m:a", "m:b"],
+      ranker: "m:b",
+    });
+
+    const human = parseHumanLabels(
+      { groups: [{ promptId: "other/prompt", ranking: ["m:a", "m:b"] }] },
+      "h.json",
+    );
+    const result = calibrateFromDb(db, { runBatchId: "b1", humanByKey: human });
+    expect(result.humanLabelCount).toBe(1);
+    expect(result.humanGroupsMatched).toBe(0);
+    expect(result.unmatchedHumanGroups).toEqual(["other/prompt"]);
   });
 
   test("skips groups with fewer than two models that have both signals", () => {

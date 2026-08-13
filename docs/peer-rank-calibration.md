@@ -77,7 +77,7 @@ Metrics:
 - **Kendall τ-b** (ties on one side ignored in the denominator)
 - **Pairwise inversion rate**: share of strict pairs where peers prefer A over B and judges prefer B over A
 
-+1 = same order, 0 = unrelated, −1 = reversed. Groups with fewer than two models that have both a rank aggregate and a peer-judge median are skipped.
+Spearman/Kendall means in the report are **unweighted across groups** (a 2-model cell counts the same as a 4-model cell). The inversion rate is pair-weighted. +1 = same order, 0 = unrelated, −1 = reversed. Groups with fewer than two models that have both a rank aggregate and a peer-judge median are skipped.
 
 Headline `avgScore` is never rewritten by this command.
 

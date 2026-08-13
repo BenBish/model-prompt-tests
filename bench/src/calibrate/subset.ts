@@ -16,7 +16,7 @@ export const CALIBRATION_PROMPT_IDS = [
 export type CalibrationPromptId = (typeof CALIBRATION_PROMPT_IDS)[number];
 
 export function isCalibrationSelector(selector: string): boolean {
-  return selector === CALIBRATION_SELECTOR || selector === "calibrate-subset";
+  return selector === CALIBRATION_SELECTOR;
 }
 
 export function calibrationRunCommand(modelsPlaceholder = "<id1,id2,id3>", judgesPlaceholder = "<j1,j2>"): string {

@@ -52,12 +52,20 @@ export async function resolvePromptSelector(
   }
   if (isCalibrationSelector(selector)) {
     const files: string[] = [];
+    const missing: string[] = [];
     for (const id of CALIBRATION_PROMPT_IDS) {
       const direct = join(repoRoot, `${id}.md`);
       const relPath = repoRelativePath(repoRoot, direct);
       if (relPath && !isExcluded(relPath) && (await Bun.file(direct).exists())) {
         files.push(direct);
+      } else {
+        missing.push(`${id}.md`);
       }
+    }
+    if (missing.length > 0) {
+      throw new Error(
+        `calibration subset is incomplete; missing ${missing.join(", ")} (expected ${CALIBRATION_PROMPT_IDS.length} prompts)`,
+      );
     }
     return files;
   }

@@ -49,6 +49,8 @@ export interface CalibrationResult {
   meanSpearmanJudgeVsHuman?: number;
   inversionRateJudgeVsHuman?: number;
   humanLabelCount: number;
+  humanGroupsMatched: number;
+  unmatchedHumanGroups: string[];
   recommendation: typeof SIDE_SIGNAL_RECOMMENDATION;
 }
 
@@ -141,16 +143,25 @@ export function comparePeerRanksToJudges(
 ): CalibrationResult {
   const groups: GroupComparison[] = [];
   let skippedGroups = 0;
+  const matchedHumanKeys = new Set<string>();
 
   for (const group of peerGroups) {
-    const human = humanByKey.get(humanLabelKey(group.promptId, group.repeatIndex));
+    const key = humanLabelKey(group.promptId, group.repeatIndex);
+    const human = humanByKey.get(key);
     const compared = compareGroup(group, report, human);
     if (!compared) {
       skippedGroups++;
       continue;
     }
+    if (human) matchedHumanKeys.add(key);
     groups.push(compared);
   }
+
+  const unmatchedHumanGroups = [...humanByKey.entries()]
+    .filter(([key]) => !matchedHumanKeys.has(key))
+    .map(([, label]) =>
+      label.repeatIndex > 0 ? `${label.promptId} (repeat ${label.repeatIndex})` : label.promptId,
+    );
 
   const sum = (pick: (g: GroupComparison) => number) => groups.reduce((acc, g) => acc + pick(g), 0);
 
@@ -177,6 +188,8 @@ export function comparePeerRanksToJudges(
       sum((g) => g.comparablePairsJudgeVsHuman),
     ),
     humanLabelCount: humanByKey.size,
+    humanGroupsMatched: matchedHumanKeys.size,
+    unmatchedHumanGroups,
     recommendation: SIDE_SIGNAL_RECOMMENDATION,
   };
 }
