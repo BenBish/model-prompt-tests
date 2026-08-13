@@ -128,6 +128,11 @@ export async function runSynthesisForGroups(
       skipped++;
       continue;
     }
+    if (!group.promptText.trim()) {
+      console.warn(
+        `[warn] synthesize: no on-disk prompt text for ${group.promptId}; chairman will see an empty original task`,
+      );
+    }
     tasks.push(
       limiter(async () => {
         const result = await runOneSynthesis(

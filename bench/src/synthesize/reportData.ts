@@ -62,13 +62,27 @@ function parseProvenance(raw: string | undefined): SynthesisProvenance | undefin
   }
 }
 
-export function buildSynthesisReportFromRows(rows: SynthesisRow[]): SynthesisReportData {
+function latestRowsPerGroup(rows: SynthesisRow[]): SynthesisRow[] {
+  const latest = new Map<string, SynthesisRow>();
+  for (const row of rows) {
+    const key = `${row.runBatchId}\0${row.promptId}\0${row.repeatIndex}`;
+    const existing = latest.get(key);
+    if (!existing || row.id > existing.id) latest.set(key, row);
+  }
+  return [...latest.values()];
+}
+
+export function buildSynthesisReportFromRows(
+  rows: SynthesisRow[],
+  options: { allRuns?: boolean } = {},
+): SynthesisReportData {
+  const selected = options.allRuns ? rows : latestRowsPerGroup(rows);
   let totalOk = 0;
   let totalError = 0;
   let totalCost = 0;
   let hasCost = false;
 
-  const groups: SynthesisGroupView[] = rows.map((row) => {
+  const groups: SynthesisGroupView[] = selected.map((row) => {
     if (row.costUsd !== undefined) {
       totalCost += row.costUsd;
       hasCost = true;
@@ -120,7 +134,7 @@ export function querySynthesisReportData(
       .get() as { run_batch_id: string } | undefined;
     rows = latest ? getSynthesesForBatch(db, latest.run_batch_id) : [];
   }
-  return buildSynthesisReportFromRows(rows);
+  return buildSynthesisReportFromRows(rows, { allRuns: options.allRuns });
 }
 
 export function querySynthesisReportForReportBatches(
