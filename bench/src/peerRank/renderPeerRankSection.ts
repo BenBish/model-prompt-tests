@@ -58,9 +58,9 @@ export function renderPeerRankHtmlSection(data: PeerRankReportData): string {
     })
     .join("\n");
 
-  const costLine =
+  const costFragment =
     data.totalCostUsd !== undefined
-      ? `<p>Ranking call cost (tracked): $${data.totalCostUsd.toFixed(4)}</p>`
+      ? ` Ranking call cost (tracked): $${data.totalCostUsd.toFixed(4)}.`
       : "";
 
   return `
@@ -71,8 +71,7 @@ export function renderPeerRankHtmlSection(data: PeerRankReportData): string {
         tables below are deanonymized. This does <strong>not</strong> replace rubric
         <code>avgScore</code> headlines.
       </p>
-      <p>${data.totalOk} ok ranking call(s), ${data.totalError} error(s).${costLine ? " " + costLine.replace(/^<p>|<\/p>$/g, "") : ""}</p>
-      ${costLine}
+      <p>${data.totalOk} ok ranking call(s), ${data.totalError} error(s).${costFragment}</p>
       <h3>Overall aggregate (Borda across groups)</h3>
       <table class="peer-rank-table summary-table">
         <thead><tr><th>#</th><th>Model</th><th>Borda</th><th>Avg rank</th><th>Times ranked</th></tr></thead>

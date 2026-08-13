@@ -293,6 +293,8 @@ export async function runBatch(options: RunBatchOptions): Promise<RunBatchSummar
               error: result.status === "error" ? result.error : undefined,
               rankedAt: new Date().toISOString(),
             });
+            // Counter updates are safe under concurrent async tasks: JS is single-threaded,
+            // so ++ cannot interleave mid-statement (same pattern as judgeErrored).
             if (result.status === "ok") {
               peerRankOk++;
               console.log(

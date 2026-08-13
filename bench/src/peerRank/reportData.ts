@@ -1,5 +1,10 @@
 import type { Database } from "bun:sqlite";
-import { getPeerRanksForBatch, getPeerRanksForBatches, type PeerRankRow } from "../db/peerRanksRepo";
+import {
+  getAllPeerRanks,
+  getPeerRanksForBatch,
+  getPeerRanksForBatches,
+  type PeerRankRow,
+} from "../db/peerRanksRepo";
 import { aggregateRankings, type RankAggregate } from "./aggregate";
 
 export interface PeerRankGroupView {
@@ -111,41 +116,13 @@ export function queryPeerRankReportData(
   if (options.runBatchId) {
     rows = getPeerRanksForBatch(db, options.runBatchId);
   } else if (options.allRuns) {
-    rows = db
-      .query(`SELECT * FROM peer_ranks ORDER BY prompt_id, repeat_index, id`)
-      .all()
-      .map((row: any) => ({
-        id: row.id,
-        runBatchId: row.run_batch_id,
-        promptId: row.prompt_id,
-        repeatIndex: row.repeat_index ?? 0,
-        rankerModelId: row.ranker_model_id,
-        labelMapping: row.label_mapping,
-        rankingLabels: row.ranking_labels ?? undefined,
-        rankingModelIds: row.ranking_model_ids ?? undefined,
-        rationale: row.rationale ?? undefined,
-        rawOutput: row.raw_output ?? undefined,
-        latencyMs: row.latency_ms ?? undefined,
-        inputTokens: row.input_tokens ?? undefined,
-        outputTokens: row.output_tokens ?? undefined,
-        costUsd: row.cost_usd ?? undefined,
-        status: row.status,
-        error: row.error ?? undefined,
-        rankedAt: row.ranked_at,
-      }));
+    rows = getAllPeerRanks(db);
   } else {
     // Latest batch that has peer ranks, else empty
     const latest = db
       .query(`SELECT run_batch_id FROM peer_ranks ORDER BY ranked_at DESC LIMIT 1`)
       .get() as { run_batch_id: string } | undefined;
     rows = latest ? getPeerRanksForBatch(db, latest.run_batch_id) : [];
-  }
-
-  // When reporting a specific batch without peer ranks, stay empty.
-  // When reporting default prompt report batch, also try matching that batch id
-  // (caller may pass the same batch used for queryReportData).
-  if (options.runBatchId && rows.length === 0) {
-    return buildPeerRankReportFromRows([]);
   }
 
   return buildPeerRankReportFromRows(rows);

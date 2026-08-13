@@ -87,6 +87,13 @@ export function getPeerRanksForBatches(db: Database, runBatchIds: string[]): Pee
   return rows.map(rowToPeerRankRow);
 }
 
+export function getAllPeerRanks(db: Database): PeerRankRow[] {
+  const rows = db
+    .query(`SELECT * FROM peer_ranks ORDER BY prompt_id, repeat_index, id`)
+    .all() as any[];
+  return rows.map(rowToPeerRankRow);
+}
+
 function rowToPeerRankRow(row: any): PeerRankRow {
   return {
     id: row.id,
