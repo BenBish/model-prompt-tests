@@ -193,6 +193,27 @@ describe("structured JSON-schema judging", () => {
     expect(outcome.error).toBe("judge request failed: API error 401: unauthorized");
     expect(calls).toBe(1);
   });
+
+  test("does not fall back on an unrelated HTTP 400", async () => {
+    let calls = 0;
+    const adapter: ModelAdapter = {
+      providerId: "test",
+      modelName: "test-judge",
+      async call() {
+        calls++;
+        const error = new Error("API error 400: context length exceeded") as Error & {
+          status?: number;
+        };
+        error.status = 400;
+        throw error;
+      },
+    };
+
+    const outcome = await runJudge(adapter, prompt, "candidate output");
+
+    expect(outcome.error).toBe("judge request failed: API error 400: context length exceeded");
+    expect(calls).toBe(1);
+  });
 });
 
 describe("dimensional judging", () => {

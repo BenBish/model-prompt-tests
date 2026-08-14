@@ -298,6 +298,29 @@ describe("bench synthesize CLI", () => {
     expect(result.stderr.toString()).toContain("unknown prompt id(s) in --prompts: not-a-real-prompt");
   });
 
+  test("synthesize --prompts rejects repo prompts absent from the selected batch", () => {
+    const repoRoot = makeTempRepo();
+    createBenchDb(repoRoot);
+    const db = new Database(join(repoRoot, "bench", "data", "bench.sqlite"));
+    db.run(
+      `INSERT INTO runs (run_batch_id, prompt_id, provider_id, model_id, model_name, started_at, status, output_text, kind)
+       VALUES ('batch-1', 'other-prompt', 'local', 'local:test', 'm', '2026-01-01T00:00:00Z', 'ok', 'answer', 'prompt')`,
+    );
+    db.close();
+
+    const result = runCli(repoRoot, [
+      "synthesize",
+      "--batch",
+      "batch-1",
+      "--dry-run",
+      "--prompts",
+      "test-prompt",
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr.toString()).toContain("prompt id(s) not found in batch batch-1: test-prompt");
+  });
+
   test("models set-chairman persists chairman.modelId", () => {
     const repoRoot = makeTempRepo();
     const result = runCli(repoRoot, ["models", "set-chairman", "local:test"]);

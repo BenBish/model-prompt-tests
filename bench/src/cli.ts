@@ -315,6 +315,13 @@ async function cmdSynthesize(values: Record<string, unknown>): Promise<void> {
 
   let groups = groupsFromBatch(db, runBatchId, promptTextById);
   if (promptFilter) {
+    const promptIdsInBatch = new Set(groups.map((group) => group.promptId));
+    const missingFromBatch = promptFilter.filter((id) => !promptIdsInBatch.has(id));
+    if (missingFromBatch.length > 0) {
+      throw new Error(
+        `prompt id(s) not found in batch ${runBatchId}: ${missingFromBatch.join(", ")}`,
+      );
+    }
     const wanted = new Set(promptFilter);
     groups = groups.filter((g) => wanted.has(g.promptId));
   }
