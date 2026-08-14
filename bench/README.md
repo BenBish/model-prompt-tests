@@ -75,6 +75,11 @@ Optional `--input-per-mtok` / `--output-per-mtok` (both required together) store
 per-model pricing used to estimate `cost_usd` when the provider does not report a
 billed cost. OpenRouter (and similar) billed costs on `usage.cost` take precedence.
 
+Reasoning models (for example DeepSeek V4) can spend the entire default `maxTokens`
+budget (4096) on hidden reasoning and return empty `message.content`. Give those
+entries a larger `maxTokens` (the DeepSeek V4 templates use 32768) so the visible
+answer still fits.
+
 For providers that require extra headers, repeat `--header Name=Value`:
 
 ```
@@ -124,6 +129,7 @@ Follow-on chairman synthesis (council Stage 3) over an existing prompt batch. Sa
 ```
 bun run bench synthesize --latest --dry-run
 bun run bench synthesize --batch <run_batch_id> --chairman judge:opus
+bun run bench synthesize --latest --prompts safety-risk/failed-production-migration,code-review/senior-pr-review
 ```
 
 See [`docs/chairman-synthesis.md`](../docs/chairman-synthesis.md).

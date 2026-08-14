@@ -1,5 +1,5 @@
 import type { ModelAdapter, ModelPricing } from "../providers/types";
-import { extractFirstJsonObject } from "../judge/structuredCall";
+import { extractFirstJsonObject, looksLikeUnsupportedStructuredOutput } from "../judge/structuredCall";
 import { withRetry } from "../util/retry";
 import { anonymizePeers, deanonymizeRanking } from "./anonymize";
 import {
@@ -78,14 +78,27 @@ export async function runOnePeerRank(
   const jsonSchema = peerRankJsonSchema(labels);
 
   try {
-    const response = await withRetry(() =>
-      ranker.adapter.call({
-        systemPrompt,
-        userPrompt,
-        temperature: 0,
-        jsonSchema,
-      }),
-    );
+    let response;
+    try {
+      response = await withRetry(() =>
+        ranker.adapter.call({
+          systemPrompt,
+          userPrompt,
+          temperature: 0,
+          jsonSchema,
+        }),
+      );
+    } catch (err) {
+      if (!looksLikeUnsupportedStructuredOutput(err)) throw err;
+      // DeepSeek V4 Pro (and some other providers) reject response_format json_schema.
+      response = await withRetry(() =>
+        ranker.adapter.call({
+          systemPrompt,
+          userPrompt,
+          temperature: 0,
+        }),
+      );
+    }
 
     const parsed = extractFirstJsonObject(response.text);
     let validated = parsed ? validatePeerRankResult(parsed, labels) : undefined;

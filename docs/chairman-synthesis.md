@@ -46,6 +46,7 @@ Follow-on from an existing batch (Stage 1 answers alone, or with stored peer ran
 ```
 bun run bench synthesize --latest --dry-run
 bun run bench synthesize --batch <run_batch_id> --chairman judge:opus
+bun run bench synthesize --latest --prompts safety-risk/failed-production-migration,code-review/senior-pr-review
 ```
 
 Each eligible (prompt, repeat) group with **≥2** ok candidates becomes **one** chairman call. Cost/tokens/latency are stored on `syntheses` as their own call type.

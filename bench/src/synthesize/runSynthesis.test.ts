@@ -31,6 +31,48 @@ describe("runOneSynthesis", () => {
     expect(result.peerRankOrder).toEqual(["m:a", "m:b"]);
   });
 
+  test("falls back to plain JSON when the provider rejects json_schema", async () => {
+    let sawSchema = false;
+    let sawPlain = false;
+    const adapter: ModelAdapter = {
+      providerId: "p",
+      modelName: "chair",
+      async call(input) {
+        if (input.jsonSchema) {
+          sawSchema = true;
+          const err = new Error("response_format json_schema unavailable") as Error & { status?: number };
+          err.status = 400;
+          throw err;
+        }
+        sawPlain = true;
+        return {
+          text: JSON.stringify({
+            answer: "Combined",
+            provenance: { usedModelIds: ["m:a"], notes: "plain fallback" },
+          }),
+          raw: {},
+          latencyMs: 2,
+        };
+      },
+    };
+
+    const result = await runOneSynthesis(
+      { adapter, modelId: "chair" },
+      "Task",
+      [
+        { modelId: "m:a", outputText: "A" },
+        { modelId: "m:b", outputText: "B" },
+      ],
+    );
+
+    expect(sawSchema).toBe(true);
+    expect(sawPlain).toBe(true);
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") return;
+    expect(result.synthesisText).toBe("Combined");
+    expect(result.notes).toBe("plain fallback");
+  });
+
   test("errors when JSON is invalid after retry", async () => {
     const result = await runOneSynthesis(
       { adapter: adapter("not json"), modelId: "chair" },

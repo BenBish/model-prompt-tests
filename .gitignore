@@ -15,3 +15,5 @@ bench/data/repo-cache-*/
 benchmark-results/*
 !benchmark-results/grok-45-vs-sonnet-5/
 !benchmark-results/grok-45-vs-sonnet-5/**
+!benchmark-results/deepseek-v4-flash-vs-pro/
+!benchmark-results/deepseek-v4-flash-vs-pro/**

@@ -74,9 +74,11 @@ export function extractFirstJsonObject(text: string): unknown | undefined {
 export function looksLikeUnsupportedStructuredOutput(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   const status = (err as { status?: number }).status;
-  if (status === 400 || status === 404 || status === 422) return true;
   // Deliberately exclude bare "tools" — too common in unrelated error text.
-  return /response_format|json_schema|tool_choice|tool_use/i.test(err.message);
+  const mentionsStructuredOutput =
+    /response_format|json_schema|tool_choice|tool_use|structured outputs?/i.test(err.message);
+  if (!mentionsStructuredOutput) return false;
+  return status === undefined || status === 400 || status === 404 || status === 422;
 }
 
 /** Holistic judge schema, optionally extended with Phase 1 scoring dimensions. */

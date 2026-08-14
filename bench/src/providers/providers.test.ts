@@ -57,6 +57,76 @@ describe("provider adapters", () => {
     );
   });
 
+  test("extracts OpenAI-compatible array message content", async () => {
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: { content: [{ type: "text", text: "hello " }, { type: "text", text: "world" }] },
+              finish_reason: "stop",
+            },
+          ],
+          usage: {},
+        }),
+        { status: 200 },
+      )) as unknown as typeof fetch;
+    const adapter = createOpenAICompatibleAdapter({
+      kind: "openai-compatible",
+      id: "test",
+      providerId: "test",
+      modelName: "test",
+      baseUrl: "https://example.test/v1",
+    });
+
+    const result = await adapter.call({ userPrompt: "test" });
+    expect(result.text).toBe("hello world");
+  });
+
+  test("treats blank string content as missing", async () => {
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: "   " }, finish_reason: "length" }],
+          usage: { completion_tokens_details: { reasoning_tokens: 100 } },
+        }),
+        { status: 200 },
+      )) as unknown as typeof fetch;
+    const adapter = createOpenAICompatibleAdapter({
+      kind: "openai-compatible",
+      id: "test",
+      providerId: "test",
+      modelName: "test",
+      baseUrl: "https://example.test/v1",
+    });
+
+    await expect(adapter.call({ userPrompt: "test" })).rejects.toThrow(
+      "truncated during reasoning, 100 reasoning tokens",
+    );
+  });
+
+  test("mentions reasoning truncation when content is empty", async () => {
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: null, reasoning: "thinking..." }, finish_reason: "length" }],
+          usage: { completion_tokens_details: { reasoning_tokens: 4096 } },
+        }),
+        { status: 200 },
+      )) as unknown as typeof fetch;
+    const adapter = createOpenAICompatibleAdapter({
+      kind: "openai-compatible",
+      id: "test",
+      providerId: "test",
+      modelName: "test",
+      baseUrl: "https://example.test/v1",
+    });
+
+    await expect(adapter.call({ userPrompt: "test" })).rejects.toThrow(
+      "truncated during reasoning, 4096 reasoning tokens",
+    );
+  });
+
   test("rejects a malformed OpenAI-compatible success response", async () => {
     globalThis.fetch = (async () =>
       new Response(JSON.stringify({ choices: [] }), { status: 200 })) as unknown as typeof fetch;
