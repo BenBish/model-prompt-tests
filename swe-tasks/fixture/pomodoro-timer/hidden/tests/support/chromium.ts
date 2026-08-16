@@ -27,6 +27,10 @@ class CdpClient {
   private pending = new Map<number, { resolve(value: any): void; reject(error: Error): void }>();
 
   private constructor(private socket: WebSocket) {
+    const rejectPending = (message: string) => {
+      for (const pending of this.pending.values()) pending.reject(new Error(message));
+      this.pending.clear();
+    };
     socket.addEventListener("message", async (event) => {
       const raw = typeof event.data === "string" ? event.data : await new Response(event.data).text();
       const message = JSON.parse(raw);
@@ -37,6 +41,8 @@ class CdpClient {
       if (message.error) pending.reject(new Error(message.error.message));
       else pending.resolve(message.result);
     });
+    socket.addEventListener("close", () => rejectPending("Chromium debugging connection closed"));
+    socket.addEventListener("error", () => rejectPending("Chromium debugging connection failed"));
   }
 
   static async connect(url: string): Promise<CdpClient> {
@@ -51,7 +57,22 @@ class CdpClient {
   send(method: string, params: Record<string, unknown> = {}): Promise<any> {
     const id = this.nextId++;
     this.socket.send(JSON.stringify({ id, method, params }));
-    return new Promise((resolve, reject) => this.pending.set(id, { resolve, reject }));
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error(`Chromium command timed out: ${method}`));
+      }, 5000);
+      this.pending.set(id, {
+        resolve(value) {
+          clearTimeout(timeout);
+          resolve(value);
+        },
+        reject(error) {
+          clearTimeout(timeout);
+          reject(error);
+        },
+      });
+    });
   }
 
   async evaluate(expression: string): Promise<any> {

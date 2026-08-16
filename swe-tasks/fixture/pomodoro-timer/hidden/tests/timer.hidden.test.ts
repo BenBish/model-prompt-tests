@@ -82,7 +82,10 @@ test("rejects invalid durations and destroy clears active work", () => {
   expect(() => createPomodoroTimer({ workSeconds: 0 })).toThrow();
   expect(() => createPomodoroTimer({ breakSeconds: Number.NaN })).toThrow();
   const { clock, timer } = buildTimer();
+  const initialState = timer.getState();
   expect(() => timer.setDurations({ workSeconds: -1, breakSeconds: 3 })).toThrow();
+  expect(() => timer.setDurations({ workSeconds: 20, breakSeconds: Number.NaN })).toThrow();
+  expect(timer.getState()).toEqual(initialState);
   timer.start();
   timer.destroy();
   expect(clock.intervalCount).toBe(0);

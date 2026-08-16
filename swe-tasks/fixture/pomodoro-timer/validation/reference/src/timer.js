@@ -78,8 +78,10 @@ export function createPomodoroTimer(options = {}) {
     },
     reset,
     setDurations(next) {
-      workSeconds = positiveSeconds(next.workSeconds, "workSeconds");
-      breakSeconds = positiveSeconds(next.breakSeconds, "breakSeconds");
+      const nextWorkSeconds = positiveSeconds(next.workSeconds, "workSeconds");
+      const nextBreakSeconds = positiveSeconds(next.breakSeconds, "breakSeconds");
+      workSeconds = nextWorkSeconds;
+      breakSeconds = nextBreakSeconds;
       reset();
     },
     destroy() {
