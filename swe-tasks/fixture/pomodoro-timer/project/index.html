@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="data:," />
+    <title>Pomodoro Timer</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="timer-card" data-mode="work">
+      <h1>Pomodoro Timer</h1>
+      <p id="mode-label" class="mode-label">Work</p>
+      <output id="time-display" class="time-display" aria-labelledby="mode-label">25:00</output>
+
+      <div class="controls" aria-label="Timer controls">
+        <button id="start-pause" type="button">Start</button>
+        <button id="reset" type="button">Reset</button>
+      </div>
+
+      <form id="settings" class="settings">
+        <label for="work-minutes">Work minutes</label>
+        <input id="work-minutes" name="workMinutes" type="number" min="1" max="180" step="1" value="25" required />
+        <label for="break-minutes">Break minutes</label>
+        <input id="break-minutes" name="breakMinutes" type="number" min="1" max="60" step="1" value="5" required />
+        <button type="submit">Apply settings</button>
+      </form>
+
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+    </main>
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>

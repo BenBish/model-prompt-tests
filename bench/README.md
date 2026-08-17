@@ -302,6 +302,14 @@ The debounce function in src/debounce.ts sometimes calls fn more than once. Fix 
 above). See `swe-tasks/fixture/{smoke,debounce-fix,cart-discount}/` for worked examples,
 including how `hidden/` catches an agent that only special-cases the visible test.
 
+The `pomodoro-timer` fixture is the browser-tested example. It combines deterministic
+injected-clock tests with a real headless Chromium workflow, without adding dependencies to
+the candidate project. Chromium must be available on `PATH` as `chromium`,
+`chromium-browser`, or `google-chrome`. Its hidden checks exercise keyboard activation,
+rendered state, completion alerts, settings changes, and narrow-screen layout. The
+fixture-validation test also proves that a reference solution passes while a plausible
+decrement-per-tick implementation fails.
+
 #### External tasks
 
 External tasks pin a real git repo (HTTPS URL, local path, or relative path/bundle under
@@ -452,6 +460,11 @@ harness → capture the agent's diff against that baseline → overlay `hidden/`
 overwrites any file the agent tampered with) → run `verify` with a timeout → judge.
 A `verify` pass/fail is the primary, objective signal; the judge scores are secondary
 (code quality, diff minimality, whether the agent's own summary was honest).
+
+Browser-backed fixtures may require a system browser even when the candidate project has no
+package dependencies. Run the fixture's verification command locally before spending model
+budget; for `pomodoro-timer`, `command -v chromium` (or one of the fallback names above)
+must succeed.
 
 `report` (above) picks up SWE runs automatically and adds an "SWE Task Summary"/"SWE
 Task Details" section to the HTML report and assessment — pass rate, judge score,

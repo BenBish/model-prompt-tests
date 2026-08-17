@@ -1,0 +1,46 @@
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, sans-serif;
+  background: #15202b;
+  color: #f8fafc;
+}
+
+* { box-sizing: border-box; }
+body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 1rem; }
+.timer-card {
+  width: min(100%, 28rem);
+  padding: clamp(1.25rem, 5vw, 2.5rem);
+  border-radius: 1.25rem;
+  background: #243447;
+  box-shadow: 0 1rem 3rem rgb(0 0 0 / 30%);
+  text-align: center;
+}
+.timer-card[data-mode="break"] { background: #17483f; }
+.timer-card.is-complete { outline: 0.35rem solid #fbbf24; }
+h1, .mode-label, .status { margin-block: 0 1rem; }
+.mode-label { font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
+.time-display {
+  display: block;
+  margin-block: 1rem 1.5rem;
+  font-size: clamp(3.5rem, 18vw, 6rem);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.controls, .settings { display: grid; gap: 0.75rem; }
+.controls { grid-template-columns: 1fr 1fr; margin-bottom: 1.5rem; }
+.settings { grid-template-columns: 1fr minmax(5rem, 0.6fr); align-items: center; text-align: left; }
+.settings button { grid-column: 1 / -1; }
+button, input {
+  min-height: 2.75rem;
+  border: 1px solid #94a3b8;
+  border-radius: 0.6rem;
+  padding: 0.6rem 0.8rem;
+  font: inherit;
+}
+button { cursor: pointer; background: #e2e8f0; color: #0f172a; font-weight: 700; }
+button:focus-visible, input:focus-visible { outline: 0.2rem solid #fbbf24; outline-offset: 0.15rem; }
+.status { min-height: 1.5em; margin-top: 1.25rem; }
+@media (max-width: 26rem) {
+  .controls, .settings { grid-template-columns: 1fr; }
+  .settings button { grid-column: auto; }
+}
