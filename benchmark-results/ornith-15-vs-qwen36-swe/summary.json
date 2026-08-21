@@ -1,0 +1,30 @@
+[
+  {
+    "modelId": "codex-lab:qwen36-35b-rerun",
+    "comparisonBatchId": "2026-08-21T05-06-21-916Z-gm09uz",
+    "smokeGateBatchId": "2026-08-21T05-05-46-921Z-01bagq",
+    "totalRuns": 12,
+    "verifyPassed": 9,
+    "verifyRate": 0.75,
+    "avgVerifyPassRate": 0.9351851851851852,
+    "avgLatencyMs": 84803.66666666667,
+    "avgDecodeTokensPerSec": 43.46038077070766,
+    "avgPromptTokensPerSec": 688.2414691523537,
+    "throughputAggregation": "weighted: sum(tokens)/sum(seconds) across the 12 comparison cells, matching sweReportData",
+    "timeouts": 0
+  },
+  {
+    "modelId": "codex-lab:ornith-15-q4-noreasoning",
+    "comparisonBatchId": "2026-08-21T05-27-06-012Z-797uxn",
+    "smokeGateBatchId": "2026-08-21T05-26-49-570Z-ftpfo3",
+    "totalRuns": 12,
+    "verifyPassed": 8,
+    "verifyRate": 0.6666666666666666,
+    "avgVerifyPassRate": 0.7945601851851852,
+    "avgLatencyMs": 199531,
+    "avgDecodeTokensPerSec": 46.20973170120845,
+    "avgPromptTokensPerSec": 468.7907952427683,
+    "throughputAggregation": "weighted: sum(tokens)/sum(seconds) across the 12 comparison cells, matching sweReportData",
+    "timeouts": 2
+  }
+]
