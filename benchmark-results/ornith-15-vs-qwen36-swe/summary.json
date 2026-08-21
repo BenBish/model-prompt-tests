@@ -8,8 +8,9 @@
     "verifyRate": 0.75,
     "avgVerifyPassRate": 0.9351851851851852,
     "avgLatencyMs": 84803.66666666667,
-    "avgDecodeTokensPerSec": 44.22927046418215,
-    "avgPromptTokensPerSec": 687.2382088666841,
+    "avgDecodeTokensPerSec": 43.46038077070766,
+    "avgPromptTokensPerSec": 688.2414691523537,
+    "throughputAggregation": "weighted: sum(tokens)/sum(seconds) across the 12 comparison cells, matching sweReportData",
     "timeouts": 0
   },
   {
@@ -21,8 +22,9 @@
     "verifyRate": 0.6666666666666666,
     "avgVerifyPassRate": 0.7945601851851852,
     "avgLatencyMs": 199531,
-    "avgDecodeTokensPerSec": 49.30005080610121,
-    "avgPromptTokensPerSec": 528.1127781647808,
+    "avgDecodeTokensPerSec": 46.20973170120845,
+    "avgPromptTokensPerSec": 468.7907952427683,
+    "throughputAggregation": "weighted: sum(tokens)/sum(seconds) across the 12 comparison cells, matching sweReportData",
     "timeouts": 2
   }
 ]

@@ -40,4 +40,4 @@ export HALO_TIMEOUT_MS=600000
 /home/ben/Dev/benbishop-context/scripts/run-halo-candidate-suite.sh ornith-15-q4-noreasoning
 ```
 
-`report.html` / `assessment.md` were generated with `bun bench/src/cli.ts report --all-runs` from the worktree DB (includes the two smoke-gate cells). Headline numbers in `article.md` and `summary.json` use the 12-cell comparison batches only.
+`report.html` / `assessment.md` were generated with `bun bench/src/cli.ts report --all-runs` from the worktree DB (includes the two smoke-gate cells). Headline numbers in `article.md` and `summary.json` use the 12-cell comparison batches only. Decode/prompt tok/s in `summary.json` are token-weighted (`sum(tokens)/sum(seconds)`), matching `sweReportData.ts`, not an unweighted mean of per-cell rates.

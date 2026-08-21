@@ -12,11 +12,11 @@ This is the first comparison after [BSH-187](https://linear.app/bshp/issue/BSH-1
 
 | Model | Verify | Avg test pass % | Avg agent ms | Decode tok/s | Prompt tok/s | Timeouts |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `codex-lab:qwen36-35b-rerun` | **9/12 (75%)** | **93.5%** | **84,804** | 44.2 | 687.2 | 0 |
-| `codex-lab:ornith-15-q4-noreasoning` | 8/12 (66.7%) | 79.5% | 199,531 | **49.3** | 528.1 | 2 |
+| `codex-lab:qwen36-35b-rerun` | **9/12 (75%)** | **93.5%** | **84,804** | 43.5 | 688.2 | 0 |
+| `codex-lab:ornith-15-q4-noreasoning` | 8/12 (66.7%) | 79.5% | 199,531 | **46.2** | 468.8 | 2 |
 
 - **Capability:** Qwen is ahead on both binary and partial credit. The gap is Pomodoro (Qwen closer to a pass) plus one Ornith smoke timeout.
-- **Speed:** Ornith decodes ~11% faster (49.3 vs 44.2 tok/s) and is still much slower on the wall clock because two cells hit the 600s ceiling.
+- **Speed:** Ornith decodes ~6% faster (46.2 vs 43.5 tok/s, token-weighted like the harness report) and is still much slower on the wall clock because two cells hit the 600s ceiling.
 - **Main-agent pick:** keep Qwen3.6-35B-A3B as the local coding default. Ornith thinking-off is not a quality upgrade on this harness.
 
 ## Per-task
@@ -60,7 +60,7 @@ Do not promote Ornith onto the OpenCode 12347 default. If Ornith is reconsidered
 ## Scope notes
 
 - Harness is `codex-lab` only. Both aliases resolve to whatever weights `LAB-CANDIDATE` is serving, so the two arms ran sequentially with an exclusive GPU window each, not as one `swe run --models a,b` matrix.
-- Task set is the lab 12-cell fixture contract (`fixture/*` × 3), including the fixed `pomodoro-timer`. Code-review and `external/tiny-add` were left out so latency and verify rates stay comparable to the 2026-08-20 corrected board.
+- Task set is the lab 12-cell fixture contract (`fixture/*` × 3), including the fixed `pomodoro-timer`. The ticket's `swe run all` would also have run `external/tiny-add` and the two code-review tasks; those were not run, so this package does not contain them.
 - Agent timeout was 600s (Pomodoro's own `agentTimeoutMs`) rather than the 300s clip used on that earlier board.
 - The interactive `report.html` is `--all-runs` on this worktree DB (13 cells/arm, smoke-gate included). Headline tables above use the 12-cell comparison batches only.
 

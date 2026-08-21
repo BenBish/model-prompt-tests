@@ -1,17 +1,10 @@
 # Bench Assessment
 
+These rows are `bun bench/src/cli.ts report --all-runs` on the worktree DB: **13 cells/arm**, including the smoke-gate cell. Headline numbers in `article.md` and `summary.json` use the **12-cell comparison batches only**.
+
 Report: `benchmark-results/ornith-15-vs-qwen36-swe/report.html`
 Summary JSON: `benchmark-results/ornith-15-vs-qwen36-swe/summary.json`
 Generated: `2026-08-21T06:09:27.295Z`
-
-## Model Summary
-
-| Model | Avg score (peer) | Self score | Median score | Score stddev | Repeat variance | Judge agreement | Avg latency ms | Median latency ms | Avg output tokens | Avg judge spread | Quality/sec | Avg cost | Total cost | Quality/$ | Truncated |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-
-## Errors
-
-None.
 
 ## SWE Task Summary
 
