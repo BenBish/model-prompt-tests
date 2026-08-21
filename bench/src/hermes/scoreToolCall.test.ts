@@ -82,10 +82,17 @@ describe("scoreToolProbeCase — negative cases (shouldNotCall)", () => {
     expect(score).toMatchObject({ correctTool: true, validArgs: true });
   });
 
-  test("incorrectly calls a tool when none was expected", () => {
+  test("incorrectly calls a tool when none was expected, with well-formed args", () => {
     const score = scoreToolProbeCase([call("send_message", '{"to":"a","text":"b"}')], negativeCase());
-    expect(score).toMatchObject({ correctTool: false, validArgs: false, calledTool: "send_message" });
+    expect(score).toMatchObject({ wellFormed: true, correctTool: false, validArgs: false, calledTool: "send_message" });
     expect(score.notes).toContain("no tool call was expected");
+  });
+
+  test("incorrectly calls a tool when none was expected, with malformed JSON args", () => {
+    const score = scoreToolProbeCase([call("send_message", "{not json")], negativeCase());
+    expect(score).toMatchObject({ wellFormed: false, correctTool: false, validArgs: false, calledTool: "send_message" });
+    expect(score.notes).toContain("no tool call was expected");
+    expect(score.notes).toContain("did not parse as a JSON object");
   });
 });
 

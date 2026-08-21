@@ -122,6 +122,32 @@ describe("validateHarnessesConfig", () => {
     ).toThrow("metricsUrl");
   });
 
+  test("rejects metricsUrl combined with maxConcurrency > 1", () => {
+    expect(() =>
+      validateHarnessesConfig({
+        harnesses: [
+          { id: "raw", kind: "raw-api", metricsUrl: "http://127.0.0.1:18080", maxConcurrency: 2 },
+        ],
+      }),
+    ).toThrow("maxConcurrency");
+  });
+
+  test("accepts metricsUrl with maxConcurrency exactly 1", () => {
+    const config = validateHarnessesConfig({
+      harnesses: [
+        { id: "raw", kind: "raw-api", metricsUrl: "http://127.0.0.1:18080", maxConcurrency: 1 },
+      ],
+    });
+    expect(config.harnesses[0]).toMatchObject({ metricsUrl: "http://127.0.0.1:18080", maxConcurrency: 1 });
+  });
+
+  test("accepts metricsUrl with maxConcurrency omitted (defaults to 1 elsewhere)", () => {
+    const config = validateHarnessesConfig({
+      harnesses: [{ id: "raw", kind: "raw-api", metricsUrl: "http://127.0.0.1:18080" }],
+    });
+    expect(config.harnesses[0]).toMatchObject({ metricsUrl: "http://127.0.0.1:18080" });
+  });
+
   test("rejects invalid codex sandbox values", () => {
     expect(() =>
       validateHarnessesConfig({

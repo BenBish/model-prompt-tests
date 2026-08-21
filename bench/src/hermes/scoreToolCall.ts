@@ -20,6 +20,16 @@ function firstNonEmptyValue(value: unknown): boolean {
   return true;
 }
 
+/** True when `argumentsRaw` parses as a JSON object (not an array, not a scalar). */
+function isWellFormedJsonObject(argumentsRaw: string): boolean {
+  try {
+    const parsed = JSON.parse(argumentsRaw);
+    return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed);
+  } catch {
+    return false;
+  }
+}
+
 /** Pure scorer: no network, no DB. Scores exactly against the model's first tool call (if any). */
 export function scoreToolProbeCase(
   toolCalls: ModelToolCall[] | undefined,
@@ -32,13 +42,16 @@ export function scoreToolProbeCase(
     if (!toolCalls || toolCalls.length === 0) {
       return { wellFormed: true, correctTool: true, validArgs: true, notes: "correctly made no call" };
     }
+    const unwantedCall = toolCalls[0]!;
+    const unwantedCallWellFormed = isWellFormedJsonObject(unwantedCall.arguments);
+    const malformedNote = unwantedCallWellFormed ? "" : "; arguments also did not parse as a JSON object";
     return {
-      wellFormed: true,
+      wellFormed: unwantedCallWellFormed,
       correctTool: false,
       validArgs: false,
-      calledTool: toolCalls[0]!.name,
-      argumentsRaw: toolCalls[0]!.arguments,
-      notes: `called ${toolCalls[0]!.name} when no tool call was expected${extraCallsNote}`,
+      calledTool: unwantedCall.name,
+      argumentsRaw: unwantedCall.arguments,
+      notes: `called ${unwantedCall.name} when no tool call was expected${malformedNote}${extraCallsNote}`,
     };
   }
 

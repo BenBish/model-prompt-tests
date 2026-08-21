@@ -50,7 +50,7 @@ export async function cmdHermesTools(
   if (anyBelowGate) {
     console.log(
       "\n[gate] one or more candidates scored below 90% well-formed tool calls — treat as disqualifying " +
-        "for an EA role regardless of prose quality elsewhere.",
+        "for any tool-calling agent role regardless of prose quality elsewhere.",
     );
   }
 }

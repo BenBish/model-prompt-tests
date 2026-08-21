@@ -215,6 +215,15 @@ function normalizeHarness(raw: unknown, index: number): HarnessMatrixEntry {
     maxConcurrency: optionalPositiveInteger(obj, "maxConcurrency", context),
     metricsUrl: optionalString(obj, "metricsUrl", context),
   };
+  // Metrics sampling reads the shared server's cumulative /metrics counters before/after each
+  // cell with no cross-cell locking, so concurrent cells against the same server would sample
+  // overlapping windows and silently misattribute decode/prefill tok/s between cells.
+  if (common.metricsUrl !== undefined && common.maxConcurrency !== undefined && common.maxConcurrency > 1) {
+    throw new Error(
+      `${context}: "metricsUrl" requires "maxConcurrency" to be 1 (or omitted) — concurrent cells would ` +
+        `corrupt each other's sampled throughput deltas`,
+    );
+  }
 
   if (kind === "claude-code") {
     return {
