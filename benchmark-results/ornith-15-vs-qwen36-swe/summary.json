@@ -1,0 +1,28 @@
+[
+  {
+    "modelId": "codex-lab:qwen36-35b-rerun",
+    "comparisonBatchId": "2026-08-21T05-06-21-916Z-gm09uz",
+    "smokeGateBatchId": "2026-08-21T05-05-46-921Z-01bagq",
+    "totalRuns": 12,
+    "verifyPassed": 9,
+    "verifyRate": 0.75,
+    "avgVerifyPassRate": 0.9351851851851852,
+    "avgLatencyMs": 84803.66666666667,
+    "avgDecodeTokensPerSec": 44.22927046418215,
+    "avgPromptTokensPerSec": 687.2382088666841,
+    "timeouts": 0
+  },
+  {
+    "modelId": "codex-lab:ornith-15-q4-noreasoning",
+    "comparisonBatchId": "2026-08-21T05-27-06-012Z-797uxn",
+    "smokeGateBatchId": "2026-08-21T05-26-49-570Z-ftpfo3",
+    "totalRuns": 12,
+    "verifyPassed": 8,
+    "verifyRate": 0.6666666666666666,
+    "avgVerifyPassRate": 0.7945601851851852,
+    "avgLatencyMs": 199531,
+    "avgDecodeTokensPerSec": 49.30005080610121,
+    "avgPromptTokensPerSec": 528.1127781647808,
+    "timeouts": 2
+  }
+]
