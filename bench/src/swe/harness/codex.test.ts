@@ -149,4 +149,27 @@ fi
     });
     expect(result.finalMessage).toBe("from-overrides");
   });
+
+  test("uses a fresh CODEX_HOME when isolation is enabled", async () => {
+    writeFakeCodex(`
+out=""
+prev=""
+for arg in "$@"; do
+  if [[ "$prev" == "-o" ]]; then out="$arg"; fi
+  prev="$arg"
+done
+if [[ -d "$CODEX_HOME" ]] && [[ "$CODEX_HOME" == *"/codex-home" ]]; then
+  echo 'isolated' > "$out"
+else
+  echo "not-isolated:$CODEX_HOME" > "$out"
+fi
+`);
+    const result = await createCodexHarness(baseConfig({ isolateCodexHome: true })).run({
+      taskPrompt: "x",
+      model: "o4-mini",
+      workDir: process.cwd(),
+      timeoutMs: 5000,
+    });
+    expect(result.finalMessage).toBe("isolated");
+  });
 });

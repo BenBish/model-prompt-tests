@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CodexHarnessConfig } from "../harnessConfig";
@@ -80,6 +80,11 @@ export function createCodexHarness(config: CodexHarnessConfig): SweHarness {
           extraKeys: ["OPENAI_API_KEY", "CODEX_API_KEY", "CODEX_HOME", "LOCAL_LLAMACPP_API_KEY"],
           stripPrefixes: ["CLAUDE_CODE_", "CLAUDECODE"],
         });
+        if (config.isolateCodexHome) {
+          const codexHome = join(outDir, "codex-home");
+          mkdirSync(codexHome, { recursive: true });
+          env.CODEX_HOME = codexHome;
+        }
 
         const commandResult = await runCommand({
           cmd,

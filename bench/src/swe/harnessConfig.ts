@@ -15,6 +15,14 @@ export interface ClaudeCodeHarnessConfig {
    */
   bare?: boolean;
   enabled?: boolean;
+  /** Maximum simultaneous runs for this harness. Defaults to 1. */
+  maxConcurrency?: number;
+  /**
+   * Base URL of the llama.cpp server backing this harness (started with `--metrics`), used to
+   * sample `/metrics` before/after each cell for server-side decode/prefill tok/s. Only
+   * meaningful for local single-tenant harnesses; omit for cloud-backed harnesses.
+   */
+  metricsUrl?: string;
 }
 
 export interface RawApiHarnessConfig {
@@ -23,6 +31,8 @@ export interface RawApiHarnessConfig {
   /** No model map: aliases resolve directly against bench/models.json. */
   maxContextBytes?: number;
   enabled?: boolean;
+  maxConcurrency?: number;
+  metricsUrl?: string;
 }
 
 export type CodexSandboxMode = "read-only" | "workspace-write" | "danger-full-access";
@@ -47,7 +57,11 @@ export interface CodexHarnessConfig {
   configOverrides?: Record<string, string>;
   /** Pass `--ignore-user-config` for hermetic provider config (only overrides apply). */
   ignoreUserConfig?: boolean;
+  /** Run with a fresh CODEX_HOME below the per-run output directory. */
+  isolateCodexHome?: boolean;
   enabled?: boolean;
+  maxConcurrency?: number;
+  metricsUrl?: string;
 }
 
 export type GenericCliPromptVia = "stdin" | "arg" | "file";
@@ -75,6 +89,8 @@ export interface GenericCliHarnessConfig {
   /** Env prefixes to strip (e.g. CLAUDE_CODE_). */
   stripPrefixes?: string[];
   enabled?: boolean;
+  maxConcurrency?: number;
+  metricsUrl?: string;
 }
 
 export type HarnessMatrixEntry =
@@ -119,6 +135,15 @@ function optionalPositiveInteger(
     throw new Error(`${context}: "${key}" must be a positive integer when present`);
   }
   return value as number;
+}
+
+function optionalString(obj: Record<string, unknown>, key: string, context: string): string | undefined {
+  const value = obj[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new Error(`${context}: "${key}" must be a non-empty string when present`);
+  }
+  return value;
 }
 
 function optionalBoolean(obj: Record<string, unknown>, key: string, context: string): boolean | undefined {
@@ -187,7 +212,18 @@ function normalizeHarness(raw: unknown, index: number): HarnessMatrixEntry {
   const common = {
     id: requireString(obj, "id", context),
     enabled: optionalBoolean(obj, "enabled", context),
+    maxConcurrency: optionalPositiveInteger(obj, "maxConcurrency", context),
+    metricsUrl: optionalString(obj, "metricsUrl", context),
   };
+  // Metrics sampling reads the shared server's cumulative /metrics counters before/after each
+  // cell with no cross-cell locking, so concurrent cells against the same server would sample
+  // overlapping windows and silently misattribute decode/prefill tok/s between cells.
+  if (common.metricsUrl !== undefined && common.maxConcurrency !== undefined && common.maxConcurrency > 1) {
+    throw new Error(
+      `${context}: "metricsUrl" requires "maxConcurrency" to be 1 (or omitted) — concurrent cells would ` +
+        `corrupt each other's sampled throughput deltas`,
+    );
+  }
 
   if (kind === "claude-code") {
     return {
@@ -243,6 +279,7 @@ function normalizeHarness(raw: unknown, index: number): HarnessMatrixEntry {
       localProvider: typeof localProvider === "string" ? localProvider : undefined,
       configOverrides,
       ignoreUserConfig: optionalBoolean(obj, "ignoreUserConfig", context),
+      isolateCodexHome: optionalBoolean(obj, "isolateCodexHome", context),
     };
   }
 

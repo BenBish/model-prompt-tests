@@ -20,8 +20,13 @@ function runBadgeLabel(row: SweReportRow): string {
     const f1 = row.reviewMetrics.f1;
     return f1 === undefined ? "review" : `F1 ${formatNumber(f1)}`;
   }
-  if (row.verifyPassed === true) return "pass";
-  if (row.verifyPassed === false) return "fail";
+  if (row.verifyPassed === true && row.agentTimedOut) return "verified / timed out";
+  if (row.verifyPassed === true) return "clean pass";
+  if (row.verifyPassed === false) {
+    return row.verifyTestsTotal !== undefined
+      ? `fail (${row.verifyTestsPassed ?? 0}/${row.verifyTestsTotal})`
+      : "fail";
+  }
   return "?";
 }
 
@@ -108,12 +113,18 @@ function renderSweSummaryRows(summaries: SweSummary[]): string {
           <td>${summary.passedRuns}</td>
           <td>${summary.failedRuns}</td>
           <td>${formatPercent(summary.passRate)}</td>
+          <td>${summary.cleanPassedRuns}</td>
+          <td>${summary.verifiedTimedOutRuns}</td>
+          <td>${formatPercent(summary.cleanPassRate)}</td>
+          <td>${formatPercent(summary.avgVerifyPassRate)}</td>
           <td>${formatNumber(summary.avgJudgeScore)}</td>
           <td>${formatNumber(summary.medianJudgeScore)}</td>
           <td>${formatNumber(summary.avgRecall)}</td>
           <td>${formatNumber(summary.avgPrecision)}</td>
           <td>${formatNumber(summary.avgF1)}</td>
           <td>${formatNumber(summary.avgAgentLatencyMs, 0)}</td>
+          <td>${formatNumber(summary.avgDecodeTokensPerSec, 1)}</td>
+          <td>${formatNumber(summary.avgPromptTokensPerSec, 1)}</td>
           <td>${formatNumber(summary.avgDiffLines, 1)}</td>
           <td>${summary.timeouts}</td>
         </tr>
@@ -126,15 +137,18 @@ export function renderSweAssessmentSection(data: SweReportData): string {
   if (data.taskIds.length === 0) return "";
 
   const header =
-    "| Harness:Model | Total | OK | Errors | Passed | Failed | Pass rate | Avg judge | Median judge | Avg recall | Avg precision | Avg F1 | Avg agent ms | Avg diff lines | Timeouts |\n" +
-    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |";
+    "| Harness:Model | Total | OK | Errors | Verify passed | Verify failed | Verify rate | Clean passed | Verified after timeout | Clean pass rate | Avg test pass % | Avg judge | Median judge | Avg recall | Avg precision | Avg F1 | Avg agent ms | Decode tok/s | Prompt tok/s | Avg diff lines | Timeouts |\n" +
+    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |";
   const rows = data.summaries.map(
     (summary) =>
       `| \`${summary.harnessModelId}\` | ${summary.totalRuns} | ${summary.okRuns} | ${summary.errorRuns} | ` +
       `${summary.passedRuns} | ${summary.failedRuns} | ${formatPercent(summary.passRate)} | ` +
+      `${summary.cleanPassedRuns} | ${summary.verifiedTimedOutRuns} | ${formatPercent(summary.cleanPassRate)} | ` +
+      `${formatPercent(summary.avgVerifyPassRate)} | ` +
       `${formatNumber(summary.avgJudgeScore)} | ${formatNumber(summary.medianJudgeScore)} | ` +
       `${formatNumber(summary.avgRecall)} | ${formatNumber(summary.avgPrecision)} | ${formatNumber(summary.avgF1)} | ` +
-      `${formatNumber(summary.avgAgentLatencyMs, 0)} | ${formatNumber(summary.avgDiffLines, 1)} | ${summary.timeouts} |`,
+      `${formatNumber(summary.avgAgentLatencyMs, 0)} | ${formatNumber(summary.avgDecodeTokensPerSec, 1)} | ` +
+      `${formatNumber(summary.avgPromptTokensPerSec, 1)} | ${formatNumber(summary.avgDiffLines, 1)} | ${summary.timeouts} |`,
   );
 
   const errorLines: string[] = [];
@@ -150,6 +164,15 @@ export function renderSweAssessmentSection(data: SweReportData): string {
   }
 
   const sections = [`## SWE Task Summary\n\n${[header, ...rows].join("\n")}`];
+  sections.push(
+    [
+      "### Metric notes",
+      "",
+      "- **Verify rate** is binary: the fraction of runs where the whole verify command exited 0.",
+      "- **Avg test pass %** is partial credit: the mean fraction of individual hidden/visible tests passed per run, parsed from `bun test`'s summary. It stays informative even when every run in a cell fails Verify rate outright, and reads as `—` for any verify command other than `bun test`.",
+      "- **Avg/median judge** measures process and code quality on top of a verify result that's already known — it does not re-derive correctness, so don't read a high judge score as evidence a failing run actually worked.",
+    ].join("\n"),
+  );
   if (data.summaries.some((s) => s.reviewRuns > 0)) {
     sections.push(
       [
@@ -181,9 +204,15 @@ export function renderSweReportSection(data: SweReportData): string {
     })
     .join("");
 
-  const metricNotes = data.summaries.some((s) => s.reviewRuns > 0)
-    ? `<p class="muted">Code-review metrics: <b>recall</b> is severity-weighted (high=3/med=2/low=1); <b>precision</b> is unweighted claim-count (TP / (TP + plausible extras)). F1 mixes those scales. Passed/Failed apply only to fixture/external verify, not code-review cells.</p>`
-    : "";
+  const metricNotesParts = [
+    `<p class="muted"><b>Verify rate</b> is binary (whole run passed or not). <b>Avg test pass %</b> is partial credit — the mean fraction of individual hidden/visible tests passed per run (parsed from <code>bun test</code>'s summary; shows as "—" for other verify commands) — so it can separate models that tie on Verify rate. <b>Judge score</b> rates process/quality on top of an already-known verify result; it does not re-derive correctness.</p>`,
+  ];
+  if (data.summaries.some((s) => s.reviewRuns > 0)) {
+    metricNotesParts.push(
+      `<p class="muted">Code-review metrics: <b>recall</b> is severity-weighted (high=3/med=2/low=1); <b>precision</b> is unweighted claim-count (TP / (TP + plausible extras)). F1 mixes those scales. Passed/Failed apply only to fixture/external verify, not code-review cells.</p>`,
+    );
+  }
+  const metricNotes = metricNotesParts.join("\n");
 
   return `
   <h2>SWE Task Summary</h2>
@@ -195,15 +224,21 @@ export function renderSweReportSection(data: SweReportData): string {
         <th>Total</th>
         <th>OK</th>
         <th>Errors</th>
-        <th>Passed</th>
-        <th>Failed</th>
-        <th>Pass rate</th>
+        <th>Verify passed</th>
+        <th>Verify failed</th>
+        <th>Verify rate</th>
+        <th>Clean passed</th>
+        <th>Verified after timeout</th>
+        <th>Clean pass rate</th>
+        <th>Avg test pass %</th>
         <th>Avg judge score</th>
         <th>Median judge score</th>
         <th>Avg recall</th>
         <th>Avg precision</th>
         <th>Avg F1</th>
         <th>Avg agent ms</th>
+        <th>Decode tok/s</th>
+        <th>Prompt tok/s</th>
         <th>Avg diff lines</th>
         <th>Timeouts</th>
       </tr>

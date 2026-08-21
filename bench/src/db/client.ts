@@ -21,6 +21,12 @@ const COLUMN_MIGRATIONS: ColumnMigration[] = [
   { table: "runs", column: "harness_id", ddlType: "TEXT" },
   { table: "runs", column: "stop_reason", ddlType: "TEXT" },
   { table: "runs", column: "cost_usd", ddlType: "REAL" },
+  { table: "swe_results", column: "server_prompt_tokens", ddlType: "INTEGER" },
+  { table: "swe_results", column: "server_prompt_seconds", ddlType: "REAL" },
+  { table: "swe_results", column: "server_predicted_tokens", ddlType: "INTEGER" },
+  { table: "swe_results", column: "server_predicted_seconds", ddlType: "REAL" },
+  { table: "swe_results", column: "verify_tests_passed", ddlType: "INTEGER" },
+  { table: "swe_results", column: "verify_tests_total", ddlType: "INTEGER" },
 ];
 
 /**
@@ -34,6 +40,13 @@ export function ensureColumn(target: Database, migration: ColumnMigration): void
       `ensureColumn: unsafe identifier (table="${migration.table}", column="${migration.column}")`,
     );
   }
+  const tableExists = target
+    .query(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = $table`)
+    .get({ $table: migration.table });
+  // A migration for a table introduced after the caller's schema snapshot (e.g. swe_results
+  // predates this column but not this database) is a no-op here; CREATE TABLE IF NOT EXISTS in
+  // schema.sql is what actually creates it for real databases before applyMigrations runs.
+  if (!tableExists) return;
   const existing = target.query(`PRAGMA table_info(${migration.table})`).all() as { name: string }[];
   if (existing.some((col) => col.name === migration.column)) return;
   target.exec(`ALTER TABLE ${migration.table} ADD COLUMN ${migration.column} ${migration.ddlType}`);
@@ -85,6 +98,22 @@ CREATE INDEX IF NOT EXISTS idx_syntheses_batch ON syntheses(run_batch_id);
 CREATE INDEX IF NOT EXISTS idx_syntheses_prompt ON syntheses(prompt_id);
 `;
 
+const TOOL_PROBE_RESULTS_DDL = `
+CREATE TABLE IF NOT EXISTS tool_probe_results (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  run_id         INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+  case_id        TEXT NOT NULL,
+  expected_tool  TEXT,
+  well_formed    INTEGER NOT NULL DEFAULT 0,
+  correct_tool   INTEGER NOT NULL DEFAULT 0,
+  valid_args     INTEGER NOT NULL DEFAULT 0,
+  called_tool    TEXT,
+  arguments_raw  TEXT,
+  notes          TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_tool_probe_results_run ON tool_probe_results(run_id);
+`;
+
 export function applyMigrations(target: Database): void {
   for (const migration of COLUMN_MIGRATIONS) {
     ensureColumn(target, migration);
@@ -94,6 +123,8 @@ export function applyMigrations(target: Database): void {
   target.exec(PEER_RANKS_DDL);
   // New table for BSH-150 chairman synthesis.
   target.exec(SYNTHESES_DDL);
+  // New table for the Hermes tool-calling probe.
+  target.exec(TOOL_PROBE_RESULTS_DDL);
 }
 
 export function openDb(dbPath: string): Database {

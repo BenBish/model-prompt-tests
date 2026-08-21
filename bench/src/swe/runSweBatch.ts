@@ -16,6 +16,7 @@ import {
 } from "./externalWorkspace";
 import { loadFindingsSpec } from "./findings";
 import { runReviewMatcher } from "./reviewMatcher";
+import { diffLlamaCppMetrics, sampleLlamaCppMetrics } from "./llamaCppMetrics";
 import { provisionCodeReviewWorkspace } from "./reviewWorkspace";
 import {
   captureDiff,
@@ -32,6 +33,9 @@ export interface SweRunnerCell {
   harnessId: string;
   harness: SweHarness;
   modelAlias: string;
+  maxConcurrency?: number;
+  /** llama.cpp server base URL to sample /metrics around each cell for throughput. */
+  metricsUrl?: string;
 }
 
 export interface RunSweBatchOptions {
@@ -61,7 +65,7 @@ export interface RunSweBatchSummary {
   wallClockMs: number;
 }
 
-const DEFAULT_CONCURRENCY = 2;
+const DEFAULT_CONCURRENCY = 1;
 
 function makeRunBatchId(): string {
   const now = new Date().toISOString().replace(/[:.]/g, "-");
@@ -97,10 +101,11 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
   let judgeErrored = 0;
 
   const harnessLimiters = new Map<string, Limiter>();
-  function limiterFor(harnessId: string): Limiter {
+  function limiterFor(cell: SweRunnerCell): Limiter {
+    const harnessId = cell.harnessId;
     let limiter = harnessLimiters.get(harnessId);
     if (!limiter) {
-      limiter = createLimiter(defaultConcurrency);
+      limiter = createLimiter(Math.min(defaultConcurrency, cell.maxConcurrency ?? 1));
       harnessLimiters.set(harnessId, limiter);
     }
     return limiter;
@@ -122,7 +127,7 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
     }
     for (const cell of cells) {
       for (let repeatIndex = 0; repeatIndex < repeats; repeatIndex++) {
-        const limiter = limiterFor(cell.harnessId);
+        const limiter = limiterFor(cell);
         cellTasks.push(limiter(() => executeCell(task, cell, repeatIndex)));
       }
     }
@@ -184,12 +189,15 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
         provisioned = externalMeta;
       }
 
+      const metricsBefore = cell.metricsUrl ? await sampleLlamaCppMetrics(cell.metricsUrl) : undefined;
       const agentResult = await cell.harness.run({
         taskPrompt: task.taskText,
         model: nativeModel,
         workDir: workspaceDir,
         timeoutMs: task.agentTimeoutMs,
       });
+      const metricsAfter = cell.metricsUrl ? await sampleLlamaCppMetrics(cell.metricsUrl) : undefined;
+      const metricsDelta = diffLlamaCppMetrics(metricsBefore, metricsAfter);
       const diff = await captureDiff(workspaceDir, provisioned.postSetupSha);
 
       if (task.type === "fixture") {
@@ -235,6 +243,12 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
         verifyPassed: verify.passed,
         verifyOutput: verify.output,
         verifyDurationMs: Math.round(verify.durationMs),
+        verifyTestsPassed: verify.testsPassed,
+        verifyTestsTotal: verify.testsTotal,
+        serverPromptTokens: metricsDelta?.promptTokens,
+        serverPromptSeconds: metricsDelta?.promptSeconds,
+        serverPredictedTokens: metricsDelta?.predictedTokens,
+        serverPredictedSeconds: metricsDelta?.predictedSeconds,
       });
 
       ok++;
@@ -288,6 +302,7 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
     const { startedAt, modelId, nativeModel, label, workspaceDir } = ctx;
     const provisioned = await provisionCodeReviewWorkspace(task, workspaceDir);
 
+    const metricsBefore = cell.metricsUrl ? await sampleLlamaCppMetrics(cell.metricsUrl) : undefined;
     const agentResult = await cell.harness.run({
       taskPrompt: provisioned.reviewPrompt,
       model: nativeModel,
@@ -295,6 +310,8 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
       timeoutMs: task.agentTimeoutMs,
       mode: "review",
     });
+    const metricsAfter = cell.metricsUrl ? await sampleLlamaCppMetrics(cell.metricsUrl) : undefined;
+    const metricsDelta = diffLlamaCppMetrics(metricsBefore, metricsAfter);
 
     // Matcher uses the primary qualitative judge when available. When a judge is configured,
     // a successful match is required — matcher failure marks the run as error (agent output
@@ -359,6 +376,10 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
       // No verify step for code-review; pass/fail is undefined.
       reviewMetrics,
       error: matcherError,
+      serverPromptTokens: metricsDelta?.promptTokens,
+      serverPromptSeconds: metricsDelta?.promptSeconds,
+      serverPredictedTokens: metricsDelta?.predictedTokens,
+      serverPredictedSeconds: metricsDelta?.predictedSeconds,
     });
 
     if (matcherRequiredAndFailed) {
@@ -433,9 +454,10 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
     passed === 0 && failed === 0 && ok > 0
       ? " (code-review cells have no verify pass/fail; see F1 in per-cell logs / report)"
       : "";
+  const noJudgeNote = judges.length === 0 && ok > 0 ? " — no judges ran; use --judge/--judges to score quality" : "";
   console.log(
     `\nSWE batch ${runBatchId}: ${ok} ok (${passed} passed, ${failed} failed)${reviewOnlyNote}, ${errored} errors, ` +
-      `${judgeErrored} judge errors, ${Math.round(wallClockMs)}ms`,
+      `${judgeErrored} judge errors, ${Math.round(wallClockMs)}ms${noJudgeNote}`,
   );
 
   return { runBatchId, ok, errored, passed, failed, judgeErrored, wallClockMs };

@@ -143,6 +143,105 @@ describe("provider adapters", () => {
     );
   });
 
+  test("returns tool calls without throwing when content is null", async () => {
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: null,
+                tool_calls: [
+                  { id: "call_1", type: "function", function: { name: "set_reminder", arguments: '{"time":"9am"}' } },
+                ],
+              },
+              finish_reason: "tool_calls",
+            },
+          ],
+          usage: {},
+        }),
+        { status: 200 },
+      )) as unknown as typeof fetch;
+    const adapter = createOpenAICompatibleAdapter({
+      kind: "openai-compatible",
+      id: "test",
+      providerId: "test",
+      modelName: "test",
+      baseUrl: "https://example.test/v1",
+    });
+
+    const result = await adapter.call({ userPrompt: "test" });
+    expect(result.text).toBe("");
+    expect(result.toolCalls).toEqual([{ id: "call_1", name: "set_reminder", arguments: '{"time":"9am"}' }]);
+  });
+
+  test("still throws when both content and tool_calls are absent", async () => {
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({ choices: [{ message: { content: null }, finish_reason: "stop" }], usage: {} }),
+        { status: 200 },
+      )) as unknown as typeof fetch;
+    const adapter = createOpenAICompatibleAdapter({
+      kind: "openai-compatible",
+      id: "test",
+      providerId: "test",
+      modelName: "test",
+      baseUrl: "https://example.test/v1",
+    });
+
+    await expect(adapter.call({ userPrompt: "test" })).rejects.toThrow("did not contain message content");
+  });
+
+  test("sends tools and tool_choice when input.tools is set", async () => {
+    let requestBody: any;
+    globalThis.fetch = (async (_input, init) => {
+      requestBody = JSON.parse(String(init?.body));
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: "ok" }, finish_reason: "stop" }], usage: {} }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+    const adapter = createOpenAICompatibleAdapter({
+      kind: "openai-compatible",
+      id: "test",
+      providerId: "test",
+      modelName: "test",
+      baseUrl: "https://example.test/v1",
+    });
+    const tools = [
+      { type: "function" as const, function: { name: "send_message", parameters: { type: "object", properties: {} } } },
+    ];
+
+    await adapter.call({ userPrompt: "test", tools });
+    expect(requestBody.tools).toEqual(tools);
+    expect(requestBody.tool_choice).toBe("auto");
+
+    await adapter.call({ userPrompt: "test", tools, toolChoice: "required" });
+    expect(requestBody.tool_choice).toBe("required");
+  });
+
+  test("omits tools from the request body when input.tools is not set", async () => {
+    let requestBody: any;
+    globalThis.fetch = (async (_input, init) => {
+      requestBody = JSON.parse(String(init?.body));
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: "ok" }, finish_reason: "stop" }], usage: {} }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+    const adapter = createOpenAICompatibleAdapter({
+      kind: "openai-compatible",
+      id: "test",
+      providerId: "test",
+      modelName: "test",
+      baseUrl: "https://example.test/v1",
+    });
+
+    await adapter.call({ userPrompt: "test" });
+    expect(requestBody.tools).toBeUndefined();
+    expect(requestBody.tool_choice).toBeUndefined();
+  });
+
   test("preserves HTTP status and non-JSON error bodies", async () => {
     globalThis.fetch = (async () =>
       new Response("upstream unavailable", { status: 503 })) as unknown as typeof fetch;
