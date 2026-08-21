@@ -1,3 +1,13 @@
+/** OpenAI-style function tool definition, passed through verbatim in the request body. */
+export interface ToolSpec {
+  type: "function";
+  function: {
+    name: string;
+    description?: string;
+    parameters: Record<string, unknown>;
+  };
+}
+
 export interface ModelCallInput {
   systemPrompt?: string;
   userPrompt: string;
@@ -8,6 +18,18 @@ export interface ModelCallInput {
    * (Anthropic: forced tool call; OpenAI-compatible: response_format json_schema).
    */
   jsonSchema?: { name: string; schema: Record<string, unknown> };
+  /** Tool definitions offered to the model, unrelated to jsonSchema's forced-structured-output path. */
+  tools?: ToolSpec[];
+  /** Default "auto" when tools is set. "required" forces a tool call. */
+  toolChoice?: "auto" | "required";
+}
+
+export interface ModelToolCall {
+  id: string;
+  name: string;
+  /** Raw JSON-encoded arguments string as returned by the model; not pre-parsed since malformed
+   * JSON is itself a real, scorable protocol failure. */
+  arguments: string;
 }
 
 export interface ModelCallResult {
@@ -19,6 +41,8 @@ export interface ModelCallResult {
   stopReason?: string;
   /** Provider-reported billed cost in USD when available (e.g. OpenRouter usage.cost). */
   costUsd?: number;
+  /** Present when the model made one or more tool calls. */
+  toolCalls?: ModelToolCall[];
 }
 
 export interface ModelPricing {

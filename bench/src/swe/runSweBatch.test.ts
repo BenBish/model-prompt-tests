@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -78,6 +78,32 @@ afterEach(() => {
 });
 
 describe("runSweBatch", () => {
+  test("caps a one-slot harness even when higher concurrency is requested", async () => {
+    spyOn(console, "log").mockImplementation(() => {});
+    const db = createDb();
+    const task = makeFixtureTask();
+    const workspacesRoot = join(makeTempDir(), "workspaces");
+    let active = 0;
+    let peak = 0;
+    const harness = fakeHarness("single-slot", { model: "native" }, async (input) => {
+      active++;
+      peak = Math.max(peak, active);
+      await Bun.sleep(20);
+      writeFileSync(join(input.workDir, "value.txt"), "fixed\n");
+      active--;
+      return { finalMessage: "done", exitCode: 0, latencyMs: 20, timedOut: false, raw: {} };
+    });
+    await runSweBatch({
+      db,
+      tasks: [task],
+      cells: [{ harnessId: "single-slot", harness, modelAlias: "model", maxConcurrency: 1 }],
+      workspacesRoot,
+      repeats: 2,
+      defaultConcurrency: 4,
+    });
+    expect(peak).toBe(1);
+  });
+
   test("a correct fix is recorded as ok + verify passed, with a captured diff", async () => {
     spyOn(console, "log").mockImplementation(() => {});
     const db = createDb();
@@ -157,6 +183,63 @@ describe("runSweBatch", () => {
     expect(sweResult?.agentTimedOut).toBe(true);
     // Verify still runs against whatever the agent left behind; value.txt exists (unmodified: "buggy").
     expect(sweResult?.verifyPassed).toBe(true);
+  });
+
+  test("samples llama.cpp /metrics around the agent run and stores the deltas", async () => {
+    spyOn(console, "log").mockImplementation(() => {});
+    const originalFetch = globalThis.fetch;
+    let call = 0;
+    globalThis.fetch = mock(async (url: string) => {
+      call++;
+      expect(url).toBe("http://127.0.0.1:18080/metrics");
+      const predicted = call === 1 ? 1000 : 1600;
+      const seconds = call === 1 ? 20 : 32;
+      return new Response(
+        `llamacpp:tokens_predicted_total ${predicted}\nllamacpp:tokens_predicted_seconds_total ${seconds}\n`,
+        { status: 200 },
+      );
+    }) as unknown as typeof fetch;
+
+    try {
+      const db = createDb();
+      const task = makeFixtureTask();
+      const workspacesRoot = join(makeTempDir(), "workspaces");
+      const harness = fakeHarness("fake-cc", { sonnet: "fake-model" }, async (input) => {
+        writeFileSync(join(input.workDir, "value.txt"), "fixed\n");
+        return { finalMessage: "Fixed it", exitCode: 0, latencyMs: 12, timedOut: false, raw: {} };
+      });
+      const cells: SweRunnerCell[] = [
+        { harnessId: "fake-cc", harness, modelAlias: "sonnet", metricsUrl: "http://127.0.0.1:18080" },
+      ];
+
+      await runSweBatch({ db, tasks: [task], cells, workspacesRoot });
+
+      const run = db.query("SELECT * FROM runs").get() as any;
+      const sweResult = getSweResultForRun(db, run.id);
+      expect(sweResult?.serverPredictedTokens).toBe(600);
+      expect(sweResult?.serverPredictedSeconds).toBe(12);
+      expect(call).toBe(2);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("leaves throughput fields undefined when the cell has no metricsUrl", async () => {
+    spyOn(console, "log").mockImplementation(() => {});
+    const db = createDb();
+    const task = makeFixtureTask();
+    const workspacesRoot = join(makeTempDir(), "workspaces");
+    const harness = fakeHarness("fake-cc", { sonnet: "fake-model" }, async (input) => {
+      writeFileSync(join(input.workDir, "value.txt"), "fixed\n");
+      return { finalMessage: "Fixed it", exitCode: 0, latencyMs: 12, timedOut: false, raw: {} };
+    });
+    const cells: SweRunnerCell[] = [{ harnessId: "fake-cc", harness, modelAlias: "sonnet" }];
+
+    await runSweBatch({ db, tasks: [task], cells, workspacesRoot });
+
+    const run = db.query("SELECT * FROM runs").get() as any;
+    const sweResult = getSweResultForRun(db, run.id);
+    expect(sweResult?.serverPredictedTokens).toBeUndefined();
   });
 
   test("records an error run without a swe_results row for an unresolved model alias", async () => {

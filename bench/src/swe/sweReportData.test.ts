@@ -75,6 +75,29 @@ describe("querySweReportData", () => {
     expect(row?.linesAdded).toBe(3);
   });
 
+  test("computes verifyPassRate from verifyTestsPassed/verifyTestsTotal, undefined when no counts", () => {
+    const db = createDb();
+    const withCounts = insertSweRun(db);
+    insertSweResult(db, {
+      runId: withCounts,
+      taskType: "fixture",
+      verifyPassed: false,
+      verifyTestsPassed: 7,
+      verifyTestsTotal: 9,
+    });
+    const withoutCounts = insertSweRun(db, { promptId: "swe-tasks/fixture/other" });
+    insertSweResult(db, { runId: withoutCounts, taskType: "fixture", verifyPassed: false });
+
+    const data = querySweReportData(db, { allRuns: true });
+    const rowWithCounts = data.rows.get("swe-tasks/fixture/smoke")?.get("claude-code:haiku")?.[0];
+    expect(rowWithCounts?.verifyTestsPassed).toBe(7);
+    expect(rowWithCounts?.verifyTestsTotal).toBe(9);
+    expect(rowWithCounts?.verifyPassRate).toBeCloseTo(7 / 9, 5);
+
+    const rowWithoutCounts = data.rows.get("swe-tasks/fixture/other")?.get("claude-code:haiku")?.[0];
+    expect(rowWithoutCounts?.verifyPassRate).toBeUndefined();
+  });
+
   test("keeps only the latest batch per cell by default, all repeats included", () => {
     const db = createDb();
     insertSweRun(db, { runBatchId: "batch-old", startedAt: "2026-01-01T00:00:00.000Z" });
@@ -120,10 +143,55 @@ describe("querySweReportData", () => {
     expect(summary.passedRuns).toBe(1);
     expect(summary.failedRuns).toBe(1);
     expect(summary.passRate).toBe(0.5);
+    expect(summary.cleanPassedRuns).toBe(1);
+    expect(summary.verifiedTimedOutRuns).toBe(0);
+    expect(summary.cleanPassRate).toBe(0.5);
     expect(summary.avgJudgeScore).toBe(4);
     expect(summary.avgAgentLatencyMs).toBe(1500);
     expect(summary.avgDiffLines).toBe(2);
     expect(summary.timeouts).toBe(1);
+  });
+
+  test("weights decode/prompt tok/s by total tokens over total seconds, not per-row average", () => {
+    const db = createDb();
+    // Row A: 600 tokens / 12s = 50 tok/s. Row B: 100 tokens / 20s = 5 tok/s.
+    // Naive row-average would give 27.5; weighted gives 700/32 = 21.875.
+    const runA = insertSweRun(db);
+    insertSweResult(db, {
+      runId: runA,
+      taskType: "fixture",
+      verifyPassed: true,
+      serverPromptTokens: 300,
+      serverPromptSeconds: 3,
+      serverPredictedTokens: 600,
+      serverPredictedSeconds: 12,
+    });
+    const runB = insertSweRun(db, { promptId: "swe-tasks/fixture/other" });
+    insertSweResult(db, {
+      runId: runB,
+      taskType: "fixture",
+      verifyPassed: true,
+      serverPromptTokens: 100,
+      serverPromptSeconds: 2,
+      serverPredictedTokens: 100,
+      serverPredictedSeconds: 20,
+    });
+
+    const data = querySweReportData(db, { allRuns: true });
+    const summary = data.summaries.find((s) => s.harnessModelId === "claude-code:haiku")!;
+    expect(summary.avgDecodeTokensPerSec).toBeCloseTo(700 / 32, 5);
+    expect(summary.avgPromptTokensPerSec).toBeCloseTo(400 / 5, 5);
+  });
+
+  test("falls back to output_tokens / latency when no server metrics are present", () => {
+    const db = createDb();
+    const runId = insertSweRun(db, { latencyMs: 4000, outputTokens: 200 });
+    insertSweResult(db, { runId, taskType: "fixture", verifyPassed: true });
+
+    const data = querySweReportData(db, { allRuns: true });
+    const summary = data.summaries.find((s) => s.harnessModelId === "claude-code:haiku")!;
+    expect(summary.avgDecodeTokensPerSec).toBeCloseTo(200 / 4, 5);
+    expect(summary.avgPromptTokensPerSec).toBeUndefined();
   });
 
   test("passRate is undefined when no ok runs have a verify result yet", () => {
@@ -133,6 +201,49 @@ describe("querySweReportData", () => {
     const data = querySweReportData(db, { allRuns: true });
     const summary = data.summaries.find((s) => s.harnessModelId === "claude-code:haiku")!;
     expect(summary.passRate).toBeUndefined();
+  });
+
+  test("avgVerifyPassRate distinguishes two models that fail identically on binary pass/fail", () => {
+    const db = createDb();
+    // Both models fail every run (verifyPassed: false, same passRate), but model A consistently
+    // fails only 1/9 hidden tests while model B fails 8/9 — avgVerifyPassRate should separate them
+    // even though passRate cannot.
+    const modelARun = insertSweRun(db, { modelId: "claude-code:modelA" });
+    insertSweResult(db, {
+      runId: modelARun,
+      taskType: "fixture",
+      verifyPassed: false,
+      verifyTestsPassed: 8,
+      verifyTestsTotal: 9,
+    });
+    const modelBRun = insertSweRun(db, { modelId: "claude-code:modelB" });
+    insertSweResult(db, {
+      runId: modelBRun,
+      taskType: "fixture",
+      verifyPassed: false,
+      verifyTestsPassed: 1,
+      verifyTestsTotal: 9,
+    });
+
+    const data = querySweReportData(db, { allRuns: true });
+    const summaryA = data.summaries.find((s) => s.harnessModelId === "claude-code:modelA")!;
+    const summaryB = data.summaries.find((s) => s.harnessModelId === "claude-code:modelB")!;
+
+    expect(summaryA.passRate).toBe(0);
+    expect(summaryB.passRate).toBe(0);
+    expect(summaryA.avgVerifyPassRate).toBeCloseTo(8 / 9, 5);
+    expect(summaryB.avgVerifyPassRate).toBeCloseTo(1 / 9, 5);
+    expect(summaryA.avgVerifyPassRate!).toBeGreaterThan(summaryB.avgVerifyPassRate!);
+  });
+
+  test("avgVerifyPassRate is undefined when no row in the cell has parseable test counts", () => {
+    const db = createDb();
+    const runId = insertSweRun(db);
+    insertSweResult(db, { runId, taskType: "fixture", verifyPassed: true, verifyCommand: "npm test" });
+
+    const data = querySweReportData(db, { allRuns: true });
+    const summary = data.summaries.find((s) => s.harnessModelId === "claude-code:haiku")!;
+    expect(summary.avgVerifyPassRate).toBeUndefined();
   });
 
   test("excludes self-judging when the judge id shares the model alias", () => {

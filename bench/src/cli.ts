@@ -24,6 +24,7 @@ import type { ModelMatrixEntry } from "./providers/types";
 import { resolveChairman, resolveJudge, resolveJudges } from "./config/judgeSelection";
 import { parsePositiveInteger } from "./util/cliArgs";
 import { cmdSweDoctor, cmdSweList, cmdSweRun } from "./swe/cli";
+import { cmdHermesTools } from "./hermes/cli";
 import { querySweReportData } from "./swe/sweReportData";
 import { renderSweAssessmentSection, renderSweReportSection } from "./swe/renderSweSection";
 import { queryPeerRankReportData, queryPeerRankReportForReportBatches } from "./peerRank/reportData";
@@ -56,7 +57,8 @@ function usage(): void {
   bun bench/src/cli.ts list
   bun bench/src/cli.ts swe list
   bun bench/src/cli.ts swe doctor [--harnesses <ids>] [--timeout <ms>]
-  bun bench/src/cli.ts swe run <task-glob-or-all> --harnesses <ids> --models <aliases> [--repeats <n>] [--concurrency <n>] [--judge <id>] [--judges id1,id2] [--no-judge] [--keep-workspaces] [--dry-run] [--timeout <ms>]`);
+  bun bench/src/cli.ts swe run <task-glob-or-all> --harnesses <ids> --models <aliases> [--repeats <n>] [--concurrency <n>] [--judge <id>] [--judges id1,id2] [--no-judge] [--keep-workspaces] [--dry-run] [--timeout <ms>]
+  bun bench/src/cli.ts hermes tools --models <ids> [--concurrency <n>] [--dry-run]`);
 }
 
 function requireFlag(values: Record<string, unknown>, key: string): string {
@@ -872,6 +874,26 @@ async function main(): Promise<void> {
           },
         });
         await cmdSweRun(REPO_ROOT, positionals, values);
+      } else {
+        usage();
+        process.exit(1);
+      }
+      break;
+    }
+    case "hermes": {
+      const hermesSubcommand = rest[0];
+      const hermesRest = rest.slice(1);
+      if (hermesSubcommand === "tools") {
+        const { values } = parseArgs({
+          args: hermesRest,
+          allowPositionals: false,
+          options: {
+            models: { type: "string" },
+            concurrency: { type: "string" },
+            "dry-run": { type: "boolean" },
+          },
+        });
+        await cmdHermesTools(REPO_ROOT, values);
       } else {
         usage();
         process.exit(1);

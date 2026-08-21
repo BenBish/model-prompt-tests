@@ -39,7 +39,13 @@ CREATE TABLE IF NOT EXISTS swe_results (
   verify_output      TEXT,
   verify_duration_ms INTEGER,
   review_metrics     TEXT,
-  error              TEXT
+  error              TEXT,
+  server_prompt_tokens      INTEGER,
+  server_prompt_seconds     REAL,
+  server_predicted_tokens   INTEGER,
+  server_predicted_seconds  REAL,
+  verify_tests_passed       INTEGER,
+  verify_tests_total        INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS scores (
@@ -101,5 +107,19 @@ CREATE TABLE IF NOT EXISTS syntheses (
 
 CREATE INDEX IF NOT EXISTS idx_peer_ranks_batch ON peer_ranks(run_batch_id);
 CREATE INDEX IF NOT EXISTS idx_peer_ranks_prompt ON peer_ranks(prompt_id);
+
+CREATE TABLE IF NOT EXISTS tool_probe_results (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  run_id         INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+  case_id        TEXT NOT NULL,
+  expected_tool  TEXT,
+  well_formed    INTEGER NOT NULL DEFAULT 0,
+  correct_tool   INTEGER NOT NULL DEFAULT 0,
+  valid_args     INTEGER NOT NULL DEFAULT 0,
+  called_tool    TEXT,
+  arguments_raw  TEXT,
+  notes          TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_tool_probe_results_run ON tool_probe_results(run_id);
 CREATE INDEX IF NOT EXISTS idx_syntheses_batch ON syntheses(run_batch_id);
 CREATE INDEX IF NOT EXISTS idx_syntheses_prompt ON syntheses(prompt_id);

@@ -79,6 +79,8 @@ describe("validateHarnessesConfig", () => {
           kind: "codex",
           models: { "o4-mini": "o4-mini" },
           sandbox: "workspace-write",
+          maxConcurrency: 1,
+          isolateCodexHome: true,
         },
         {
           id: "grok",
@@ -98,6 +100,26 @@ describe("validateHarnessesConfig", () => {
       ],
     });
     expect(config.harnesses.map((h) => h.kind)).toEqual(["codex", "generic-cli", "generic-cli"]);
+    expect(config.harnesses[0]).toMatchObject({ maxConcurrency: 1, isolateCodexHome: true });
+  });
+
+  test("rejects invalid harness concurrency", () => {
+    expect(() =>
+      validateHarnessesConfig({ harnesses: [{ id: "raw", kind: "raw-api", maxConcurrency: 0 }] }),
+    ).toThrow("maxConcurrency");
+  });
+
+  test("accepts an optional metricsUrl on any harness kind", () => {
+    const config = validateHarnessesConfig({
+      harnesses: [{ id: "codex-lab", kind: "codex", models: { x: "x" }, metricsUrl: "http://127.0.0.1:18080" }],
+    });
+    expect(config.harnesses[0]).toMatchObject({ metricsUrl: "http://127.0.0.1:18080" });
+  });
+
+  test("rejects an empty metricsUrl", () => {
+    expect(() =>
+      validateHarnessesConfig({ harnesses: [{ id: "raw", kind: "raw-api", metricsUrl: "  " }] }),
+    ).toThrow("metricsUrl");
   });
 
   test("rejects invalid codex sandbox values", () => {

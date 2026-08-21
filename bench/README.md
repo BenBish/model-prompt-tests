@@ -110,7 +110,7 @@ Judge-only models can be added with `--disabled`, which keeps them available for
 - `--models id1,id2` — restrict to specific model matrix ids (default: enabled configured models).
 - `--judge <id>` — override the judge model for this run (default: `judge.modelId` in model config, or `BENCH_JUDGE_MODEL_ID`).
 - `--judges id1,id2` — score every run with multiple judges instead of one (mutually exclusive with `--judge`); each ok run gets one `scores` row per judge.
-- `--concurrency <n>` — default per-provider concurrency (individual matrix entries can set their own `maxConcurrent`, e.g. for single-GPU local servers).
+- `--concurrency <n>` — requested per-harness concurrency (default 1). Each harness is capped by its `maxConcurrency` setting, which also defaults to 1.
 - `--repeats <n>` — run each (prompt, model) cell `n` times independently (default 1). Useful for measuring variance; see "Aggregation" below for how repeats factor into the report.
 - `--dry-run` — resolve and print the prompt x model matrix with zero network calls.
 - `--no-judge` — skip LLM-judge scoring.
@@ -447,7 +447,11 @@ Exit code is nonzero if any harness is unavailable or the probe run fails/times 
   harness/alias combination must resolve (raw-api against `bench/models.json`, other
   harnesses against their own `models` map) — an unresolved combination errors before
   anything runs.
-- `--repeats <n>`, `--concurrency <n>` (per-harness limiter, default 2), `--judge`/`--judges`/`--no-judge`, `--dry-run`, `--timeout <ms>` (overrides every selected task's `agentTimeoutMs`), `--keep-workspaces` (workspaces under `bench/data/workspaces/`, gitignored, are always kept on error and cleaned up on success unless this flag is set).
+- `--repeats <n>`, `--concurrency <n>` (per-harness limiter, default 1 and capped by harness `maxConcurrency`), `--judge`/`--judges`/`--no-judge`, `--dry-run`, `--timeout <ms>` (overrides every selected task's `agentTimeoutMs`), `--keep-workspaces` (workspaces under `bench/data/workspaces/`, gitignored, are always kept on error and cleaned up on success unless this flag is set).
+
+For Codex-backed local servers, set `isolateCodexHome: true` to run each cell with a fresh `CODEX_HOME`; this prevents personal plugins, MCP servers, memories, and user configuration from contaminating the measurement. Reports distinguish a **clean pass** (verification passed and the agent completed before timeout) from a patch that only **verified after timeout**.
+
+Set `metricsUrl` on a harness entry to sample decode/prefill tok/s from a llama.cpp server's Prometheus `/metrics` endpoint (started with `--metrics`) before and after each cell. This only works against a bare `llama-server` reached directly — llama-swap does not expose `/metrics` at its proxy root, and requesting the per-model path there can trigger an unwanted model swap-in, so do not set `metricsUrl` on a harness that routes through llama-swap. The report's `Decode tok/s`/`Prompt tok/s` columns fall back to `output_tokens / agent latency` when no `metricsUrl` is set or the endpoint is unreachable; that fallback includes tool-execution time inside an agentic run (bash commands, test runs, etc.), not just generation, so it materially **understates** true decode speed and should be read as a rough floor, not a decode measurement.
 
 `--models` and `--harnesses` are both required deliberately: agent runs are the
 expensive part of this benchmark, so there is no "run everything" default. `--dry-run`

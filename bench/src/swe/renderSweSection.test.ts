@@ -49,9 +49,41 @@ describe("renderSweReportSection", () => {
     expect(html).toContain("SWE Task Details");
     expect(html).toContain("swe-tasks/fixture/smoke");
     expect(html).toContain("claude-code:haiku");
-    expect(html).toContain(">pass<");
+    expect(html).toContain(">clean pass<");
     expect(html).toContain("Fixed the bug");
     expect(html).toContain("2 pass");
+    expect(html).toContain("Decode tok/s");
+    expect(html).toContain("Prompt tok/s");
+  });
+
+  test("shows partial-credit fraction on a failing badge and the avg test pass % column", () => {
+    const db = createDb();
+    const runId = insertRun(db, {
+      runBatchId: "batch-1",
+      promptId: "swe-tasks/fixture/pomodoro-timer",
+      providerId: "claude-code",
+      modelId: "claude-code:haiku",
+      modelName: "claude-haiku",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      status: "ok",
+      kind: "swe",
+      harnessId: "claude-code",
+    });
+    insertSweResult(db, {
+      runId,
+      taskType: "fixture",
+      verifyCommand: "bun test",
+      verifyPassed: false,
+      verifyTestsPassed: 7,
+      verifyTestsTotal: 9,
+    });
+
+    const data = querySweReportData(db, { allRuns: true });
+    const html = renderSweReportSection(data);
+
+    expect(html).toContain(">fail (7/9)<");
+    expect(html).toContain("Avg test pass %");
+    expect(html).toContain("78%");
   });
 
   test("escapes untrusted content in the diff and verify output", () => {

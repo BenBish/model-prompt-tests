@@ -2,6 +2,7 @@ import type {
   ModelAdapter,
   ModelCallInput,
   ModelCallResult,
+  ModelToolCall,
   OpenAICompatibleAdapterConfig,
 } from "./types";
 
@@ -27,6 +28,25 @@ export function extractOpenAICompatibleText(message: unknown): string | undefine
     if (joined.trim().length > 0) return joined;
   }
   return undefined;
+}
+
+/** Parses OpenAI-style message.tool_calls into ModelToolCall[]. Returns undefined when absent
+ * or empty so callers can distinguish "no tool calls" from "empty array". */
+export function extractOpenAICompatibleToolCalls(message: unknown): ModelToolCall[] | undefined {
+  if (message === null || typeof message !== "object") return undefined;
+  const toolCalls = (message as { tool_calls?: unknown }).tool_calls;
+  if (!Array.isArray(toolCalls) || toolCalls.length === 0) return undefined;
+  const parsed = toolCalls.flatMap((call) => {
+    if (call === null || typeof call !== "object") return [];
+    const id = (call as { id?: unknown }).id;
+    const fn = (call as { function?: unknown }).function;
+    if (fn === null || typeof fn !== "object") return [];
+    const name = (fn as { name?: unknown }).name;
+    const args = (fn as { arguments?: unknown }).arguments;
+    if (typeof name !== "string" || typeof args !== "string") return [];
+    return [{ id: typeof id === "string" ? id : "", name, arguments: args }];
+  });
+  return parsed.length > 0 ? parsed : undefined;
 }
 
 export function createOpenAICompatibleAdapter(
@@ -75,6 +95,10 @@ export function createOpenAICompatibleAdapter(
           },
         };
       }
+      if (input.tools && input.tools.length > 0) {
+        requestBody.tools = input.tools;
+        requestBody.tool_choice = input.toolChoice ?? "auto";
+      }
 
       const response = await fetch(`${config.baseUrl}/chat/completions`, {
         method: "POST",
@@ -106,7 +130,10 @@ export function createOpenAICompatibleAdapter(
 
       const choice = body.choices?.[0];
       const text = extractOpenAICompatibleText(choice?.message);
-      if (text === undefined) {
+      const toolCalls = extractOpenAICompatibleToolCalls(choice?.message);
+      // A pure tool-call response legitimately has content: null — only throw when there is
+      // neither text nor a tool call, since that combination is a genuine empty/truncated reply.
+      if (text === undefined && toolCalls === undefined) {
         const finishReason = typeof choice?.finish_reason === "string" ? choice.finish_reason : "unknown";
         const reasoningTokens = body.usage?.completion_tokens_details?.reasoning_tokens;
         const reasoningHint =
@@ -120,7 +147,8 @@ export function createOpenAICompatibleAdapter(
       }
 
       return {
-        text,
+        text: text ?? "",
+        toolCalls,
         raw: body,
         inputTokens: body.usage?.prompt_tokens,
         outputTokens: body.usage?.completion_tokens,

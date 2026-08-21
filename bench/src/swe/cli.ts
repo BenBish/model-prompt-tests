@@ -78,7 +78,13 @@ function resolveCells(
         errors.push(`model alias "${alias}" is not defined for harness "${entry.id}"`);
         continue;
       }
-      cells.push({ harnessId: entry.id, harness, modelAlias: alias });
+      cells.push({
+        harnessId: entry.id,
+        harness,
+        modelAlias: alias,
+        maxConcurrency: entry.maxConcurrency,
+        metricsUrl: entry.metricsUrl,
+      });
     }
   }
   return { cells, errors };
@@ -180,7 +186,11 @@ export async function cmdSweRun(
     const totalCells = tasks.length * cells.length * repeats;
     const worstCaseMs =
       tasks.reduce((sum, task) => sum + task.agentTimeoutMs + task.verifyTimeoutMs, 0) * cells.length * repeats;
-    const effectiveConcurrency = concurrency ?? 2;
+    const requestedConcurrency = concurrency ?? 1;
+    const effectiveConcurrency = Math.max(
+      1,
+      Math.min(requestedConcurrency, ...cells.map((cell) => cell.maxConcurrency ?? 1)),
+    );
     console.log(
       `Total cells: ${totalCells}. Worst-case wall clock at concurrency ${effectiveConcurrency}: ` +
         `~${Math.round(worstCaseMs / effectiveConcurrency / 1000)}s (assumes every cell hits its timeout; typical runs finish much faster).`,
@@ -189,6 +199,9 @@ export async function cmdSweRun(
     return;
   }
 
+  // Judges run for fixture/external tasks too, not just code-review — they score process/quality
+  // on top of an already-known verify result. Avoid --no-judge on those batches if qualitative
+  // differentiation between near-tied models matters; some historical batches ran without it.
   const useJudge = values["no-judge"] !== true;
   const judgeEntries = useJudge
     ? resolveJudges(modelsConfig, values.judge as string | undefined, values.judges as string | undefined)

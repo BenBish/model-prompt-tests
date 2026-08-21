@@ -13,14 +13,18 @@ import {
 const repoRoot = resolve(import.meta.dir, "../../..");
 const taskPath = join(repoRoot, "swe-tasks/fixture/pomodoro-timer/task.md");
 
-async function verifySolution(kind: "reference" | "naive") {
+async function verifySolution(kind: "reference" | "naive" | "naive-literal") {
   const task = (await parseTaskFile(taskPath, repoRoot)) as FixtureSweTask;
   const workspace = mkdtempSync(join(tmpdir(), `pomodoro-${kind}-`));
   try {
     await provisionFixtureWorkspace(task, workspace);
-    cpSync(join(task.taskDir, "validation/reference/src"), join(workspace, "src"), { recursive: true });
-    if (kind === "naive") {
-      cpSync(join(task.taskDir, "validation/naive/src/timer.js"), join(workspace, "src/timer.js"));
+    if (kind === "naive-literal") {
+      cpSync(join(task.taskDir, "validation/naive-literal/src"), join(workspace, "src"), { recursive: true });
+    } else {
+      cpSync(join(task.taskDir, "validation/reference/src"), join(workspace, "src"), { recursive: true });
+      if (kind === "naive") {
+        cpSync(join(task.taskDir, "validation/naive/src/timer.js"), join(workspace, "src/timer.js"));
+      }
     }
     await overlayHiddenTests(task, workspace);
     return await runVerify(task, workspace);
@@ -46,6 +50,16 @@ test(
     expect(result.passed).toBe(false);
     expect(result.output).toContain("uses elapsed time when interval delivery is delayed");
     expect(result.output).toContain("never starts duplicate intervals");
+  },
+  30_000,
+);
+
+test(
+  "Pomodoro fixture accepts an independent implementation that only follows the disclosed contract",
+  async () => {
+    const result = await verifySolution("naive-literal");
+    expect(result.passed).toBe(true);
+    expect(result.output).toContain("9 pass");
   },
   30_000,
 );
