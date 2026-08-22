@@ -122,6 +122,19 @@ Judge-only models can be added with `--disabled`, which keeps them available for
 
 The selector `calibration` is a fixed four-prompt subset used to calibrate peer ranks against multi-judge rubric medians (BSH-151). It is not `run all`. See [`docs/peer-rank-calibration.md`](../docs/peer-rank-calibration.md) and `calibrate` below.
 
+`hermes/*` is the EA judgment set (triage, timezone, persona, no-fabrication). For a local assistant candidate, run it at `--repeats 3 --concurrency <slots>` and treat empty responses / `finish_reason=length` as a first-class failure, not a dropped cell.
+
+### `hermes tools`
+
+Deterministic Chat Completions tool-call gate for EA candidates. No judge. Ten cases including three negatives (must *not* call a tool). **Below 90% well-formed is disqualifying** regardless of `hermes/*` prose scores.
+
+```
+bun run bench hermes tools --models local:hermes-qwen36-27b --concurrency 3
+bun run bench hermes tools --models local:hermes-qwen36-27b --dry-run
+```
+
+On Strix Halo, pair this with `scripts/run-halo-hermes-eval.sh` in `benbishop-context` (`HALO_HERMES_NP=3`, 65K per slot). Lab traffic should hit port 12348; do not retarget production 12345/12346/12347 until a champion is chosen.
+
 ### `synthesize`
 
 Follow-on chairman synthesis (council Stage 3) over an existing prompt batch. Same storage and report section as `run --synthesize`. Does **not** re-run candidates or change `avgScore`.

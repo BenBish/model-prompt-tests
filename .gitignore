@@ -19,3 +19,5 @@ benchmark-results/*
 !benchmark-results/deepseek-v4-flash-vs-pro/**
 !benchmark-results/ornith-15-vs-qwen36-swe/
 !benchmark-results/ornith-15-vs-qwen36-swe/**
+!benchmark-results/hermes-3-agent-bakeoff/
+!benchmark-results/hermes-3-agent-bakeoff/**

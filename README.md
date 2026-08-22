@@ -47,6 +47,17 @@ Recommended scoring:
 - [Failed Production Migration](safety-risk/failed-production-migration.md)
 - [Evaluation Rubric](meta-evaluation/evaluation-rubric.md)
 
+### Hermes executive assistant
+
+Judgment, tool-call restraint, and persona tests for a local EA agent (Freddy / Tom). Pair with `bun bench hermes tools` for the 90% well-formed tool-call gate.
+
+- [Inbox Triage](hermes/inbox-triage.md)
+- [Calendar Conflict](hermes/calendar-conflict.md)
+- [Draft Reply Tone](hermes/draft-reply-tone.md)
+- [Multi-Step Errand](hermes/multi-step-errand.md)
+- [Decline Gracefully](hermes/decline-gracefully.md)
+- [Recall and Contradict](hermes/recall-and-contradict.md)
+
 ## Design notes
 
 - [llm-council spike (BSH-149)](docs/llm-council-spike.md) — phased recommendation on multi-model deliberation (parallel answers, peer ranking, chairman synthesis) for this lab.
@@ -54,6 +65,7 @@ Recommended scoring:
 - [Chairman synthesis (BSH-150)](docs/chairman-synthesis.md) — optional “best combined answer” mode; not a leaderboard score.
 - [DeepSeek V4 Flash vs Pro (BSH-173)](benchmark-results/deepseek-v4-flash-vs-pro/article.md) — same-lineage comparison using multi-judge rubric headlines and peer ranks as a side signal.
 - [Ornith 1.5 vs Qwen3.6 SWE (BSH-207)](benchmark-results/ornith-15-vs-qwen36-swe/article.md) — reasoning-off `codex-lab` fixture suite with partial-credit scoring; hypothesis that Ornith is slower-but-better is refuted.
+- [Hermes 3-agent local model bake-off (BSH-206)](benchmark-results/hermes-3-agent-bakeoff/article.md) — pick a local model for three concurrent Hermes EA slots on Strix Halo.
 
 ## Adding Prompts
 
