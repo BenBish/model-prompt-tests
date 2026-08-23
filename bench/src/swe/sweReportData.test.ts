@@ -324,4 +324,17 @@ describe("querySweReportData", () => {
     // Per-run fractions are first averaged within each task, then equally across tasks.
     expect(summary.avgVerifyPassRate).toBeCloseTo((0.995 + 0) / 2, 5);
   });
+
+  test("keeps code-review tasks out of objective correctness and counts blocked infrastructure", () => {
+    const db = createDb();
+    const review = insertSweRun(db, { promptId: "review-task" });
+    insertSweResult(db, { runId: review, taskType: "code-review", outcomeCategory: "passed" });
+    const harnessError = insertSweRun(db, { promptId: "broken-task", status: "error" });
+    insertSweResult(db, { runId: harnessError, taskType: "fixture", outcomeCategory: "harness_error", publicationStatus: "quarantined" });
+    const summary = querySweReportData(db, { allRuns: true }).summaries[0]!;
+    expect(summary.intentionToEvaluateRuns).toBe(0);
+    expect(summary.passAt1).toBeUndefined();
+    expect(summary.infrastructureFailures).toBe(1);
+    expect(summary.publicationBlockedRuns).toBe(1);
+  });
 });

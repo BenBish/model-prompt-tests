@@ -114,4 +114,13 @@ describe("renderSweReportSection", () => {
     expect(html).not.toContain("<img src=x onerror=alert(1)>");
     expect(html).toContain(">fail<");
   });
+
+  test("renders publication blocking when every task is quarantined", () => {
+    const db = createDb();
+    const runId = insertRun(db, { runBatchId: "blocked", promptId: "broken", providerId: "h", modelId: "h:m", modelName: "m", startedAt: "t", status: "error", kind: "swe" });
+    insertSweResult(db, { runId, taskType: "fixture", outcomeCategory: "harness_error", publicationStatus: "quarantined" });
+    const html = renderSweReportSection(querySweReportData(db, { allRuns: true }));
+    expect(html).toContain("Publication blocked");
+    expect(html).toContain("No comparable task details");
+  });
 });

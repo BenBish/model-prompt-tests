@@ -38,10 +38,23 @@ function parseTap(command: string, output: string): VerificationDetail | undefin
 }
 function parseJunit(command: string, output: string): VerificationDetail | undefined {
   if (!/junit|surefire|mvn\s+test|gradle\w*\s+test/.test(command.toLowerCase()) && !/<testsuite\b/.test(output)) return undefined;
-  const suites = [...output.matchAll(/<testsuite\b([^>]*)>/g)]; if (!suites.length) return undefined;
+  const aggregate = output.match(/<testsuites\b([^>]*)>/);
+  const attrValue = (attrs: string, name: string) => Number(attrs.match(new RegExp(`\\b${name}=["'](\\d+)`))?.[1] ?? 0);
+  if (aggregate) {
+    const attrs = aggregate[1]!; const total = attrValue(attrs, "tests");
+    const failed = attrValue(attrs, "failures") + attrValue(attrs, "errors"), skipped = attrValue(attrs, "skipped");
+    return detail("junit", total - failed - skipped, failed, skipped, { failureCategories: failed ? ["test-failure"] : [] });
+  }
+  const tokens = [...output.matchAll(/<testsuite\b([^>]*)>|<\/testsuite>/g)]; if (!tokens.length) return undefined;
+  const stack: Array<{ attrs: string; hasChild: boolean }> = []; const leafAttrs: string[] = [];
+  for (const token of tokens) {
+    if (token[1] !== undefined) { if (stack.length) stack[stack.length - 1]!.hasChild = true; stack.push({ attrs: token[1], hasChild: false }); }
+    else { const suite = stack.pop(); if (suite && !suite.hasChild) leafAttrs.push(suite.attrs); }
+  }
+  // Some producers emit a summary opening tag without a close in captured/truncated output.
+  const suites = leafAttrs.length ? leafAttrs : [...output.matchAll(/<testsuite\b([^>]*)>/g)].map((match) => match[1]!);
   let total = 0, failed = 0, skipped = 0;
-  for (const [, attrs] of suites) { const value = (name: string) => Number(attrs!.match(new RegExp(`\\b${name}=["'](\\d+)`))?.[1] ?? 0);
-    total += value("tests"); failed += value("failures") + value("errors"); skipped += value("skipped"); }
+  for (const attrs of suites) { total += attrValue(attrs, "tests"); failed += attrValue(attrs, "failures") + attrValue(attrs, "errors"); skipped += attrValue(attrs, "skipped"); }
   return detail("junit", total - failed - skipped, failed, skipped, { failureCategories: failed ? ["test-failure"] : [] });
 }
 function group(value: unknown): VerificationGroup | undefined {

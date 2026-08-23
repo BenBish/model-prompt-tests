@@ -8,6 +8,7 @@ export interface SweReportRow {
   runId: number;
   runBatchId: string;
   taskId: string;
+  taskType: "fixture" | "external" | "code-review";
   harnessId: string;
   modelAlias: string;
   harnessModelId: string;
@@ -137,6 +138,7 @@ function rowToSweReportRow(row: any): SweReportRow {
     runId: row.id,
     runBatchId: row.run_batch_id,
     taskId: row.prompt_id,
+    taskType: row.task_type,
     harnessId,
     modelAlias,
     harnessModelId: row.model_id,
@@ -210,7 +212,8 @@ function summarizeSwe(harnessModelIds: string[], rows: SweReportRow[]): SweSumma
     const comparableRows = cellRows.filter((row) => row.publicationStatus === "comparable");
     const okRows = comparableRows.filter((row) => row.runStatus === "ok");
     const infrastructure = new Set<SweOutcomeCategory>(["harness_error", "verifier_error", "judge_error"]);
-    const intentionRows = comparableRows.filter((row) => row.outcomeCategory ? !infrastructure.has(row.outcomeCategory) : row.runStatus === "ok");
+    const intentionRows = comparableRows.filter((row) => row.taskType !== "code-review" &&
+      (row.outcomeCategory ? !infrastructure.has(row.outcomeCategory) : row.runStatus === "ok"));
     const passedRuns = intentionRows.filter((row) => row.verifyPassed === true || row.outcomeCategory === "passed").length;
     const failedRuns = okRows.filter((row) => row.verifyPassed === false).length;
     const verifiedTotal = passedRuns + failedRuns;
@@ -332,7 +335,7 @@ function summarizeSwe(harnessModelIds: string[], rows: SweReportRow[]): SweSumma
       repeatedTrialSolveRate,
       repeatsObserved,
       intentionToEvaluateRuns: intentionRows.length,
-      infrastructureFailures: comparableRows.filter((row) => row.outcomeCategory && infrastructure.has(row.outcomeCategory)).length,
+      infrastructureFailures: cellRows.filter((row) => row.outcomeCategory && infrastructure.has(row.outcomeCategory)).length,
       candidateFailures: intentionRows.filter((row) => row.outcomeCategory === "candidate_failure" || row.outcomeCategory === "timeout").length,
       invalidOutputs: intentionRows.filter((row) => row.outcomeCategory === "invalid_output").length,
       publicationBlockedRuns: cellRows.length - comparableRows.length,
@@ -343,7 +346,7 @@ function summarizeSwe(harnessModelIds: string[], rows: SweReportRow[]): SweSumma
 
 export function querySweReportData(db: Database, options: QuerySweOptions = {}): SweReportData {
   let sql = `
-    SELECT runs.*, swe_results.workdir, swe_results.baseline_sha, swe_results.diff_patch,
+    SELECT runs.*, swe_results.task_type, swe_results.workdir, swe_results.baseline_sha, swe_results.diff_patch,
            swe_results.files_changed, swe_results.lines_added, swe_results.lines_removed,
            swe_results.transcript, swe_results.agent_exit_code, swe_results.agent_timed_out,
            swe_results.verify_command, swe_results.verify_exit_code, swe_results.verify_passed,

@@ -140,7 +140,7 @@ function renderSweSummaryRows(summaries: SweSummary[]): string {
 }
 
 export function renderSweAssessmentSection(data: SweReportData): string {
-  if (data.taskIds.length === 0) return "";
+  if (data.summaries.length === 0) return "";
 
   const header =
     "| Harness:Model | Scheduled | ITT trials | Pass@1 | Repeated solve | Repeats | Infra failures | Publication blocked | OK | Errors | Verify passed | Verify failed | ITT pass rate | Clean passed | Verified after timeout | Clean pass rate | Task-weighted test pass % | Secondary avg judge | Secondary median judge | Avg recall | Avg precision | Avg F1 | Avg agent ms | Decode tok/s | Prompt tok/s | Avg diff lines | Timeouts |\n" +
@@ -200,7 +200,7 @@ export function renderSweAssessmentSection(data: SweReportData): string {
 
 /** Returns an HTML fragment (no <html>/<body>) to embed inside the main report, or "" if there's no SWE data. */
 export function renderSweReportSection(data: SweReportData): string {
-  if (data.taskIds.length === 0) return "";
+  if (data.summaries.length === 0) return "";
 
   const headerCells = data.harnessModelIds.map((id) => `<th>${escapeHtml(id)}</th>`).join("");
   const bodyRows = data.taskIds
@@ -261,7 +261,7 @@ export function renderSweReportSection(data: SweReportData): string {
   <h2>SWE Task Details</h2>
   <table>
     <thead><tr><th>Task</th>${headerCells}</tr></thead>
-    <tbody>${bodyRows}</tbody>
+    <tbody>${bodyRows || `<tr><td colspan="${data.harnessModelIds.length + 1}">No comparable task details; evidence is quarantined or publication-blocking.</td></tr>`}</tbody>
   </table>
   `;
 }

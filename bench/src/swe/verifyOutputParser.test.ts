@@ -52,6 +52,8 @@ describe("parseVerificationOutput", () => {
     .toMatchObject({ format: "tap", passed: 1, failed: 1, skipped: 1, total: 3 }));
   test("parses JUnit", () => expect(parseVerificationOutput("junit report", '<testsuite tests="8" failures="2" errors="1" skipped="1">'))
     .toMatchObject({ format: "junit", passed: 4, failed: 3, skipped: 1, total: 8 }));
+  test("does not double-count nested JUnit suites", () => expect(parseVerificationOutput("junit report", '<testsuite tests="5" failures="1"><testsuite tests="2" failures="0"></testsuite><testsuite tests="3" failures="1"></testsuite></testsuite>'))
+    .toMatchObject({ format: "junit", passed: 4, failed: 1, total: 5 }));
   test("parses pytest", () => expect(parseVerificationOutput("python -m pytest", "7 passed, 2 failed, 1 error, 3 skipped in 1.2s"))
     .toMatchObject({ format: "pytest", passed: 7, failed: 3, skipped: 3, total: 13 }));
   test("parses task JSON with visible/hidden groups and categories", () => {
