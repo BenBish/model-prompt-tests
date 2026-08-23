@@ -1,5 +1,7 @@
 ---
 type: fixture
+lifecycle: draft
+graderVersion: 1.0.0
 verify: bun test
 verifyTimeoutMs: 30000
 agentTimeoutMs: 300000

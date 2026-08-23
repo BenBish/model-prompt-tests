@@ -1,5 +1,7 @@
 ---
 type: code-review
+lifecycle: draft
+graderVersion: 1.0.0
 agentTimeoutMs: 180000
 tags: code-review, security, auth
 ---

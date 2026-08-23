@@ -1,5 +1,7 @@
 ---
 type: external
+lifecycle: draft
+graderVersion: 1.0.0
 repoUrl: ./source.bundle
 commitSha: 7cb0d9ff20569dd744318639ca0621be2b2671a2
 verify: bun test

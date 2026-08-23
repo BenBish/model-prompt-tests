@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { verifierEnvironmentFingerprint } from "./taskHealth";
 import { dirname, join } from "node:path";
 import type { ModelAdapter } from "../providers/types";
 import { insertRun } from "../db/runsRepo";
@@ -122,7 +123,7 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
   const cellTasks: Promise<void>[] = [];
   for (const task of tasks) {
     if (task.type !== "fixture" && task.type !== "external" && task.type !== "code-review") {
-      console.log(`[skip] ${task.id}: unsupported task type`);
+      console.log(`[skip] ${(task as SweTask).id}: unsupported task type`);
       continue;
     }
     for (const cell of cells) {
@@ -249,6 +250,12 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
         serverPromptSeconds: metricsDelta?.promptSeconds,
         serverPredictedTokens: metricsDelta?.predictedTokens,
         serverPredictedSeconds: metricsDelta?.predictedSeconds,
+        taskLifecycle: task.lifecycle,
+        graderVersion: task.graderVersion,
+        healthStatus: "healthy",
+        environmentFingerprint: task.healthEnvironmentFingerprint ?? verifierEnvironmentFingerprint(),
+        healthValidatedAt: task.healthValidatedAt,
+        publicationStatus: "comparable",
       });
 
       ok++;

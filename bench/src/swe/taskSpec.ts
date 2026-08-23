@@ -2,7 +2,7 @@ import { relative } from "node:path";
 import type { RubricDimension } from "../types";
 import { PromptParseError, extractBullets, extractDimensions, extractFencedText, splitSections } from "../parser/promptTemplate";
 
-const LIST_KEYS = new Set(["tags", "testPaths", "contextFiles", "ignorePaths", "envPassthrough"]);
+const LIST_KEYS = new Set(["tags", "testPaths", "contextFiles", "ignorePaths", "envPassthrough", "runtimePrerequisites", "verifierEnvironments", "flawedSolutions"]);
 const DEFAULT_VERIFY_TIMEOUT_MS = 120_000;
 const DEFAULT_AGENT_TIMEOUT_MS = 600_000;
 const DEFAULT_IGNORE_PATHS = ["node_modules"];
@@ -21,6 +21,14 @@ export interface SweTaskBase {
   tags: string[];
   ignorePaths: string[];
   envPassthrough: string[];
+  lifecycle?: "draft" | "validated" | "active" | "quarantined" | "retired";
+  graderVersion?: string;
+  runtimePrerequisites?: string[];
+  verifierEnvironments?: string[];
+  oracleSolution?: string;
+  flawedSolutions?: string[];
+  healthValidatedAt?: string;
+  healthEnvironmentFingerprint?: string;
 }
 
 export interface FixtureSweTask extends SweTaskBase {
@@ -169,7 +177,23 @@ export async function parseTaskFile(filePath: string, repoRoot: string): Promise
     tags: listField(filePath, frontmatter, "tags") ?? [],
     ignorePaths: listField(filePath, frontmatter, "ignorePaths") ?? DEFAULT_IGNORE_PATHS,
     envPassthrough: listField(filePath, frontmatter, "envPassthrough") ?? [],
+    lifecycle: (stringField(filePath, frontmatter, "lifecycle") ?? "draft") as SweTaskBase["lifecycle"],
+    graderVersion: stringField(filePath, frontmatter, "graderVersion") ?? "unversioned",
+    runtimePrerequisites: listField(filePath, frontmatter, "runtimePrerequisites") ?? [],
+    verifierEnvironments: listField(filePath, frontmatter, "verifierEnvironments") ?? [],
+    oracleSolution: stringField(filePath, frontmatter, "oracleSolution"),
+    flawedSolutions: listField(filePath, frontmatter, "flawedSolutions") ?? [],
   };
+
+  if (!new Set<string>(["draft", "validated", "active", "quarantined", "retired"]).has(base.lifecycle ?? "")) {
+    throw new PromptParseError(filePath, `invalid lifecycle "${base.lifecycle}"`);
+  }
+  if (base.lifecycle === "active") {
+    if (base.graderVersion === "unversioned") throw new PromptParseError(filePath, "active tasks require graderVersion");
+    if (!base.oracleSolution) throw new PromptParseError(filePath, "active tasks require oracleSolution");
+    if (base.flawedSolutions.length === 0) throw new PromptParseError(filePath, "active tasks require flawedSolutions");
+    if (base.verifierEnvironments.length === 0) throw new PromptParseError(filePath, "active tasks require verifierEnvironments");
+  }
 
   const type = requireStringField(filePath, frontmatter, "type");
 

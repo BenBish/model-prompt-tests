@@ -23,7 +23,7 @@ import { publishSite } from "./publish/publishSite";
 import type { ModelMatrixEntry } from "./providers/types";
 import { resolveChairman, resolveJudge, resolveJudges } from "./config/judgeSelection";
 import { parsePositiveInteger } from "./util/cliArgs";
-import { cmdSweDoctor, cmdSweList, cmdSweRun } from "./swe/cli";
+import { cmdSweDoctor, cmdSweHealth, cmdSweList, cmdSweRun } from "./swe/cli";
 import { cmdHermesTools } from "./hermes/cli";
 import { querySweReportData } from "./swe/sweReportData";
 import { renderSweAssessmentSection, renderSweReportSection } from "./swe/renderSweSection";
@@ -57,6 +57,7 @@ function usage(): void {
   bun bench/src/cli.ts list
   bun bench/src/cli.ts swe list
   bun bench/src/cli.ts swe doctor [--harnesses <ids>] [--timeout <ms>]
+  bun bench/src/cli.ts swe health [task-or-all]
   bun bench/src/cli.ts swe run <task-glob-or-all> --harnesses <ids> --models <aliases> [--repeats <n>] [--concurrency <n>] [--judge <id>] [--judges id1,id2] [--no-judge] [--keep-workspaces] [--dry-run] [--timeout <ms>]
   bun bench/src/cli.ts hermes tools --models <ids> [--concurrency <n>] [--dry-run]`);
 }
@@ -856,6 +857,9 @@ async function main(): Promise<void> {
           },
         });
         await cmdSweDoctor(REPO_ROOT, values);
+      } else if (sweSubcommand === "health") {
+        const { positionals } = parseArgs({ args: sweRest, allowPositionals: true });
+        await cmdSweHealth(REPO_ROOT, positionals[0] ?? "all");
       } else if (sweSubcommand === "run") {
         const { values, positionals } = parseArgs({
           args: sweRest,

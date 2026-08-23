@@ -31,6 +31,17 @@ function insertSweRun(
 }
 
 describe("querySweReportData", () => {
+  test("excludes quarantined evidence from report summaries", () => {
+    const db = createDb();
+    const comparable = insertSweRun(db);
+    insertSweResult(db, { runId: comparable, taskType: "fixture", verifyPassed: true, publicationStatus: "comparable" });
+    const quarantined = insertSweRun(db, { promptId: "swe-tasks/fixture/unhealthy" });
+    insertSweResult(db, { runId: quarantined, taskType: "fixture", verifyPassed: true, publicationStatus: "quarantined" });
+    const data = querySweReportData(db, { allRuns: true });
+    expect(data.taskIds).toEqual(["swe-tasks/fixture/smoke"]);
+    expect(data.summaries[0]?.totalRuns).toBe(1);
+  });
+
   test("splits model_id into harnessId/modelAlias and excludes prompt-kind runs", () => {
     const db = createDb();
     insertSweRun(db);

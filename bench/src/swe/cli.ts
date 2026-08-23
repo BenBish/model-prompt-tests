@@ -17,6 +17,7 @@ import {
 } from "./harnessConfig";
 import { formatDoctorReport, runSweDoctor } from "./doctor";
 import { runSweBatch, type SweRunnerCell } from "./runSweBatch";
+import { isComparableTask, readTaskHealthRecord, validateTaskHealth, writeTaskHealthRecord } from "./taskHealth";
 
 export function createHarnessInstance(entry: HarnessMatrixEntry, modelsConfig: BenchModelsConfig): SweHarness {
   if (entry.kind === "claude-code") return createClaudeCodeHarness(entry);
@@ -31,7 +32,7 @@ export async function cmdSweList(repoRoot: string): Promise<void> {
   console.log(`SWE tasks (${tasks.length}):`);
   for (const task of tasks) {
     const tagsSuffix = task.tags.length > 0 ? ` (${task.tags.join(", ")})` : "";
-    console.log(`  ${task.id}  [${task.type}]${tagsSuffix}`);
+    console.log(`  ${task.id}  [${task.type}; ${task.lifecycle}; grader ${task.graderVersion}]${tagsSuffix}`);
   }
 
   const { config: harnessesConfig } = await loadHarnessesConfig(repoRoot);
@@ -49,6 +50,23 @@ export async function cmdSweList(repoRoot: string): Promise<void> {
     }
     console.log(`  ${entry.id}  (${entry.kind})${enabledSuffix} — ${availabilityText}`);
   }
+}
+
+export async function cmdSweHealth(repoRoot: string, selector = "all"): Promise<void> {
+  const tasks = await loadTasks(repoRoot, selector);
+  if (tasks.length === 0) throw new Error(`no SWE tasks matched selector "${selector}"`);
+  let failed = false;
+  for (const task of tasks) {
+    if (task.lifecycle !== "active") {
+      console.log(`[skip] ${task.id}: lifecycle=${task.lifecycle}`);
+      continue;
+    }
+    const record = await validateTaskHealth(task, 5);
+    await writeTaskHealthRecord(repoRoot, task, record);
+    console.log(`[${record.status}] ${task.id}: ${record.reasons.join("; ") || `${record.repetitions} stable oracle passes; flawed solutions rejected`}`);
+    if (record.status !== "healthy") failed = true;
+  }
+  if (failed) process.exitCode = 1;
 }
 
 function rejectDuplicates(ids: string[], flagName: string): void {
@@ -197,6 +215,14 @@ export async function cmdSweRun(
     );
     console.log("(dry run — no processes spawned, no network calls made)");
     return;
+  }
+
+  for (const task of tasks) {
+    if (task.lifecycle !== "active") throw new Error(`task "${task.id}" is ${task.lifecycle}; only active tasks can produce benchmark evidence`);
+    const health = await readTaskHealthRecord(repoRoot, task);
+    if (!isComparableTask(task, health)) throw new Error(`task "${task.id}" has no healthy validation for grader ${task.graderVersion} in this verifier environment; run "bun bench/src/cli.ts swe health ${task.id}"`);
+    task.healthValidatedAt = health!.validatedAt;
+    task.healthEnvironmentFingerprint = health!.environmentFingerprint;
   }
 
   // Judges run for fixture/external tasks too, not just code-review — they score process/quality

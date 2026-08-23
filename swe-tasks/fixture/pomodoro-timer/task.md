@@ -1,5 +1,11 @@
 ---
 type: fixture
+lifecycle: active
+graderVersion: 2.0.0
+oracleSolution: validation/reference/src
+flawedSolutions: validation/naive/src
+runtimePrerequisites: bun, bash, git
+verifierEnvironments: linux-bun-1.3
 verify: bun test
 verifyTimeoutMs: 60000
 agentTimeoutMs: 600000
