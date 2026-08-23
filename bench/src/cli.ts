@@ -33,6 +33,7 @@ import {
   renderPeerRankHtmlSection,
 } from "./peerRank/renderPeerRankSection";
 import { cmdCalibrate } from "./calibrate/cmd";
+import { analyzeAnchors, loadJson, type AnchorCorpus, type CalibrationAssessment, type CalibrationEvidence } from "./calibrate/anchors";
 import { querySynthesisReportData, querySynthesisReportForReportBatches } from "./synthesize/reportData";
 import { renderSynthesisAssessmentSection, renderSynthesisHtmlSection } from "./synthesize/renderSection";
 import { groupsFromBatch, runSynthesisForGroups } from "./synthesize/groups";
@@ -52,9 +53,9 @@ function usage(): void {
   bun bench/src/cli.ts run <prompt-glob-or-all|calibration> [--models id1,id2] [--judge <id>] [--judges id1,id2] [--concurrency <n>] [--repeats <n>] [--dry-run] [--no-judge] [--peer-rank] [--synthesize] [--chairman <id>]
   bun bench/src/cli.ts synthesize (--batch <run_batch_id> | --latest) [--prompts id1,id2] [--chairman <id>] [--dry-run]
   bun bench/src/cli.ts calibrate [--batch <run_batch_id>] [--all-runs] [--human <file.json>] [--anchors <corpus.json> --evidence <evidence.json>] [--out <path>] [--subset]
-  bun bench/src/cli.ts report [--out <path>] [--batch <run_batch_id>] [--all-runs] [--narrative] [--judge <id>]
+  bun bench/src/cli.ts report [--out <path>] [--batch <run_batch_id>] [--all-runs] [--narrative] [--judge <id>] [--calibration-anchors <file> --calibration-evidence <file>]
   bun bench/src/cli.ts report --compare <batchA> --compare <batchB> [--out <path>]
-  bun bench/src/cli.ts export --name <slug> (--batch <run_batch_id> | --latest)
+  bun bench/src/cli.ts export --name <slug> (--batch <run_batch_id> | --latest) --calibration-anchors <file> --calibration-evidence <file>
   bun bench/src/cli.ts reproduce --batch <run_batch_id>
   bun bench/src/cli.ts publish [--out <dir>] [--results-dir <dir>]
   bun bench/src/cli.ts models <list|init|validate|set-judge|add-openai-compatible|add-anthropic|remove>
@@ -72,6 +73,14 @@ function requireFlag(values: Record<string, unknown>, key: string): string {
     throw new Error(`missing required --${key}`);
   }
   return value;
+}
+
+async function calibrationFromFlags(values: Record<string, unknown>): Promise<CalibrationAssessment | undefined> {
+  const anchors = values["calibration-anchors"];
+  const evidence = values["calibration-evidence"];
+  if (anchors === undefined && evidence === undefined) return undefined;
+  if (typeof anchors !== "string" || typeof evidence !== "string") throw new Error("calibration requires both --calibration-anchors and --calibration-evidence");
+  return analyzeAnchors(await loadJson<AnchorCorpus>(anchors), await loadJson<CalibrationEvidence>(evidence));
 }
 
 function parseCommaSeparatedIds(value: unknown, flag: string): string[] | undefined {
@@ -433,7 +442,8 @@ async function cmdExport(values: Record<string, unknown>): Promise<void> {
 
   const { config } = await loadModelsConfig(REPO_ROOT);
   const outDir = `${BENCHMARK_RESULTS_DIR}/${name}`;
-  const result = await exportBatch({ db, config, runBatchId, name, outDir });
+  const calibration = await calibrationFromFlags(values);
+  const result = await exportBatch({ db, config, runBatchId, name, outDir, calibration });
 
   console.log(`Exported batch ${runBatchId} to ${result.outDir}/`);
   for (const file of result.files) console.log(`  ${file}`);
@@ -502,12 +512,14 @@ async function cmdReport(values: Record<string, unknown>): Promise<void> {
   const synthesisAssessmentSection = renderSynthesisAssessmentSection(synthesisData);
 
   const generatedAt = new Date().toISOString();
+  const calibration = await calibrationFromFlags(values);
   const html = renderReportHtml(
     data,
     generatedAt,
     sweHtmlSection,
     peerRankHtmlSection,
     synthesisHtmlSection,
+    calibration,
   );
 
   const timestamp = generatedAt.replace(/[:.]/g, "-");
@@ -841,6 +853,8 @@ async function main(): Promise<void> {
           compare: { type: "string", multiple: true },
           "allow-incompatible": { type: "boolean" },
           "allow-cross-domain-performance": { type: "string" },
+          "calibration-anchors": { type: "string" },
+          "calibration-evidence": { type: "string" },
         },
       });
       await cmdReport(values);
@@ -854,6 +868,8 @@ async function main(): Promise<void> {
           name: { type: "string" },
           batch: { type: "string" },
           latest: { type: "boolean" },
+          "calibration-anchors": { type: "string" },
+          "calibration-evidence": { type: "string" },
         },
       });
       await cmdExport(values);

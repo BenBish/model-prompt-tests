@@ -102,6 +102,7 @@ function canonical(value: unknown): string {
 }
 
 function hash(value: unknown): string { return createHash("sha256").update(canonical(value)).digest("hex"); }
+export function calibrationManifestId(manifest: CalibrationEvidence["manifest"]): string { return `exp_${hash(manifest)}`; }
 function mean(xs: number[]): number { return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0; }
 function stddev(xs: number[]): number { const m = mean(xs); return Math.sqrt(mean(xs.map((x) => (x - m) ** 2))); }
 function correlation(xs: number[], ys: number[]): number | null {
@@ -124,14 +125,49 @@ export function validateCorpus(corpus: AnchorCorpus): void {
   if (new Set(ids).size !== ids.length) throw new Error("anchor ids must be unique");
 }
 
+export interface BlindedAnchor { label: string; response: string; style: AnchorResponse["style"] }
+export interface BlindedAnchorPayload { anchors: BlindedAnchor[]; answerKey: Record<string, string> }
+
+/** Builds a judge payload with opaque deterministic labels; keep answerKey out of the judge request. */
+export function buildBlindedAnchorPayload(corpus: AnchorCorpus, salt: string): BlindedAnchorPayload {
+  validateCorpus(corpus);
+  if (!salt) throw new Error("blinding salt is required");
+  const ordered = [...corpus.anchors].sort((a, b) => hash(`${salt}:${a.id}`).localeCompare(hash(`${salt}:${b.id}`)));
+  const anchors = ordered.map((anchor, index) => ({ label: `A${String(index + 1).padStart(3, "0")}`, response: anchor.response, style: anchor.style }));
+  return { anchors, answerKey: Object.fromEntries(anchors.map((anchor, index) => [anchor.label, ordered[index]!.id])) };
+}
+
+function validateEvidence(corpus: AnchorCorpus, evidence: CalibrationEvidence, now: Date): void {
+  if (evidence.schemaVersion !== 1 || !Array.isArray(evidence.humanLabels) || !Array.isArray(evidence.judgments) || !Array.isArray(evidence.pairwise)) throw new Error("invalid calibration evidence schema");
+  const anchorById = new Map(corpus.anchors.map((a) => [a.id, a]));
+  const labelIds = evidence.humanLabels.map((h) => h.anchorId);
+  if (new Set(labelIds).size !== labelIds.length) throw new Error("human label anchor ids must be unique");
+  for (const label of evidence.humanLabels) {
+    const anchor = anchorById.get(label.anchorId);
+    if (!anchor) throw new Error(`unknown human-label anchor ${label.anchorId}`);
+    if (label.category !== anchor.category) throw new Error(`human-label category mismatch for ${label.anchorId}`);
+    if (![1, 2, 3, 4, 5].includes(label.label)) throw new Error(`invalid human label for ${label.anchorId}`);
+  }
+  for (const judgment of evidence.judgments) {
+    if (!anchorById.has(judgment.anchorId) || !judgment.judgeId || !judgment.judgeFamily || ![1, 2, 3, 4, 5].includes(judgment.score)) throw new Error(`invalid judgment for ${judgment.anchorId}`);
+  }
+  const runTime = new Date(evidence.runDate).getTime();
+  if (!Number.isFinite(runTime)) throw new Error("invalid calibration runDate");
+  if (runTime > now.getTime() + 86_400_000) throw new Error("calibration runDate is in the future");
+  for (const pair of evidence.pairwise) {
+    if (!anchorById.has(pair.firstAnchorId) || !anchorById.has(pair.secondAnchorId) || pair.firstAnchorId === pair.secondAnchorId || !pair.judgeId || !["first", "second", "tie"].includes(pair.winner)) throw new Error(`invalid pairwise judgment ${pair.pairId}`);
+  }
+}
+
 export function analyzeAnchors(corpus: AnchorCorpus, evidence: CalibrationEvidence | undefined, now = new Date(), policy = DEFAULT_CALIBRATION_POLICY): CalibrationAssessment {
   validateCorpus(corpus);
   const base = { corpusSha256: hash(corpus), failures: [] as string[], warnings: [] as string[] };
   if (!evidence) return { ...base, status: "uncalibrated", publicationEligible: false, monotonicityFailures: [], extremeConcentration: 0, judgeDisagreement: 0, positionEffect: 0, ties: 0, humanCoverage: 0, categories: [], judgeFamilyBias: {}, styleCorrelations: {} };
+  validateEvidence(corpus, evidence, now);
   const failures = base.failures;
   const warnings = base.warnings;
   if (evidence.corpusVersion !== corpus.version) failures.push(`evidence corpus ${evidence.corpusVersion} does not match ${corpus.version}`);
-  if (!evidence.experimentId.startsWith("exp_")) failures.push("evidence is not bound to an immutable experiment manifest");
+  if (evidence.experimentId !== calibrationManifestId(evidence.manifest)) failures.push("evidence experiment id does not match its immutable manifest hash");
   if (!evidence.manifest.judgeRoster.length || evidence.manifest.judgeRoster.some((j) => !j.immutableRevision)) failures.push("judge roster has mutable or missing revisions");
   if (!/^[a-f0-9]{64}$/.test(evidence.manifest.graderPromptSha256) || !/^[a-f0-9]{64}$/.test(evidence.manifest.rubricSha256)) failures.push("grader prompt or rubric hash is invalid");
   const ageDays = (now.getTime() - new Date(evidence.runDate).getTime()) / 86_400_000;
@@ -142,7 +178,7 @@ export function analyzeAnchors(corpus: AnchorCorpus, evidence: CalibrationEviden
   const coverage = evidence.humanLabels.length / corpus.anchors.length;
   if (evidence.humanLabels.length < policy.minimumHumanLabels) failures.push(`human labels ${evidence.humanLabels.length} below minimum ${policy.minimumHumanLabels}`);
   for (const category of ["instruction-following", "coding-debugging", "safety", "code-review"] as CalibrationCategory[]) {
-    const count = evidence.humanLabels.filter((h) => h.category === category).length;
+    const count = evidence.humanLabels.filter((h) => byAnchor.get(h.anchorId)?.category === category).length;
     if (count < policy.minimumCategoryCoverage) failures.push(`${category} human coverage ${count} below minimum ${policy.minimumCategoryCoverage}`);
   }
 
@@ -163,7 +199,13 @@ export function analyzeAnchors(corpus: AnchorCorpus, evidence: CalibrationEviden
   const pairGroups = new Map<string, PairwiseJudgment[]>();
   for (const p of evidence.pairwise) pairGroups.set(p.pairId, [...(pairGroups.get(p.pairId) ?? []), p]);
   let reversed = 0, comparable = 0;
-  for (const rows of pairGroups.values()) if (rows.length >= 2) { comparable++; const normalized = rows.map((r) => r.winner === "tie" ? "tie" : r.winner === "first" ? r.firstAnchorId : r.secondAnchorId); if (new Set(normalized).size > 1) reversed++; }
+  for (const [pairId, rows] of pairGroups) {
+    const orientations = new Set(rows.map((r) => `${r.firstAnchorId}->${r.secondAnchorId}`));
+    const first = rows[0];
+    const reverse = first && `${first.secondAnchorId}->${first.firstAnchorId}`;
+    if (rows.length !== 2 || orientations.size !== 2 || !reverse || !orientations.has(reverse)) failures.push(`pairwise ${pairId} does not contain exactly both answer orders`);
+    else { comparable++; const normalized = rows.map((r) => r.winner === "tie" ? "tie" : r.winner === "first" ? r.firstAnchorId : r.secondAnchorId); if (new Set(normalized).size > 1) reversed++; }
+  }
   const positionEffect = comparable ? reversed / comparable : 0;
   if (positionEffect > policy.maxPositionEffect) failures.push(`pairwise position effect ${(positionEffect * 100).toFixed(1)}% exceeds ${(policy.maxPositionEffect * 100).toFixed(1)}%`);
 

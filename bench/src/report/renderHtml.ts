@@ -25,6 +25,7 @@ import {
   type ModelScoreDistribution,
   type ScatterPoint,
 } from "./charts";
+import type { CalibrationAssessment } from "../calibrate/anchors";
 
 export function scoreBadgeColor(score: number | undefined): string {
   if (score === undefined) return "#888";
@@ -364,6 +365,7 @@ export function renderReportHtml(
   sweSectionHtml = "",
   peerRankSectionHtml = "",
   synthesisSectionHtml = "",
+  calibration?: CalibrationAssessment,
 ): string {
   const seriesSlots = assignSeriesSlots(data.modelIds);
   const headerCells = data.modelIds.map((modelId) => `<th>${escapeHtml(modelId)}</th>`).join("");
@@ -410,6 +412,11 @@ th, td { border: 1px solid #ccc; padding: 0.5rem; vertical-align: top; text-alig
       </div>
       <button type="button" class="theme-toggle" aria-label="Toggle color theme">Auto</button>
     </header>
+
+    <section class="calibration-status" data-calibration-status="${calibration?.status ?? "uncalibrated"}">
+      <strong>Judge calibration: ${(calibration?.status ?? "uncalibrated").toUpperCase()}</strong>
+      <span>${calibration?.publicationEligible ? "Comparative claims are publication-eligible." : "Fail closed: comparative claims are not publication-eligible."}</span>
+    </section>
 
     ${renderStatTiles(data.summaries)}
     ${renderModelLegend(data.modelIds, seriesSlots)}

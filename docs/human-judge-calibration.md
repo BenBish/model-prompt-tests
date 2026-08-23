@@ -17,7 +17,7 @@ The evidence bundle records its immutable experiment id, exact judge provider/mo
 
 ## Human-label workflow
 
-1. A maintainer versions the corpus; identifiers do not reveal expected quality to judges.
+1. A maintainer versions the answer-key corpus. Judging code must call `buildBlindedAnchorPayload` with a per-run salt and send only its `anchors` value; the separate `answerKey` and source corpus never enter the judge request.
 2. At least two humans independently label a balanced sample, then adjudicate disagreements. Retain individual sheets outside the blinded judging payload and commit the adjudicated evidence.
 3. Run every anchor through the frozen judge panel. For pairwise checks, submit A/B and B/A; ties are valid.
 4. Generate Markdown, JSON, and HTML artifacts. Review category-level failures rather than relying on one correlation.
