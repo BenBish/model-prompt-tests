@@ -1,5 +1,6 @@
 import { escapeHtml } from "../util/html";
 import type { ModelSummary } from "./queryData";
+import type { SweSummary } from "../swe/sweReportData";
 import {
   assignSeriesSlots,
   chartFigure,
@@ -14,6 +15,7 @@ import {
 function fmt(value: number | undefined, digits = 2): string {
   return value === undefined ? "—" : value.toFixed(digits);
 }
+function pct(value: number | undefined): string { return value === undefined ? "—" : `${(value * 100).toFixed(0)}%`; }
 
 function delta(before: number | undefined, after: number | undefined, digits = 2): string {
   if (before === undefined || after === undefined) return "—";
@@ -33,6 +35,7 @@ export function renderCompareHtml(
   labelAfter: string,
   summariesAfter: ModelSummary[],
   generatedAt: string,
+  swe?: { before: SweSummary[]; after: SweSummary[] },
 ): string {
   const modelIds = [...new Set([...summariesBefore.map((s) => s.modelId), ...summariesAfter.map((s) => s.modelId)])].sort();
   const slots = assignSeriesSlots(modelIds);
@@ -68,6 +71,15 @@ export function renderCompareHtml(
       `;
     })
     .join("");
+  const sweModelIds = swe ? [...new Set([...swe.before, ...swe.after].map((s) => s.harnessModelId))].sort() : [];
+  const sweBefore = new Map(swe?.before.map((s) => [s.harnessModelId, s]) ?? []);
+  const sweAfter = new Map(swe?.after.map((s) => [s.harnessModelId, s]) ?? []);
+  const sweSection = sweModelIds.length ? `<h2>Objective SWE correctness</h2>
+    <p>Pass@1 is task-weighted first-trial correctness. Repeated solve is observed across repeats; infrastructure and publication-blocked trials are separate.</p>
+    <table class="summary-table"><thead><tr><th>Harness:model</th><th>Pass@1 (${escapeHtml(labelBefore)})</th><th>Pass@1 (${escapeHtml(labelAfter)})</th><th>Repeated solve before</th><th>Repeated solve after</th><th>Infra before/after</th><th>Blocked before/after</th></tr></thead><tbody>${sweModelIds.map((id) => {
+      const before = sweBefore.get(id), after = sweAfter.get(id);
+      return `<tr><th>${escapeHtml(id)}</th><td>${pct(before?.passAt1)}</td><td>${pct(after?.passAt1)}</td><td>${pct(before?.repeatedTrialSolveRate)}</td><td>${pct(after?.repeatedTrialSolveRate)}</td><td>${before?.infrastructureFailures ?? "—"} / ${after?.infrastructureFailures ?? "—"}</td><td>${before?.publicationBlockedRuns ?? "—"} / ${after?.publicationBlockedRuns ?? "—"}</td></tr>`;
+    }).join("")}</tbody></table>` : "";
 
   return `<!doctype html>
 <html>
@@ -89,6 +101,7 @@ ${paletteStyleBlock()}
       </div>
       <button type="button" class="theme-toggle" aria-label="Toggle color theme">Auto</button>
     </header>
+    ${sweSection}
 
     <div class="stat-tiles">
       <div class="stat-tile">

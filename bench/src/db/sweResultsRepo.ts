@@ -20,6 +20,8 @@ export interface SweResultRecord {
   /** Parsed from verify output (bun test summary) when available; undefined otherwise. */
   verifyTestsPassed?: number;
   verifyTestsTotal?: number;
+  verificationDetail?: unknown;
+  outcomeCategory?: "passed" | "candidate_failure" | "timeout" | "invalid_output" | "harness_error" | "verifier_error" | "judge_error";
   reviewMetrics?: unknown;
   error?: string;
   /** llama.cpp /metrics counter deltas sampled around the agent run (local harnesses only). */
@@ -46,14 +48,14 @@ export function insertSweResult(db: Database, record: SweResultRecord): number {
       lines_removed, transcript, agent_exit_code, agent_timed_out, verify_command,
       verify_exit_code, verify_passed, verify_output, verify_duration_ms, review_metrics, error,
       server_prompt_tokens, server_prompt_seconds, server_predicted_tokens, server_predicted_seconds,
-      verify_tests_passed, verify_tests_total, task_lifecycle, grader_version, health_status,
+      verify_tests_passed, verify_tests_total, verification_detail, outcome_category, task_lifecycle, grader_version, health_status,
       environment_fingerprint, health_validated_at, publication_status
     ) VALUES (
       $runId, $taskType, $workdir, $baselineSha, $diffPatch, $filesChanged, $linesAdded,
       $linesRemoved, $transcript, $agentExitCode, $agentTimedOut, $verifyCommand,
       $verifyExitCode, $verifyPassed, $verifyOutput, $verifyDurationMs, $reviewMetrics, $error,
       $serverPromptTokens, $serverPromptSeconds, $serverPredictedTokens, $serverPredictedSeconds,
-      $verifyTestsPassed, $verifyTestsTotal, $taskLifecycle, $graderVersion, $healthStatus,
+      $verifyTestsPassed, $verifyTestsTotal, $verificationDetail, $outcomeCategory, $taskLifecycle, $graderVersion, $healthStatus,
       $environmentFingerprint, $healthValidatedAt, $publicationStatus
     )
   `);
@@ -83,6 +85,8 @@ export function insertSweResult(db: Database, record: SweResultRecord): number {
     $serverPredictedSeconds: record.serverPredictedSeconds ?? null,
     $verifyTestsPassed: record.verifyTestsPassed ?? null,
     $verifyTestsTotal: record.verifyTestsTotal ?? null,
+    $verificationDetail: record.verificationDetail === undefined ? null : JSON.stringify(record.verificationDetail),
+    $outcomeCategory: record.outcomeCategory ?? null,
     $taskLifecycle: record.taskLifecycle ?? null,
     $graderVersion: record.graderVersion ?? null,
     $healthStatus: record.healthStatus ?? null,
@@ -121,6 +125,8 @@ function rowToSweResultRow(row: any): SweResultRow {
     verifyDurationMs: row.verify_duration_ms ?? undefined,
     verifyTestsPassed: row.verify_tests_passed ?? undefined,
     verifyTestsTotal: row.verify_tests_total ?? undefined,
+    verificationDetail: row.verification_detail ? JSON.parse(row.verification_detail) : undefined,
+    outcomeCategory: row.outcome_category ?? undefined,
     reviewMetrics: row.review_metrics ? JSON.parse(row.review_metrics) : undefined,
     error: row.error ?? undefined,
     serverPromptTokens: row.server_prompt_tokens ?? undefined,

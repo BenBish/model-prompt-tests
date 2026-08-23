@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseBunTestSummary } from "./verifyOutputParser";
+import { parseBunTestSummary, parseVerificationOutput } from "./verifyOutputParser";
 
 describe("parseBunTestSummary", () => {
   test("parses a mixed pass/fail summary", () => {
@@ -45,4 +45,18 @@ Ran 6 tests across 2 files. [120.00ms]`;
     const output = " 1 pass\n 0 fail\n";
     expect(parseBunTestSummary("bun test --timeout 60000", output)).toEqual({ testsPassed: 1, testsTotal: 1 });
   });
+});
+
+describe("parseVerificationOutput", () => {
+  test("parses TAP", () => expect(parseVerificationOutput("node --test", "TAP version 13\nok 1 - yes\nnot ok 2 - no\nok 3 - later # SKIP"))
+    .toMatchObject({ format: "tap", passed: 1, failed: 1, skipped: 1, total: 3 }));
+  test("parses JUnit", () => expect(parseVerificationOutput("junit report", '<testsuite tests="8" failures="2" errors="1" skipped="1">'))
+    .toMatchObject({ format: "junit", passed: 4, failed: 3, skipped: 1, total: 8 }));
+  test("parses pytest", () => expect(parseVerificationOutput("python -m pytest", "7 passed, 2 failed, 1 error, 3 skipped in 1.2s"))
+    .toMatchObject({ format: "pytest", passed: 7, failed: 3, skipped: 3, total: 13 }));
+  test("parses task JSON with visible/hidden groups and categories", () => {
+    const parsed = parseVerificationOutput("verify --json", JSON.stringify({ summary: { passed: 5, failed: 2 }, visible: { passed: 2, failed: 0 }, hidden: { passed: 3, failed: 2 }, failureCategories: ["edge-case"] }));
+    expect(parsed).toMatchObject({ format: "json", passed: 5, failed: 2, total: 7, visible: { passed: 2, failed: 0 }, hidden: { passed: 3, failed: 2 }, failureCategories: ["edge-case"] });
+  });
+  test("leaves exit-code-only tasks unstructured", () => expect(parseVerificationOutput("./verify.sh", "all good")).toBeUndefined());
 });

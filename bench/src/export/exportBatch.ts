@@ -12,6 +12,8 @@ import {
 import { renderReportHtml } from "../report/renderHtml";
 import { querySynthesisReportData } from "../synthesize/reportData";
 import { renderSynthesisHtmlSection } from "../synthesize/renderSection";
+import { querySweReportData, type SweSummary } from "../swe/sweReportData";
+import { renderSweReportSection } from "../swe/renderSweSection";
 
 const NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
@@ -315,6 +317,7 @@ export interface SitePayload {
   promptCount: number;
   modelIds: string[];
   summaries: ModelSummary[];
+  sweSummaries?: SweSummary[];
 }
 
 export interface ExportBatchOptions {
@@ -336,7 +339,8 @@ export async function exportBatch(options: ExportBatchOptions): Promise<ExportBa
   validateExportName(options.name);
   const generatedAt = options.generatedAt ?? new Date().toISOString();
   const data = queryReportData(options.db, { runBatchId: options.runBatchId, allRuns: true });
-  if (data.promptIds.length === 0) {
+  const sweData = querySweReportData(options.db, { runBatchId: options.runBatchId, allRuns: true });
+  if (data.promptIds.length === 0 && sweData.taskIds.length === 0) {
     throw new Error(`no runs found for batch "${options.runBatchId}"`);
   }
 
@@ -350,10 +354,12 @@ export async function exportBatch(options: ExportBatchOptions): Promise<ExportBa
     promptCount: data.promptIds.length,
     modelIds: data.modelIds,
     summaries: data.summaries,
+    sweSummaries: sweData.summaries.length ? sweData.summaries : undefined,
   };
+  const summaryJson = sweData.summaries.length ? { prompt: data.summaries, swe: sweData.summaries } : data.summaries;
 
   const files: { path: string; content: string }[] = [
-    { path: "summary.json", content: `${JSON.stringify(data.summaries, null, 2)}\n` },
+    { path: "summary.json", content: `${JSON.stringify(summaryJson, null, 2)}\n` },
     { path: "raw-outputs-and-scores.json", content: `${JSON.stringify(rawRows, null, 2)}\n` },
     { path: "per-prompt-results.md", content: buildPerPromptResultsMd(data) },
     { path: "run-config.md", content: buildRunConfigMd(options.name, options.runBatchId, generatedAt, data, options.config) },
@@ -362,7 +368,7 @@ export async function exportBatch(options: ExportBatchOptions): Promise<ExportBa
       content: renderReportHtml(
         data,
         generatedAt,
-        "",
+        renderSweReportSection(sweData),
         "",
         renderSynthesisHtmlSection(querySynthesisReportData(options.db, { runBatchId: options.runBatchId })),
       ),

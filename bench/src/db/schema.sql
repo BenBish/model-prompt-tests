@@ -46,6 +46,8 @@ CREATE TABLE IF NOT EXISTS swe_results (
   server_predicted_seconds  REAL,
   verify_tests_passed       INTEGER,
   verify_tests_total        INTEGER
+  ,verification_detail       TEXT
+  ,outcome_category          TEXT CHECK (outcome_category IN ('passed','candidate_failure','timeout','invalid_output','harness_error','verifier_error','judge_error'))
   ,task_lifecycle            TEXT
   ,grader_version            TEXT
   ,health_status             TEXT

@@ -27,6 +27,8 @@ const COLUMN_MIGRATIONS: ColumnMigration[] = [
   { table: "swe_results", column: "server_predicted_seconds", ddlType: "REAL" },
   { table: "swe_results", column: "verify_tests_passed", ddlType: "INTEGER" },
   { table: "swe_results", column: "verify_tests_total", ddlType: "INTEGER" },
+  { table: "swe_results", column: "verification_detail", ddlType: "TEXT" },
+  { table: "swe_results", column: "outcome_category", ddlType: "TEXT" },
   { table: "swe_results", column: "task_lifecycle", ddlType: "TEXT" },
   { table: "swe_results", column: "grader_version", ddlType: "TEXT" },
   { table: "swe_results", column: "health_status", ddlType: "TEXT" },
