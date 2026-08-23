@@ -46,6 +46,12 @@ CREATE TABLE IF NOT EXISTS swe_results (
   server_predicted_seconds  REAL,
   verify_tests_passed       INTEGER,
   verify_tests_total        INTEGER
+  ,task_lifecycle            TEXT
+  ,grader_version            TEXT
+  ,health_status             TEXT
+  ,environment_fingerprint   TEXT
+  ,health_validated_at       TEXT
+  ,publication_status        TEXT NOT NULL DEFAULT 'comparable' CHECK (publication_status IN ('comparable', 'quarantined'))
 );
 
 CREATE TABLE IF NOT EXISTS scores (

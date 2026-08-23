@@ -1,0 +1,16 @@
+{
+  "taskId": "swe-tasks/fixture/pomodoro-timer",
+  "graderVersion": "2.0.0",
+  "environmentFingerprint": "linux-7.1.4-arch1-1-bun-1.3.14",
+  "status": "healthy",
+  "validatedAt": "2026-08-23T20:23:50.584Z",
+  "repetitions": 5,
+  "runtimePrerequisites": [
+    "bun",
+    "bash",
+    "git",
+    "chromium|chromium-browser|google-chrome"
+  ],
+  "testCount": 9,
+  "reasons": []
+}

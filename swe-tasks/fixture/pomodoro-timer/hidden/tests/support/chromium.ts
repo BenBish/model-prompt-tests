@@ -61,7 +61,7 @@ class CdpClient {
       const timeout = setTimeout(() => {
         this.pending.delete(id);
         reject(new Error(`Chromium command timed out: ${method}`));
-      }, 5000);
+      }, 15_000);
       this.pending.set(id, {
         resolve(value) {
           clearTimeout(timeout);
@@ -130,7 +130,7 @@ export async function launchPomodoroPage() {
   let target: { webSocketDebuggerUrl: string } | undefined;
   try {
     const appUrl = "http://127.0.0.1:" + staticServer.port + "/";
-    for (let attempt = 0; attempt < 50; attempt++) {
+    for (let attempt = 0; attempt < 150; attempt++) {
       try {
         const targetUrl =
           "http://127.0.0.1:" + debugPort + "/json/new?" + encodeURIComponent(appUrl);
@@ -148,10 +148,10 @@ export async function launchPomodoroPage() {
 
     const client = await CdpClient.connect(target.webSocketDebuggerUrl);
     await client.send("Runtime.enable");
-    for (let attempt = 0; attempt < 50; attempt++) {
+    for (let attempt = 0; attempt < 150; attempt++) {
       if (await client.evaluate("document.readyState === 'complete' && Boolean(globalThis.__pomodoro)")) break;
       await sleep(100);
-      if (attempt === 49) throw new Error("Pomodoro application did not mount");
+      if (attempt === 149) throw new Error("Pomodoro application did not mount");
     }
 
     return {

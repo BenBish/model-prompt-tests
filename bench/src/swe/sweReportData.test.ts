@@ -31,9 +31,21 @@ function insertSweRun(
 }
 
 describe("querySweReportData", () => {
+  test("excludes quarantined evidence from report summaries", () => {
+    const db = createDb();
+    const comparable = insertSweRun(db);
+    insertSweResult(db, { runId: comparable, taskType: "fixture", verifyPassed: true, publicationStatus: "comparable" });
+    const quarantined = insertSweRun(db, { promptId: "swe-tasks/fixture/unhealthy" });
+    insertSweResult(db, { runId: quarantined, taskType: "fixture", verifyPassed: true, publicationStatus: "quarantined" });
+    const data = querySweReportData(db, { allRuns: true });
+    expect(data.taskIds).toEqual(["swe-tasks/fixture/smoke"]);
+    expect(data.summaries[0]?.totalRuns).toBe(1);
+  });
+
   test("splits model_id into harnessId/modelAlias and excludes prompt-kind runs", () => {
     const db = createDb();
-    insertSweRun(db);
+    const sweRun = insertSweRun(db);
+    insertSweResult(db, { runId: sweRun, taskType: "fixture", publicationStatus: "comparable" });
     insertRun(db, {
       runBatchId: "batch-1",
       promptId: "debugging/javascript-debounce",
@@ -100,9 +112,11 @@ describe("querySweReportData", () => {
 
   test("keeps only the latest batch per cell by default, all repeats included", () => {
     const db = createDb();
-    insertSweRun(db, { runBatchId: "batch-old", startedAt: "2026-01-01T00:00:00.000Z" });
-    insertSweRun(db, { runBatchId: "batch-new", startedAt: "2026-01-02T00:00:00.000Z", repeatIndex: 0 });
-    insertSweRun(db, { runBatchId: "batch-new", startedAt: "2026-01-02T00:01:00.000Z", repeatIndex: 1 });
+    for (const runId of [
+      insertSweRun(db, { runBatchId: "batch-old", startedAt: "2026-01-01T00:00:00.000Z" }),
+      insertSweRun(db, { runBatchId: "batch-new", startedAt: "2026-01-02T00:00:00.000Z", repeatIndex: 0 }),
+      insertSweRun(db, { runBatchId: "batch-new", startedAt: "2026-01-02T00:01:00.000Z", repeatIndex: 1 }),
+    ]) insertSweResult(db, { runId, taskType: "fixture", publicationStatus: "comparable" });
 
     const data = querySweReportData(db);
     const rows = data.rows.get("swe-tasks/fixture/smoke")?.get("claude-code:haiku");
@@ -132,7 +146,7 @@ describe("querySweReportData", () => {
       error: "harness crashed",
       promptId: "swe-tasks/fixture/broken",
     });
-    void errorRun;
+    insertSweResult(db, { runId: errorRun, taskType: "fixture", publicationStatus: "comparable" });
 
     const data = querySweReportData(db, { allRuns: true });
     const summary = data.summaries.find((s) => s.harnessModelId === "claude-code:haiku")!;
@@ -196,7 +210,8 @@ describe("querySweReportData", () => {
 
   test("passRate is undefined when no ok runs have a verify result yet", () => {
     const db = createDb();
-    insertSweRun(db, { status: "error", error: "boom" });
+    const runId = insertSweRun(db, { status: "error", error: "boom" });
+    insertSweResult(db, { runId, taskType: "fixture", publicationStatus: "comparable" });
 
     const data = querySweReportData(db, { allRuns: true });
     const summary = data.summaries.find((s) => s.harnessModelId === "claude-code:haiku")!;

@@ -1,5 +1,7 @@
 # Bench
 
+Task lifecycle and publication integrity are documented in [`../docs/task-health.md`](../docs/task-health.md). Run `bun bench/src/cli.ts swe health all` before SWE batches; active tasks without a healthy record for the current verifier environment are blocked.
+
 Automated benchmarking tooling for the prompts in this repo: runs each prompt against
 multiple model providers, scores the outputs with a fixed LLM judge against the
 prompt's existing rubric, and generates a static HTML report.

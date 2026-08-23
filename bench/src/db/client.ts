@@ -27,6 +27,12 @@ const COLUMN_MIGRATIONS: ColumnMigration[] = [
   { table: "swe_results", column: "server_predicted_seconds", ddlType: "REAL" },
   { table: "swe_results", column: "verify_tests_passed", ddlType: "INTEGER" },
   { table: "swe_results", column: "verify_tests_total", ddlType: "INTEGER" },
+  { table: "swe_results", column: "task_lifecycle", ddlType: "TEXT" },
+  { table: "swe_results", column: "grader_version", ddlType: "TEXT" },
+  { table: "swe_results", column: "health_status", ddlType: "TEXT" },
+  { table: "swe_results", column: "environment_fingerprint", ddlType: "TEXT" },
+  { table: "swe_results", column: "health_validated_at", ddlType: "TEXT" },
+  { table: "swe_results", column: "publication_status", ddlType: "TEXT NOT NULL DEFAULT 'quarantined' CHECK (publication_status IN ('comparable', 'quarantined'))" },
 ];
 
 /**

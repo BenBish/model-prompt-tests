@@ -27,6 +27,12 @@ export interface SweResultRecord {
   serverPromptSeconds?: number;
   serverPredictedTokens?: number;
   serverPredictedSeconds?: number;
+  taskLifecycle?: string;
+  graderVersion?: string;
+  healthStatus?: string;
+  environmentFingerprint?: string;
+  healthValidatedAt?: string;
+  publicationStatus?: "comparable" | "quarantined";
 }
 
 export interface SweResultRow extends SweResultRecord {
@@ -40,13 +46,15 @@ export function insertSweResult(db: Database, record: SweResultRecord): number {
       lines_removed, transcript, agent_exit_code, agent_timed_out, verify_command,
       verify_exit_code, verify_passed, verify_output, verify_duration_ms, review_metrics, error,
       server_prompt_tokens, server_prompt_seconds, server_predicted_tokens, server_predicted_seconds,
-      verify_tests_passed, verify_tests_total
+      verify_tests_passed, verify_tests_total, task_lifecycle, grader_version, health_status,
+      environment_fingerprint, health_validated_at, publication_status
     ) VALUES (
       $runId, $taskType, $workdir, $baselineSha, $diffPatch, $filesChanged, $linesAdded,
       $linesRemoved, $transcript, $agentExitCode, $agentTimedOut, $verifyCommand,
       $verifyExitCode, $verifyPassed, $verifyOutput, $verifyDurationMs, $reviewMetrics, $error,
       $serverPromptTokens, $serverPromptSeconds, $serverPredictedTokens, $serverPredictedSeconds,
-      $verifyTestsPassed, $verifyTestsTotal
+      $verifyTestsPassed, $verifyTestsTotal, $taskLifecycle, $graderVersion, $healthStatus,
+      $environmentFingerprint, $healthValidatedAt, $publicationStatus
     )
   `);
 
@@ -75,6 +83,12 @@ export function insertSweResult(db: Database, record: SweResultRecord): number {
     $serverPredictedSeconds: record.serverPredictedSeconds ?? null,
     $verifyTestsPassed: record.verifyTestsPassed ?? null,
     $verifyTestsTotal: record.verifyTestsTotal ?? null,
+    $taskLifecycle: record.taskLifecycle ?? null,
+    $graderVersion: record.graderVersion ?? null,
+    $healthStatus: record.healthStatus ?? null,
+    $environmentFingerprint: record.environmentFingerprint ?? null,
+    $healthValidatedAt: record.healthValidatedAt ?? null,
+    $publicationStatus: record.publicationStatus ?? "comparable",
   });
 
   return Number(result.lastInsertRowid);
@@ -113,5 +127,11 @@ function rowToSweResultRow(row: any): SweResultRow {
     serverPromptSeconds: row.server_prompt_seconds ?? undefined,
     serverPredictedTokens: row.server_predicted_tokens ?? undefined,
     serverPredictedSeconds: row.server_predicted_seconds ?? undefined,
+    taskLifecycle: row.task_lifecycle ?? undefined,
+    graderVersion: row.grader_version ?? undefined,
+    healthStatus: row.health_status ?? undefined,
+    environmentFingerprint: row.environment_fingerprint ?? undefined,
+    healthValidatedAt: row.health_validated_at ?? undefined,
+    publicationStatus: row.publication_status ?? undefined,
   };
 }

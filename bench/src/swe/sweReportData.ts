@@ -304,7 +304,7 @@ export function querySweReportData(db: Database, options: QuerySweOptions = {}):
            swe_results.verify_tests_passed, swe_results.verify_tests_total
     FROM runs
     LEFT JOIN swe_results ON swe_results.run_id = runs.id
-    WHERE runs.kind = 'swe'
+    WHERE runs.kind = 'swe' AND swe_results.publication_status = 'comparable'
   `;
   const params: Record<string, string> = {};
   if (options.runBatchId) {

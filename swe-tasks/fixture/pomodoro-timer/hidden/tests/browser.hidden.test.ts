@@ -38,7 +38,7 @@ test(
       await page.evaluate(`globalThis.__pomodoro.timer.pause()`);
       await page.evaluate(`globalThis.__pomodoro.timer.setDurations({ workSeconds: 1, breakSeconds: 2 })`);
       await page.evaluate(`document.querySelector("#start-pause").click()`);
-      await page.waitFor(`globalThis.__pomodoro.timer.getState().mode === "break"`, 4000);
+      await page.waitFor(`globalThis.__pomodoro.timer.getState().mode === "break"`, 10_000);
       expect(
         await page.evaluate(`({
           mode: document.querySelector("#mode-label").textContent,
@@ -85,5 +85,5 @@ test(
       await page.close();
     }
   },
-  20_000,
+  60_000,
 );

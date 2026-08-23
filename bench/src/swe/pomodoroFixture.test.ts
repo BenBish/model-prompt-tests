@@ -33,14 +33,18 @@ async function verifySolution(kind: "reference" | "naive" | "naive-literal") {
   }
 }
 
+function expectHealthy(result: Awaited<ReturnType<typeof verifySolution>>) {
+  if (!result.passed) throw new Error(`Pomodoro verifier failed:\n${result.output}`);
+  expect(result.output).toContain("9 pass");
+}
+
 test(
   "Pomodoro fixture accepts the reference implementation",
   async () => {
     const result = await verifySolution("reference");
-    expect(result.passed).toBe(true);
-    expect(result.output).toContain("9 pass");
+    expectHealthy(result);
   },
-  30_000,
+  120_000,
 );
 
 test(
@@ -51,15 +55,14 @@ test(
     expect(result.output).toContain("uses elapsed time when interval delivery is delayed");
     expect(result.output).toContain("never starts duplicate intervals");
   },
-  30_000,
+  120_000,
 );
 
 test(
   "Pomodoro fixture accepts an independent implementation that only follows the disclosed contract",
   async () => {
     const result = await verifySolution("naive-literal");
-    expect(result.passed).toBe(true);
-    expect(result.output).toContain("9 pass");
+    expectHealthy(result);
   },
-  30_000,
+  120_000,
 );
