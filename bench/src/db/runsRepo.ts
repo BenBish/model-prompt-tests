@@ -19,6 +19,7 @@ export interface RunRecord {
   harnessId?: string;
   stopReason?: string;
   costUsd?: number;
+  experimentId?: string;
 }
 
 export interface RunRow extends RunRecord {
@@ -30,11 +31,11 @@ export function insertRun(db: Database, record: RunRecord): number {
     INSERT INTO runs (
       run_batch_id, prompt_id, provider_id, model_id, model_name, started_at,
       latency_ms, input_tokens, output_tokens, output_text, raw_response, error, status,
-      repeat_index, kind, harness_id, stop_reason, cost_usd
+      repeat_index, kind, harness_id, stop_reason, cost_usd, experiment_id
     ) VALUES (
       $runBatchId, $promptId, $providerId, $modelId, $modelName, $startedAt,
       $latencyMs, $inputTokens, $outputTokens, $outputText, $rawResponse, $error, $status,
-      $repeatIndex, $kind, $harnessId, $stopReason, $costUsd
+      $repeatIndex, $kind, $harnessId, $stopReason, $costUsd, $experimentId
     )
   `);
 
@@ -57,6 +58,7 @@ export function insertRun(db: Database, record: RunRecord): number {
     $harnessId: record.harnessId ?? null,
     $stopReason: record.stopReason ?? null,
     $costUsd: record.costUsd ?? null,
+    $experimentId: record.experimentId ?? null,
   });
 
   return Number(result.lastInsertRowid);
@@ -97,5 +99,6 @@ function rowToRunRow(row: any): RunRow {
     harnessId: row.harness_id ?? undefined,
     stopReason: row.stop_reason ?? undefined,
     costUsd: row.cost_usd ?? undefined,
+    experimentId: row.experiment_id ?? undefined,
   };
 }

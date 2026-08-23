@@ -19,6 +19,8 @@ import { loadFindingsSpec } from "./findings";
 import { runReviewMatcher } from "./reviewMatcher";
 import { diffLlamaCppMetrics, sampleLlamaCppMetrics } from "./llamaCppMetrics";
 import { provisionCodeReviewWorkspace } from "./reviewWorkspace";
+import { insertExperiment } from "../db/experimentsRepo";
+import { EXPERIMENT_SCHEMA_VERSION, fingerprintEnvironment, repositoryState, sha256 } from "../experiment/manifest";
 import {
   captureDiff,
   cleanupWorkspace,
@@ -94,6 +96,14 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
   const judges = options.judges ?? [];
   const started = performance.now();
   const runBatchId = makeRunBatchId();
+  const createdAt = new Date().toISOString();
+  const experimentId = insertExperiment(db, {
+    schemaVersion: EXPERIMENT_SCHEMA_VERSION, createdAt, suite: { id: "model-prompt-tests-swe", version: "1" }, repository: repositoryState(process.cwd()),
+    tasks: tasks.map((task) => ({ id: task.id, sha256: sha256(JSON.stringify(task)) })).sort((a, b) => a.id.localeCompare(b.id)),
+    models: cells.map((cell) => ({ id: `${cell.harnessId}:${cell.modelAlias}`, provider: cell.harnessId, model: cell.modelAlias, immutableRevision: cell.harness.resolveModel(cell.modelAlias) })),
+    judges: judges.map((judge) => ({ id: judge.modelId, modelId: judge.modelId, sha256: sha256(judge.modelId) })), harness: { id: "swe", version: "1", config: { workspacesRoot, concurrency: defaultConcurrency } },
+    prompts: {}, limits: {}, toolPermissions: ["workspace-write"], plannedRepeats: repeats, exclusions: [], environment: fingerprintEnvironment({ executionDomain: process.env.BENCH_EXECUTION_DOMAIN ?? "interactive-lab", concurrency: defaultConcurrency }),
+  });
 
   let ok = 0;
   let errored = 0;
@@ -165,6 +175,7 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
         repeatIndex,
         kind: "swe",
         harnessId: cell.harnessId,
+        experimentId,
       });
       errored++;
       console.log(`[error] ${label}: ${message}`);
@@ -212,6 +223,7 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
       const verify = await runVerify(task, workspaceDir);
 
       const runId = insertRun(db, {
+        experimentId,
         runBatchId,
         promptId: task.id,
         providerId: cell.harnessId,
@@ -288,6 +300,7 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       const runId = insertRun(db, {
+        experimentId,
         runBatchId,
         promptId: task.id,
         providerId: cell.harnessId,
@@ -368,6 +381,7 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
     const runStatus = matcherRequiredAndFailed ? "error" : "ok";
 
     const runId = insertRun(db, {
+      experimentId,
       runBatchId,
       promptId: task.id,
       providerId: cell.harnessId,

@@ -1,3 +1,10 @@
+CREATE TABLE IF NOT EXISTS experiments (
+  id             TEXT PRIMARY KEY,
+  schema_version INTEGER NOT NULL,
+  manifest_json  TEXT NOT NULL,
+  created_at     TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS runs (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   run_batch_id  TEXT NOT NULL,
@@ -17,7 +24,8 @@ CREATE TABLE IF NOT EXISTS runs (
   kind          TEXT NOT NULL DEFAULT 'prompt' CHECK (kind IN ('prompt', 'swe')),
   harness_id    TEXT,
   stop_reason   TEXT,
-  cost_usd      REAL
+  cost_usd      REAL,
+  experiment_id TEXT REFERENCES experiments(id)
 );
 
 CREATE TABLE IF NOT EXISTS swe_results (
@@ -67,7 +75,8 @@ CREATE TABLE IF NOT EXISTS scores (
   error            TEXT,
   status           TEXT NOT NULL CHECK (status IN ('ok', 'error')),
   dimension_scores TEXT,
-  weighted_score   REAL
+  weighted_score   REAL,
+  experiment_id    TEXT REFERENCES experiments(id)
 );
 
 CREATE TABLE IF NOT EXISTS peer_ranks (
@@ -87,7 +96,8 @@ CREATE TABLE IF NOT EXISTS peer_ranks (
   cost_usd           REAL,
   status             TEXT NOT NULL CHECK (status IN ('ok', 'error')),
   error              TEXT,
-  ranked_at          TEXT NOT NULL
+  ranked_at          TEXT NOT NULL,
+  experiment_id      TEXT REFERENCES experiments(id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_runs_prompt ON runs(prompt_id);
@@ -110,7 +120,8 @@ CREATE TABLE IF NOT EXISTS syntheses (
   cost_usd           REAL,
   status             TEXT NOT NULL CHECK (status IN ('ok', 'error')),
   error              TEXT,
-  synthesized_at     TEXT NOT NULL
+  synthesized_at     TEXT NOT NULL,
+  experiment_id      TEXT REFERENCES experiments(id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_peer_ranks_batch ON peer_ranks(run_batch_id);
@@ -126,7 +137,8 @@ CREATE TABLE IF NOT EXISTS tool_probe_results (
   valid_args     INTEGER NOT NULL DEFAULT 0,
   called_tool    TEXT,
   arguments_raw  TEXT,
-  notes          TEXT
+  notes          TEXT,
+  experiment_id  TEXT REFERENCES experiments(id)
 );
 CREATE INDEX IF NOT EXISTS idx_tool_probe_results_run ON tool_probe_results(run_id);
 CREATE INDEX IF NOT EXISTS idx_syntheses_batch ON syntheses(run_batch_id);

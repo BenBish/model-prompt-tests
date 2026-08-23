@@ -14,6 +14,8 @@ import { querySynthesisReportData } from "../synthesize/reportData";
 import { renderSynthesisHtmlSection } from "../synthesize/renderSection";
 import { querySweReportData, type SweSummary } from "../swe/sweReportData";
 import { renderSweReportSection } from "../swe/renderSweSection";
+import { getExperimentForBatch } from "../db/experimentsRepo";
+import { publicationIssues, redactManifest } from "../experiment/manifest";
 
 const NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
@@ -347,6 +349,11 @@ export async function exportBatch(options: ExportBatchOptions): Promise<ExportBa
   mkdirSync(options.outDir, { recursive: true });
 
   const rawRows = buildRawExportRows(data);
+  const experiment = getExperimentForBatch(options.db, options.runBatchId);
+  if (experiment) {
+    const issues = publicationIssues(experiment.manifest);
+    if (issues.length > 0) throw new Error(`experiment is not publication-eligible: ${issues.join("; ")}`);
+  }
   const sitePayload: SitePayload = {
     name: options.name,
     runBatchId: options.runBatchId,
@@ -359,6 +366,7 @@ export async function exportBatch(options: ExportBatchOptions): Promise<ExportBa
   const summaryJson = sweData.summaries.length ? { prompt: data.summaries, swe: sweData.summaries } : data.summaries;
 
   const files: { path: string; content: string }[] = [
+    { path: "experiment-manifest.json", content: experiment ? `${JSON.stringify(redactManifest(experiment.manifest), null, 2)}\n` : `${JSON.stringify({ provenance: "missing", legacy: true }, null, 2)}\n` },
     { path: "summary.json", content: `${JSON.stringify(summaryJson, null, 2)}\n` },
     { path: "raw-outputs-and-scores.json", content: `${JSON.stringify(rawRows, null, 2)}\n` },
     { path: "per-prompt-results.md", content: buildPerPromptResultsMd(data) },
