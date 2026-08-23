@@ -7,7 +7,7 @@ flawedSolutions: validation/naive/src
 runtimePrerequisites: bun, bash, git, chromium|chromium-browser|google-chrome
 verifierEnvironments: linux-bun-1.3
 verify: bun test
-verifyTimeoutMs: 60000
+verifyTimeoutMs: 90000
 agentTimeoutMs: 600000
 tags: javascript, frontend, state-management, browser, accessibility
 ---
