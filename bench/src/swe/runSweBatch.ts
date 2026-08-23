@@ -135,6 +135,9 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
   }
 
   async function executeCell(task: SweTask, cell: SweRunnerCell, repeatIndex: number): Promise<void> {
+    const healthValidated = task.lifecycle === "active" &&
+      task.healthEnvironmentFingerprint === verifierEnvironmentFingerprint() &&
+      typeof task.healthValidatedAt === "string";
     const startedAt = new Date().toISOString();
     const modelId = `${cell.harnessId}:${cell.modelAlias}`;
     const label = `${task.id} x ${modelId}${repeats > 1 ? ` (repeat ${repeatIndex + 1}/${repeats})` : ""}`;
@@ -252,10 +255,10 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
         serverPredictedSeconds: metricsDelta?.predictedSeconds,
         taskLifecycle: task.lifecycle,
         graderVersion: task.graderVersion,
-        healthStatus: "healthy",
+        healthStatus: healthValidated ? "healthy" : "unvalidated",
         environmentFingerprint: task.healthEnvironmentFingerprint ?? verifierEnvironmentFingerprint(),
         healthValidatedAt: task.healthValidatedAt,
-        publicationStatus: "comparable",
+        publicationStatus: healthValidated ? "comparable" : "quarantined",
       });
 
       ok++;

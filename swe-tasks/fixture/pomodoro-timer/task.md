@@ -4,7 +4,7 @@ lifecycle: active
 graderVersion: 2.0.0
 oracleSolution: validation/reference/src
 flawedSolutions: validation/naive/src
-runtimePrerequisites: bun, bash, git
+runtimePrerequisites: bun, bash, git, chromium|chromium-browser|google-chrome
 verifierEnvironments: linux-bun-1.3
 verify: bun test
 verifyTimeoutMs: 60000

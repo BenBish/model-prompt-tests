@@ -20,7 +20,9 @@ export function verifierEnvironmentName(): string {
 }
 
 export function missingPrerequisites(task: SweTask): string[] {
-  return (task.runtimePrerequisites ?? []).filter((name) => Bun.which(name) === null);
+  return (task.runtimePrerequisites ?? []).filter((declaration) =>
+    declaration.split("|").every((name) => Bun.which(name) === null),
+  );
 }
 
 export function assessValidationRuns(

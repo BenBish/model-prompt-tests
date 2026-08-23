@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { assessValidationRuns, isComparableTask } from "./taskHealth";
+import { assessValidationRuns, isComparableTask, missingPrerequisites } from "./taskHealth";
 import type { SweTask } from "./taskSpec";
 import type { VerifyResult } from "./workspace";
 
@@ -30,5 +30,10 @@ describe("task health", () => {
     const record = assessValidationRuns(task, [], [], ["podman"]);
     expect(record.status).toBe("infrastructure-failure");
     expect(isComparableTask(task, record)).toBe(false);
+  });
+
+  test("accepts alternative runtime prerequisites when any executable exists", () => {
+    const withAlternatives = { ...task, runtimePrerequisites: ["definitely-missing-command|bun"] };
+    expect(missingPrerequisites(withAlternatives)).toEqual([]);
   });
 });
