@@ -128,10 +128,9 @@ describe("model config", () => {
     const loaded = await loadModelsConfig(repoRoot);
 
     expect(loaded.config.models.some((model) => model.id === "openai:test")).toBe(true);
-    expect(
-      loaded.config.models.find((model) => model.id === "openai:test" && model.kind === "openai-compatible")
-        ?.reasoningEffort,
-    ).toBe("medium");
+    const openAiModel = loaded.config.models.find((model) => model.id === "openai:test");
+    expect(openAiModel?.kind).toBe("openai-compatible");
+    expect(openAiModel?.kind === "openai-compatible" ? openAiModel.reasoningEffort : undefined).toBe("medium");
     expect(loaded.config.judge.modelId).toBe("openai:test");
   });
 });

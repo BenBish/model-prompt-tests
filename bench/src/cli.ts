@@ -51,7 +51,7 @@ function usage(): void {
   console.log(`Usage:
   bun bench/src/cli.ts run <prompt-glob-or-all|calibration> [--models id1,id2] [--judge <id>] [--judges id1,id2] [--concurrency <n>] [--repeats <n>] [--dry-run] [--no-judge] [--peer-rank] [--synthesize] [--chairman <id>]
   bun bench/src/cli.ts synthesize (--batch <run_batch_id> | --latest) [--prompts id1,id2] [--chairman <id>] [--dry-run]
-  bun bench/src/cli.ts calibrate [--batch <run_batch_id>] [--all-runs] [--human <file.json>] [--out <path>] [--subset]
+  bun bench/src/cli.ts calibrate [--batch <run_batch_id>] [--all-runs] [--human <file.json>] [--anchors <corpus.json> --evidence <evidence.json>] [--out <path>] [--subset]
   bun bench/src/cli.ts report [--out <path>] [--batch <run_batch_id>] [--all-runs] [--narrative] [--judge <id>]
   bun bench/src/cli.ts report --compare <batchA> --compare <batchB> [--out <path>]
   bun bench/src/cli.ts export --name <slug> (--batch <run_batch_id> | --latest)
@@ -821,6 +821,8 @@ async function main(): Promise<void> {
           human: { type: "string" },
           out: { type: "string" },
           subset: { type: "boolean" },
+          anchors: { type: "string" },
+          evidence: { type: "string" },
         },
       });
       await cmdCalibrate(REPO_ROOT, values);

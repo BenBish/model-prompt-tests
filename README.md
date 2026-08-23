@@ -62,6 +62,7 @@ Judgment, tool-call restraint, and persona tests for a local EA agent (Freddy / 
 
 - [llm-council spike (BSH-149)](docs/llm-council-spike.md) — phased recommendation on multi-model deliberation (parallel answers, peer ranking, chairman synthesis) for this lab.
 - [Peer-rank vs multi-judge calibration (BSH-151)](docs/peer-rank-calibration.md) — ranks stay a side signal; do not blend into `avgScore` headlines.
+- [Human/judge anchor calibration (BSH-189)](docs/human-judge-calibration.md) — recurring human evidence and fail-closed publication status.
 - [Chairman synthesis (BSH-150)](docs/chairman-synthesis.md) — optional “best combined answer” mode; not a leaderboard score.
 - [DeepSeek V4 Flash vs Pro (BSH-173)](benchmark-results/deepseek-v4-flash-vs-pro/article.md) — same-lineage comparison using multi-judge rubric headlines and peer ranks as a side signal.
 - [Ornith 1.5 vs Qwen3.6 SWE (BSH-207)](benchmark-results/ornith-15-vs-qwen36-swe/article.md) — reasoning-off `codex-lab` fixture suite with partial-credit scoring; hypothesis that Ornith is slower-but-better is refuted.

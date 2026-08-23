@@ -160,6 +160,9 @@ bun run bench run calibration --models id1,id2,id3 --judges j1,j2 --peer-rank
 bun run bench calibrate --batch <run_batch_id> --out docs/peer-rank-calibration.md
 bun run bench calibrate --subset
 bun run bench calibrate --batch <run_batch_id> --human path/to/labels.json --out docs/peer-rank-calibration.md
+
+# Human anchor gate (Markdown, JSON, or HTML by output extension)
+bun run bench calibrate --anchors bench/calibration/anchors-v1.json --evidence bench/calibration/reference-evidence-v1.json --out bench/calibration/reference-report.md
 ```
 
 - `--batch <run_batch_id>` — default: latest batch that has `peer_ranks` rows.

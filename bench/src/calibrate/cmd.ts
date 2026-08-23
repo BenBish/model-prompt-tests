@@ -5,6 +5,7 @@ import { CALIBRATION_PROMPT_IDS, calibrationCalibrateCommand, calibrationRunComm
 import { loadHumanLabels } from "./humanLabels";
 import { calibrateFromDb } from "./compare";
 import { renderCalibrationMarkdown } from "./renderReport";
+import { analyzeAnchors, loadJson, renderAnchorReport, type AnchorCorpus, type CalibrationEvidence } from "./anchors";
 
 export function printCalibrationSubset(): void {
   console.log("Calibration subset (BSH-151):");
@@ -20,6 +21,19 @@ export async function cmdCalibrate(
   repoRoot: string,
   values: Record<string, unknown>,
 ): Promise<void> {
+  if (typeof values.anchors === "string") {
+    const corpus = await loadJson<AnchorCorpus>(values.anchors);
+    const evidence = typeof values.evidence === "string" ? await loadJson<CalibrationEvidence>(values.evidence) : undefined;
+    const assessment = analyzeAnchors(corpus, evidence);
+    const markdown = renderAnchorReport(assessment);
+    const out = values.out;
+    if (typeof out === "string" && out.endsWith(".json")) await Bun.write(out, `${JSON.stringify(assessment, null, 2)}\n`);
+    else if (typeof out === "string" && out.endsWith(".html")) await Bun.write(out, `<!doctype html><meta charset="utf-8"><title>Calibration: ${assessment.status}</title><main data-calibration-status="${assessment.status}"><pre>${markdown.replaceAll("&", "&amp;").replaceAll("<", "&lt;")}</pre></main>`);
+    else if (typeof out === "string") await Bun.write(out, markdown);
+    else console.log(markdown);
+    if (!assessment.publicationEligible) process.exitCode = 2;
+    return;
+  }
   if (values.subset === true) {
     printCalibrationSubset();
     return;
