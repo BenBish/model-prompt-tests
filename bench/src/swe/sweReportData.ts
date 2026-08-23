@@ -1,10 +1,14 @@
 import type { Database } from "bun:sqlite";
 import { average, median, type JudgeReportRow } from "../report/queryData";
+import type { VerificationDetail } from "./verifyOutputParser";
+
+export type SweOutcomeCategory = "passed" | "candidate_failure" | "timeout" | "invalid_output" | "harness_error" | "verifier_error" | "judge_error";
 
 export interface SweReportRow {
   runId: number;
   runBatchId: string;
   taskId: string;
+  taskType: "fixture" | "external" | "code-review";
   harnessId: string;
   modelAlias: string;
   harnessModelId: string;
@@ -35,6 +39,9 @@ export interface SweReportRow {
   verifyTestsTotal?: number;
   /** verifyTestsPassed / verifyTestsTotal, distinct from verifyPassed (whole-run binary result). */
   verifyPassRate?: number;
+  verificationDetail?: VerificationDetail;
+  outcomeCategory?: SweOutcomeCategory;
+  publicationStatus: "comparable" | "quarantined";
   serverPromptTokens?: number;
   serverPromptSeconds?: number;
   serverPredictedTokens?: number;
@@ -59,6 +66,7 @@ export interface SweSummary {
   passedRuns: number;
   failedRuns: number;
   passRate?: number;
+  intentionToEvaluatePassRate?: number;
   cleanPassedRuns: number;
   verifiedTimedOutRuns: number;
   cleanPassRate?: number;
@@ -91,6 +99,17 @@ export interface SweSummary {
    * per-test counts (e.g. non-bun-test verify commands).
    */
   avgVerifyPassRate?: number;
+  /** Task-weighted first scheduled trial success rate. */
+  passAt1?: number;
+  /** Task-weighted fraction solved at least once across the observed repeats. */
+  repeatedTrialSolveRate?: number;
+  repeatsObserved: number;
+  intentionToEvaluateRuns: number;
+  infrastructureFailures: number;
+  candidateFailures: number;
+  invalidOutputs: number;
+  publicationBlockedRuns: number;
+  unstableTestCountTasks: number;
 }
 
 export interface SweReportData {
@@ -119,6 +138,7 @@ function rowToSweReportRow(row: any): SweReportRow {
     runId: row.id,
     runBatchId: row.run_batch_id,
     taskId: row.prompt_id,
+    taskType: row.task_type,
     harnessId,
     modelAlias,
     harnessModelId: row.model_id,
@@ -147,6 +167,9 @@ function rowToSweReportRow(row: any): SweReportRow {
     verifyTestsPassed,
     verifyTestsTotal,
     verifyPassRate: verifyTestsTotal ? verifyTestsPassed / verifyTestsTotal : undefined,
+    verificationDetail: row.verification_detail ? JSON.parse(row.verification_detail) : undefined,
+    outcomeCategory: row.outcome_category ?? undefined,
+    publicationStatus: row.publication_status ?? "quarantined",
     serverPromptTokens: row.server_prompt_tokens ?? undefined,
     serverPromptSeconds: row.server_prompt_seconds ?? undefined,
     serverPredictedTokens: row.server_predicted_tokens ?? undefined,
@@ -186,8 +209,12 @@ function selfScoresForSweRow(row: SweReportRow): number[] {
 function summarizeSwe(harnessModelIds: string[], rows: SweReportRow[]): SweSummary[] {
   return harnessModelIds.map((harnessModelId) => {
     const cellRows = rows.filter((row) => row.harnessModelId === harnessModelId);
-    const okRows = cellRows.filter((row) => row.runStatus === "ok");
-    const passedRuns = okRows.filter((row) => row.verifyPassed === true).length;
+    const comparableRows = cellRows.filter((row) => row.publicationStatus === "comparable");
+    const okRows = comparableRows.filter((row) => row.runStatus === "ok");
+    const infrastructure = new Set<SweOutcomeCategory>(["harness_error", "verifier_error", "judge_error"]);
+    const intentionRows = comparableRows.filter((row) => row.taskType !== "code-review" &&
+      (row.outcomeCategory ? !infrastructure.has(row.outcomeCategory) : row.runStatus === "ok"));
+    const passedRuns = intentionRows.filter((row) => row.verifyPassed === true || row.outcomeCategory === "passed").length;
     const failedRuns = okRows.filter((row) => row.verifyPassed === false).length;
     const verifiedTotal = passedRuns + failedRuns;
     const cleanPassedRuns = okRows.filter(
@@ -262,7 +289,22 @@ function summarizeSwe(harnessModelIds: string[], rows: SweReportRow[]): SweSumma
       row.reviewMetrics?.f1 === undefined ? [] : [row.reviewMetrics.f1],
     );
 
-    const verifyPassRates = okRows.flatMap((row) => (row.verifyPassRate === undefined ? [] : [row.verifyPassRate]));
+    const verifyPassRatesByTask = new Map<string, number[]>();
+    for (const row of okRows) if (row.verifyPassRate !== undefined) {
+      const rates = verifyPassRatesByTask.get(row.taskId) ?? []; rates.push(row.verifyPassRate); verifyPassRatesByTask.set(row.taskId, rates);
+    }
+    const taskVerifyPassRates = [...verifyPassRatesByTask.values()].flatMap((rates) => {
+      const value = average(rates); return value === undefined ? [] : [value];
+    });
+    const byTask = new Map<string, SweReportRow[]>();
+    for (const row of intentionRows) { const list = byTask.get(row.taskId) ?? []; list.push(row); byTask.set(row.taskId, list); }
+    const orderedTasks = [...byTask.values()].map((taskRows) => taskRows.sort((a, b) => a.repeatIndex - b.repeatIndex));
+    const passAt1 = average(orderedTasks.map((taskRows) => taskRows[0]!.verifyPassed === true ? 1 : 0));
+    const repeatedTrialSolveRate = average(orderedTasks.map((taskRows) => taskRows.some((row) => row.verifyPassed === true) ? 1 : 0));
+    const repeatsObserved = Math.max(0, ...orderedTasks.map((taskRows) => taskRows.length));
+    const unstableTestCountTasks = [...byTask.values()].filter((taskRows) =>
+      new Set(taskRows.flatMap((row) => row.verifyTestsTotal === undefined ? [] : [row.verifyTestsTotal])).size > 1,
+    ).length;
 
     return {
       harnessModelId,
@@ -272,6 +314,7 @@ function summarizeSwe(harnessModelIds: string[], rows: SweReportRow[]): SweSumma
       passedRuns,
       failedRuns,
       passRate: verifiedTotal > 0 ? passedRuns / verifiedTotal : undefined,
+      intentionToEvaluatePassRate: intentionRows.length > 0 ? passedRuns / intentionRows.length : undefined,
       cleanPassedRuns,
       verifiedTimedOutRuns,
       cleanPassRate: verifiedTotal > 0 ? cleanPassedRuns / verifiedTotal : undefined,
@@ -287,24 +330,34 @@ function summarizeSwe(harnessModelIds: string[], rows: SweReportRow[]): SweSumma
       avgPrecision: average(precisions),
       avgF1: average(f1s),
       reviewRuns: reviewRows.length,
-      avgVerifyPassRate: average(verifyPassRates),
+      avgVerifyPassRate: average(taskVerifyPassRates),
+      passAt1,
+      repeatedTrialSolveRate,
+      repeatsObserved,
+      intentionToEvaluateRuns: intentionRows.length,
+      infrastructureFailures: cellRows.filter((row) => row.outcomeCategory && infrastructure.has(row.outcomeCategory)).length,
+      candidateFailures: intentionRows.filter((row) => row.outcomeCategory === "candidate_failure" || row.outcomeCategory === "timeout").length,
+      invalidOutputs: intentionRows.filter((row) => row.outcomeCategory === "invalid_output").length,
+      publicationBlockedRuns: cellRows.length - comparableRows.length,
+      unstableTestCountTasks,
     };
   });
 }
 
 export function querySweReportData(db: Database, options: QuerySweOptions = {}): SweReportData {
   let sql = `
-    SELECT runs.*, swe_results.workdir, swe_results.baseline_sha, swe_results.diff_patch,
+    SELECT runs.*, swe_results.task_type, swe_results.workdir, swe_results.baseline_sha, swe_results.diff_patch,
            swe_results.files_changed, swe_results.lines_added, swe_results.lines_removed,
            swe_results.transcript, swe_results.agent_exit_code, swe_results.agent_timed_out,
            swe_results.verify_command, swe_results.verify_exit_code, swe_results.verify_passed,
            swe_results.verify_output, swe_results.verify_duration_ms, swe_results.review_metrics,
            swe_results.server_prompt_tokens, swe_results.server_prompt_seconds,
            swe_results.server_predicted_tokens, swe_results.server_predicted_seconds,
-           swe_results.verify_tests_passed, swe_results.verify_tests_total
+           swe_results.verify_tests_passed, swe_results.verify_tests_total,
+           swe_results.verification_detail, swe_results.outcome_category, swe_results.publication_status
     FROM runs
     LEFT JOIN swe_results ON swe_results.run_id = runs.id
-    WHERE runs.kind = 'swe' AND swe_results.publication_status = 'comparable'
+    WHERE runs.kind = 'swe'
   `;
   const params: Record<string, string> = {};
   if (options.runBatchId) {
@@ -345,8 +398,17 @@ export function querySweReportData(db: Database, options: QuerySweOptions = {}):
     row.judgeResults = scoresByRun.get(row.runId) ?? [];
   }
 
+  const latestBatchByCell = new Map<string, string>();
+  for (const row of allRows) latestBatchByCell.set(`${row.taskId}\0${row.harnessModelId}`, row.runBatchId);
+  const selectedRows = options.allRuns || options.runBatchId
+    ? allRows
+    : allRows.filter((row) => latestBatchByCell.get(`${row.taskId}\0${row.harnessModelId}`) === row.runBatchId);
+
   const grouped = new Map<string, Map<string, SweReportRow[]>>();
-  for (const row of allRows) {
+  for (const row of selectedRows) {
+    // Quarantined evidence contributes only to publication-blocking/reliability counts,
+    // never task details or correctness headlines.
+    if (row.publicationStatus !== "comparable") continue;
     let byModel = grouped.get(row.taskId);
     if (!byModel) {
       byModel = new Map();
@@ -357,26 +419,13 @@ export function querySweReportData(db: Database, options: QuerySweOptions = {}):
     byModel.set(row.harnessModelId, list);
   }
 
-  if (!options.allRuns) {
-    for (const byModel of grouped.values()) {
-      for (const [harnessModelId, list] of byModel) {
-        const latestBatchId = list[list.length - 1]!.runBatchId;
-        byModel.set(
-          harnessModelId,
-          list.filter((row) => row.runBatchId === latestBatchId),
-        );
-      }
-    }
-  }
-
   const taskIds = [...grouped.keys()].sort();
   const harnessModelIdSet = new Set<string>();
+  for (const row of selectedRows) harnessModelIdSet.add(row.harnessModelId);
   for (const byModel of grouped.values()) {
     for (const harnessModelId of byModel.keys()) harnessModelIdSet.add(harnessModelId);
   }
   const harnessModelIds = [...harnessModelIdSet].sort();
 
-  const flatRows = [...grouped.values()].flatMap((byModel) => [...byModel.values()].flatMap((rows) => rows));
-
-  return { taskIds, harnessModelIds, rows: grouped, summaries: summarizeSwe(harnessModelIds, flatRows) };
+  return { taskIds, harnessModelIds, rows: grouped, summaries: summarizeSwe(harnessModelIds, selectedRows) };
 }

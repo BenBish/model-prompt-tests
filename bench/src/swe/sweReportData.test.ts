@@ -39,7 +39,9 @@ describe("querySweReportData", () => {
     insertSweResult(db, { runId: quarantined, taskType: "fixture", verifyPassed: true, publicationStatus: "quarantined" });
     const data = querySweReportData(db, { allRuns: true });
     expect(data.taskIds).toEqual(["swe-tasks/fixture/smoke"]);
-    expect(data.summaries[0]?.totalRuns).toBe(1);
+    expect(data.summaries[0]?.totalRuns).toBe(2);
+    expect(data.summaries[0]?.passedRuns).toBe(1);
+    expect(data.summaries[0]?.publicationBlockedRuns).toBe(1);
   });
 
   test("splits model_id into harnessId/modelAlias and excludes prompt-kind runs", () => {
@@ -296,5 +298,43 @@ describe("querySweReportData", () => {
     const summary = data.summaries.find((s) => s.harnessModelId === "claude-code:haiku")!;
     expect(summary.avgJudgeScore).toBe(2);
     expect(summary.selfScoreAvg).toBe(5);
+  });
+
+  test("uses task-weighted repeats and keeps candidate outcomes in the ITT denominator", () => {
+    const db = createDb();
+    const cases = [
+      { task: "task-a", repeat: 0, outcome: "candidate_failure" as const, passed: false, testsPassed: 99, testsTotal: 100 },
+      { task: "task-a", repeat: 1, outcome: "passed" as const, passed: true, testsPassed: 100, testsTotal: 100 },
+      { task: "task-b", repeat: 0, outcome: "timeout" as const, passed: false, testsPassed: 0, testsTotal: 1 },
+      { task: "task-b", repeat: 1, outcome: "invalid_output" as const, passed: false, testsPassed: 0, testsTotal: 1 },
+    ];
+    for (const item of cases) {
+      const runId = insertSweRun(db, { promptId: item.task, repeatIndex: item.repeat });
+      insertSweResult(db, { runId, taskType: "fixture", verifyPassed: item.passed, outcomeCategory: item.outcome,
+        verifyTestsPassed: item.testsPassed, verifyTestsTotal: item.testsTotal });
+    }
+    const infra = insertSweRun(db, { promptId: "task-b", repeatIndex: 2, status: "error" });
+    insertSweResult(db, { runId: infra, taskType: "fixture", outcomeCategory: "verifier_error" });
+    const summary = querySweReportData(db, { allRuns: true }).summaries[0]!;
+    expect(summary.intentionToEvaluateRuns).toBe(4);
+    expect(summary.intentionToEvaluatePassRate).toBe(0.25);
+    expect(summary.passAt1).toBe(0);
+    expect(summary.repeatedTrialSolveRate).toBe(0.5);
+    expect(summary.infrastructureFailures).toBe(1);
+    // Per-run fractions are first averaged within each task, then equally across tasks.
+    expect(summary.avgVerifyPassRate).toBeCloseTo((0.995 + 0) / 2, 5);
+  });
+
+  test("keeps code-review tasks out of objective correctness and counts blocked infrastructure", () => {
+    const db = createDb();
+    const review = insertSweRun(db, { promptId: "review-task" });
+    insertSweResult(db, { runId: review, taskType: "code-review", outcomeCategory: "passed" });
+    const harnessError = insertSweRun(db, { promptId: "broken-task", status: "error" });
+    insertSweResult(db, { runId: harnessError, taskType: "fixture", outcomeCategory: "harness_error", publicationStatus: "quarantined" });
+    const summary = querySweReportData(db, { allRuns: true }).summaries[0]!;
+    expect(summary.intentionToEvaluateRuns).toBe(0);
+    expect(summary.passAt1).toBeUndefined();
+    expect(summary.infrastructureFailures).toBe(1);
+    expect(summary.publicationBlockedRuns).toBe(1);
   });
 });

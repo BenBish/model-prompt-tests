@@ -261,6 +261,14 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
         verifyDurationMs: Math.round(verify.durationMs),
         verifyTestsPassed: verify.testsPassed,
         verifyTestsTotal: verify.testsTotal,
+        verificationDetail: verify.detail,
+        outcomeCategory: verify.timedOut
+          ? "verifier_error"
+          : agentResult.timedOut
+            ? "timeout"
+            : !agentResult.finalMessage.trim() && agentResult.exitCode !== 0
+              ? "invalid_output"
+              : verify.passed ? "passed" : "candidate_failure",
         serverPromptTokens: metricsDelta?.promptTokens,
         serverPromptSeconds: metricsDelta?.promptSeconds,
         serverPredictedTokens: metricsDelta?.predictedTokens,
@@ -291,7 +299,7 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      insertRun(db, {
+      const runId = insertRun(db, {
         experimentId,
         runBatchId,
         promptId: task.id,
@@ -304,6 +312,15 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
         repeatIndex,
         kind: "swe",
         harnessId: cell.harnessId,
+      });
+      insertSweResult(db, {
+        runId,
+        taskType: task.type,
+        error: message,
+        outcomeCategory: "harness_error",
+        taskLifecycle: task.lifecycle,
+        graderVersion: task.graderVersion,
+        publicationStatus: "quarantined",
       });
       errored++;
       console.log(`[error] ${label}: ${message}`);
@@ -400,6 +417,7 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
       // No verify step for code-review; pass/fail is undefined.
       reviewMetrics,
       error: matcherError,
+      outcomeCategory: matcherError ? "judge_error" : agentResult.timedOut ? "timeout" : "passed",
       serverPromptTokens: metricsDelta?.promptTokens,
       serverPromptSeconds: metricsDelta?.promptSeconds,
       serverPredictedTokens: metricsDelta?.predictedTokens,

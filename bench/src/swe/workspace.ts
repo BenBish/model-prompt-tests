@@ -4,7 +4,7 @@ import { dirname } from "node:path";
 import { buildHarnessEnv } from "./harness/env";
 import { runCommand } from "./harness/runCommand";
 import type { FixtureSweTask } from "./taskSpec";
-import { parseBunTestSummary } from "./verifyOutputParser";
+import { parseVerificationOutput, type VerificationDetail } from "./verifyOutputParser";
 
 const DEFAULT_SETUP_TIMEOUT_MS = 120_000;
 const MAX_VERIFY_OUTPUT_BYTES = 64 * 1024;
@@ -197,6 +197,7 @@ export interface VerifyResult {
   durationMs: number;
   testsPassed?: number;
   testsTotal?: number;
+  detail?: VerificationDetail;
 }
 
 function tail(text: string, maxBytes: number): string {
@@ -215,7 +216,7 @@ export async function runVerify(task: VerifiableTask, workspaceDir: string): Pro
   });
 
   const combinedOutput = `${result.stdout}\n${result.stderr}`.trim();
-  const testCounts = result.timedOut ? undefined : parseBunTestSummary(task.verify, combinedOutput);
+  const verification = result.timedOut ? undefined : parseVerificationOutput(task.verify, combinedOutput);
 
   return {
     command: task.verify,
@@ -224,8 +225,9 @@ export async function runVerify(task: VerifiableTask, workspaceDir: string): Pro
     timedOut: result.timedOut,
     output: tail(combinedOutput, MAX_VERIFY_OUTPUT_BYTES),
     durationMs: result.latencyMs,
-    testsPassed: testCounts?.testsPassed,
-    testsTotal: testCounts?.testsTotal,
+    testsPassed: verification?.passed,
+    testsTotal: verification?.total,
+    detail: verification,
   };
 }
 

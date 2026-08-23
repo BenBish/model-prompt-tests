@@ -108,11 +108,17 @@ function renderSweSummaryRows(summaries: SweSummary[]): string {
         <tr>
           <th>${escapeHtml(summary.harnessModelId)}</th>
           <td>${summary.totalRuns}</td>
+          <td>${summary.intentionToEvaluateRuns}</td>
+          <td>${formatPercent(summary.passAt1)}</td>
+          <td>${formatPercent(summary.repeatedTrialSolveRate)}</td>
+          <td>${summary.repeatsObserved}</td>
+          <td>${summary.infrastructureFailures}</td>
+          <td>${summary.publicationBlockedRuns}</td>
           <td>${summary.okRuns}</td>
           <td>${summary.errorRuns}</td>
           <td>${summary.passedRuns}</td>
           <td>${summary.failedRuns}</td>
-          <td>${formatPercent(summary.passRate)}</td>
+          <td>${formatPercent(summary.intentionToEvaluatePassRate)}</td>
           <td>${summary.cleanPassedRuns}</td>
           <td>${summary.verifiedTimedOutRuns}</td>
           <td>${formatPercent(summary.cleanPassRate)}</td>
@@ -134,15 +140,15 @@ function renderSweSummaryRows(summaries: SweSummary[]): string {
 }
 
 export function renderSweAssessmentSection(data: SweReportData): string {
-  if (data.taskIds.length === 0) return "";
+  if (data.summaries.length === 0) return "";
 
   const header =
-    "| Harness:Model | Total | OK | Errors | Verify passed | Verify failed | Verify rate | Clean passed | Verified after timeout | Clean pass rate | Avg test pass % | Avg judge | Median judge | Avg recall | Avg precision | Avg F1 | Avg agent ms | Decode tok/s | Prompt tok/s | Avg diff lines | Timeouts |\n" +
-    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |";
+    "| Harness:Model | Scheduled | ITT trials | Pass@1 | Repeated solve | Repeats | Infra failures | Publication blocked | OK | Errors | Verify passed | Verify failed | ITT pass rate | Clean passed | Verified after timeout | Clean pass rate | Task-weighted test pass % | Secondary avg judge | Secondary median judge | Avg recall | Avg precision | Avg F1 | Avg agent ms | Decode tok/s | Prompt tok/s | Avg diff lines | Timeouts |\n" +
+    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |";
   const rows = data.summaries.map(
     (summary) =>
-      `| \`${summary.harnessModelId}\` | ${summary.totalRuns} | ${summary.okRuns} | ${summary.errorRuns} | ` +
-      `${summary.passedRuns} | ${summary.failedRuns} | ${formatPercent(summary.passRate)} | ` +
+      `| \`${summary.harnessModelId}\` | ${summary.totalRuns} | ${summary.intentionToEvaluateRuns} | ${formatPercent(summary.passAt1)} | ${formatPercent(summary.repeatedTrialSolveRate)} | ${summary.repeatsObserved} | ${summary.infrastructureFailures} | ${summary.publicationBlockedRuns} | ${summary.okRuns} | ${summary.errorRuns} | ` +
+      `${summary.passedRuns} | ${summary.failedRuns} | ${formatPercent(summary.intentionToEvaluatePassRate)} | ` +
       `${summary.cleanPassedRuns} | ${summary.verifiedTimedOutRuns} | ${formatPercent(summary.cleanPassRate)} | ` +
       `${formatPercent(summary.avgVerifyPassRate)} | ` +
       `${formatNumber(summary.avgJudgeScore)} | ${formatNumber(summary.medianJudgeScore)} | ` +
@@ -168,9 +174,10 @@ export function renderSweAssessmentSection(data: SweReportData): string {
     [
       "### Metric notes",
       "",
-      "- **Verify rate** is binary: the fraction of runs where the whole verify command exited 0.",
-      "- **Avg test pass %** is partial credit: the mean fraction of individual hidden/visible tests passed per run, parsed from `bun test`'s summary. It stays informative even when every run in a cell fails Verify rate outright, and reads as `—` for any verify command other than `bun test`.",
-      "- **Avg/median judge** measures process and code quality on top of a verify result that's already known — it does not re-derive correctness, so don't read a high judge score as evidence a failing run actually worked.",
+      "- **ITT pass rate** includes every scheduled candidate trial (candidate failure, invalid output, and timeout); harness/verifier/judge infrastructure failures are separated.",
+      "- **Pass@1** is the task-weighted result of the first scheduled trial. **Repeated solve** is the observed task-weighted fraction solved at least once across repeats; it is not the independent-sampling estimator `1-(1-p)^k` because repeated agent trials may be correlated.",
+      "- **Task-weighted test pass %** averages each run's structured verifier fraction without pooling subtests, so test-heavy tasks cannot dominate. Bun, TAP, JUnit, JSON, and pytest are supported; exit-code-only tasks remain binary.",
+      "- **Avg/median judge** is a secondary process/code-quality signal and never overrides objective correctness.",
     ].join("\n"),
   );
   if (data.summaries.some((s) => s.reviewRuns > 0)) {
@@ -193,7 +200,7 @@ export function renderSweAssessmentSection(data: SweReportData): string {
 
 /** Returns an HTML fragment (no <html>/<body>) to embed inside the main report, or "" if there's no SWE data. */
 export function renderSweReportSection(data: SweReportData): string {
-  if (data.taskIds.length === 0) return "";
+  if (data.summaries.length === 0) return "";
 
   const headerCells = data.harnessModelIds.map((id) => `<th>${escapeHtml(id)}</th>`).join("");
   const bodyRows = data.taskIds
@@ -205,7 +212,7 @@ export function renderSweReportSection(data: SweReportData): string {
     .join("");
 
   const metricNotesParts = [
-    `<p class="muted"><b>Verify rate</b> is binary (whole run passed or not). <b>Avg test pass %</b> is partial credit — the mean fraction of individual hidden/visible tests passed per run (parsed from <code>bun test</code>'s summary; shows as "—" for other verify commands) — so it can separate models that tie on Verify rate. <b>Judge score</b> rates process/quality on top of an already-known verify result; it does not re-derive correctness.</p>`,
+    `<p class="muted"><b>Objective correctness is primary.</b> ITT pass rate keeps candidate failures, invalid output, and timeouts in the denominator. Pass@1 is task-weighted first-trial correctness; repeated solve is the observed fraction of tasks solved at least once (repeats are not assumed independent). Infrastructure failures and quarantined evidence are separate. Structured partial credit supports Bun, TAP, JUnit, JSON, and pytest without pooling subtests across tasks. <b>Judge scores are secondary</b> quality signals.</p>`,
   ];
   if (data.summaries.some((s) => s.reviewRuns > 0)) {
     metricNotesParts.push(
@@ -222,17 +229,23 @@ export function renderSweReportSection(data: SweReportData): string {
       <tr>
         <th>Harness:Model</th>
         <th>Total</th>
+        <th>ITT trials</th>
+        <th>Pass@1</th>
+        <th>Repeated solve</th>
+        <th>Repeats</th>
+        <th>Infra failures</th>
+        <th>Publication blocked</th>
         <th>OK</th>
         <th>Errors</th>
         <th>Verify passed</th>
         <th>Verify failed</th>
-        <th>Verify rate</th>
+        <th>ITT pass rate</th>
         <th>Clean passed</th>
         <th>Verified after timeout</th>
         <th>Clean pass rate</th>
-        <th>Avg test pass %</th>
-        <th>Avg judge score</th>
-        <th>Median judge score</th>
+        <th>Avg test pass % (task-weighted)</th>
+        <th>Secondary avg judge</th>
+        <th>Secondary median judge</th>
         <th>Avg recall</th>
         <th>Avg precision</th>
         <th>Avg F1</th>
@@ -248,7 +261,7 @@ export function renderSweReportSection(data: SweReportData): string {
   <h2>SWE Task Details</h2>
   <table>
     <thead><tr><th>Task</th>${headerCells}</tr></thead>
-    <tbody>${bodyRows}</tbody>
+    <tbody>${bodyRows || `<tr><td colspan="${data.harnessModelIds.length + 1}">No comparable task details; evidence is quarantined or publication-blocking.</td></tr>`}</tbody>
   </table>
   `;
 }

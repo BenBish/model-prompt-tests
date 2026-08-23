@@ -396,8 +396,10 @@ async function cmdReportCompare(values: Record<string, unknown>): Promise<void> 
   }
   const dataBefore = queryReportData(db, { runBatchId: batchBefore, allRuns: true });
   const dataAfter = queryReportData(db, { runBatchId: batchAfter, allRuns: true });
-  if (dataBefore.promptIds.length === 0) throw new Error(`no runs found for batch "${batchBefore}"`);
-  if (dataAfter.promptIds.length === 0) throw new Error(`no runs found for batch "${batchAfter}"`);
+  const sweBefore = querySweReportData(db, { runBatchId: batchBefore, allRuns: true });
+  const sweAfter = querySweReportData(db, { runBatchId: batchAfter, allRuns: true });
+  if (dataBefore.promptIds.length === 0 && sweBefore.taskIds.length === 0) throw new Error(`no runs found for batch "${batchBefore}"`);
+  if (dataAfter.promptIds.length === 0 && sweAfter.taskIds.length === 0) throw new Error(`no runs found for batch "${batchAfter}"`);
 
   const html = renderCompareHtml(
     batchBefore,
@@ -405,6 +407,7 @@ async function cmdReportCompare(values: Record<string, unknown>): Promise<void> 
     batchAfter,
     dataAfter.summaries,
     new Date().toISOString(),
+    { before: sweBefore.summaries, after: sweAfter.summaries },
   );
   const outPath =
     (values.out as string | undefined) ?? `${REPORTS_DIR}/compare-${batchBefore}-vs-${batchAfter}.html`;
@@ -531,14 +534,17 @@ async function cmdReport(values: Record<string, unknown>): Promise<void> {
     peerRankAssessmentSection,
     synthesisAssessmentSection,
   );
+  const summaryJson = sweData.summaries.length > 0
+    ? { prompt: data.summaries, swe: sweData.summaries }
+    : data.summaries;
 
   // Write the deterministic outputs first: they're fully computable from the local DB and
   // should never be lost because an optional, network-dependent narrative call failed.
   await Bun.write(outPath, html);
-  await Bun.write(summaryPath, `${JSON.stringify(data.summaries, null, 2)}\n`);
+  await Bun.write(summaryPath, `${JSON.stringify(summaryJson, null, 2)}\n`);
   await Bun.write(assessmentPath, assessment);
   await Bun.write(`${REPORTS_DIR}/latest.html`, html);
-  await Bun.write(`${REPORTS_DIR}/latest.summary.json`, `${JSON.stringify(data.summaries, null, 2)}\n`);
+  await Bun.write(`${REPORTS_DIR}/latest.summary.json`, `${JSON.stringify(summaryJson, null, 2)}\n`);
   await Bun.write(`${REPORTS_DIR}/latest.assessment.md`, assessment);
 
   console.log(`Report written to ${outPath}`);

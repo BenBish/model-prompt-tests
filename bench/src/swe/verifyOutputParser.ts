@@ -1,25 +1,80 @@
-const BUN_TEST_COMMAND = /^bun\s+test\b/;
-const PASS_LINE = /^\s*(\d+)\s+pass\b/m;
-const FAIL_LINE = /^\s*(\d+)\s+fail\b/m;
-
-export interface TestCounts {
-  testsPassed: number;
-  testsTotal: number;
+export type VerifierFormat = "bun" | "tap" | "junit" | "json" | "pytest";
+export interface VerificationGroup { passed: number; failed: number; skipped?: number; }
+export interface VerificationDetail extends VerificationGroup {
+  format: VerifierFormat; total: number; visible?: VerificationGroup; hidden?: VerificationGroup;
+  failureCategories: string[];
 }
-
-/**
- * Parses bun test's trailing text summary (e.g. " 3 pass\n 6 fail\n...") into pass/total counts.
- * Only bun test output is currently supported; other verify commands return undefined so callers
- * degrade gracefully to the binary pass/fail signal.
- */
-export function parseBunTestSummary(command: string, output: string): TestCounts | undefined {
-  if (!BUN_TEST_COMMAND.test(command.trim())) return undefined;
-
-  const passMatch = output.match(PASS_LINE);
-  const failMatch = output.match(FAIL_LINE);
-  if (!passMatch && !failMatch) return undefined;
-
-  const testsPassed = passMatch ? Number(passMatch[1]) : 0;
-  const testsFailed = failMatch ? Number(failMatch[1]) : 0;
-  return { testsPassed, testsTotal: testsPassed + testsFailed };
+function detail(format: VerifierFormat, passed: number, failed: number, skipped = 0,
+  extra: Partial<VerificationDetail> = {}): VerificationDetail | undefined {
+  if (![passed, failed, skipped].every(Number.isFinite) || passed + failed + skipped <= 0) return undefined;
+  return { format, passed, failed, skipped, total: passed + failed + skipped, failureCategories: [], ...extra };
+}
+function parseBun(command: string, output: string): VerificationDetail | undefined {
+  if (!/(^|\s)bun\s+test\b/.test(command.trim().toLowerCase())) return undefined;
+  const passed = Number(output.match(/^\s*(\d+)\s+pass\b/m)?.[1] ?? 0);
+  const failed = Number(output.match(/^\s*(\d+)\s+fail\b/m)?.[1] ?? 0);
+  const skipped = Number(output.match(/^\s*(\d+)\s+skip\b/m)?.[1] ?? 0);
+  return detail("bun", passed, failed, skipped);
+}
+function parsePytest(command: string, output: string): VerificationDetail | undefined {
+  if (!/(^|\s)(pytest|python\S*\s+-m\s+pytest)\b/.test(command.trim().toLowerCase())) return undefined;
+  const matches = [...output.matchAll(/(\d+)\s+(passed|failed|errors?|skipped|xfailed|xpassed)/gi)];
+  if (!matches.length) return undefined;
+  let passed = 0, failed = 0, skipped = 0; const categories = new Set<string>();
+  for (const [, countText, raw] of matches) { const count = Number(countText), kind = raw!.toLowerCase();
+    if (kind === "passed" || kind === "xpassed") passed += count;
+    else if (kind === "skipped" || kind === "xfailed") skipped += count;
+    else { failed += count; categories.add(kind.startsWith("error") ? "error" : "assertion"); }
+  }
+  return detail("pytest", passed, failed, skipped, { failureCategories: [...categories] });
+}
+function parseTap(command: string, output: string): VerificationDetail | undefined {
+  if (!/\btap\b|node\s+--test/.test(command.toLowerCase()) && !/^TAP version \d+/m.test(output)) return undefined;
+  const lines = output.split(/\r?\n/).filter((line) => /^\s*(not )?ok\b/.test(line));
+  if (!lines.length) return undefined;
+  const failed = lines.filter((line) => /^\s*not ok\b/.test(line)).length;
+  const skipped = lines.filter((line) => /#\s*SKIP\b/i.test(line)).length;
+  return detail("tap", lines.length - failed - skipped, failed, skipped, { failureCategories: failed ? ["assertion"] : [] });
+}
+function parseJunit(command: string, output: string): VerificationDetail | undefined {
+  if (!/junit|surefire|mvn\s+test|gradle\w*\s+test/.test(command.toLowerCase()) && !/<testsuite\b/.test(output)) return undefined;
+  const aggregate = output.match(/<testsuites\b([^>]*)>/);
+  const attrValue = (attrs: string, name: string) => Number(attrs.match(new RegExp(`\\b${name}=["'](\\d+)`))?.[1] ?? 0);
+  if (aggregate) {
+    const attrs = aggregate[1]!; const total = attrValue(attrs, "tests");
+    const failed = attrValue(attrs, "failures") + attrValue(attrs, "errors"), skipped = attrValue(attrs, "skipped");
+    return detail("junit", total - failed - skipped, failed, skipped, { failureCategories: failed ? ["test-failure"] : [] });
+  }
+  const tokens = [...output.matchAll(/<testsuite\b([^>]*)>|<\/testsuite>/g)]; if (!tokens.length) return undefined;
+  const stack: Array<{ attrs: string; hasChild: boolean }> = []; const leafAttrs: string[] = [];
+  for (const token of tokens) {
+    if (token[1] !== undefined) { if (stack.length) stack[stack.length - 1]!.hasChild = true; stack.push({ attrs: token[1], hasChild: false }); }
+    else { const suite = stack.pop(); if (suite && !suite.hasChild) leafAttrs.push(suite.attrs); }
+  }
+  // Some producers emit a summary opening tag without a close in captured/truncated output.
+  const suites = leafAttrs.length ? leafAttrs : [...output.matchAll(/<testsuite\b([^>]*)>/g)].map((match) => match[1]!);
+  let total = 0, failed = 0, skipped = 0;
+  for (const attrs of suites) { total += attrValue(attrs, "tests"); failed += attrValue(attrs, "failures") + attrValue(attrs, "errors"); skipped += attrValue(attrs, "skipped"); }
+  return detail("junit", total - failed - skipped, failed, skipped, { failureCategories: failed ? ["test-failure"] : [] });
+}
+function group(value: unknown): VerificationGroup | undefined {
+  if (!value || typeof value !== "object") return undefined; const obj = value as Record<string, unknown>;
+  const passed = Number(obj.passed ?? obj.testsPassed ?? 0), failed = Number(obj.failed ?? obj.testsFailed ?? obj.failures ?? obj.errors ?? 0), skipped = Number(obj.skipped ?? 0);
+  return [passed, failed, skipped].every(Number.isFinite) ? { passed, failed, skipped } : undefined;
+}
+function parseJson(command: string, output: string): VerificationDetail | undefined {
+  if (!/json/.test(command.toLowerCase()) && !/^\s*[{[]/.test(output)) return undefined;
+  let parsed: unknown; try { parsed = JSON.parse(output); } catch { return undefined; }
+  if (Array.isArray(parsed)) { const statuses = parsed.map((item) => String(item?.status ?? ""));
+    return detail("json", statuses.filter((s) => /pass|ok|success/i.test(s)).length, statuses.filter((s) => /fail|error/i.test(s)).length, statuses.filter((s) => /skip|todo/i.test(s)).length); }
+  const obj = parsed as Record<string, unknown>, totals = group(obj.summary ?? obj); if (!totals) return undefined;
+  const categories = Array.isArray(obj.failureCategories) ? obj.failureCategories.filter((x): x is string => typeof x === "string") : [];
+  return detail("json", totals.passed, totals.failed, totals.skipped, { visible: group(obj.visible), hidden: group(obj.hidden), failureCategories: categories });
+}
+/** Unknown and exit-code-only verifiers intentionally return undefined. */
+export function parseVerificationOutput(command: string, output: string): VerificationDetail | undefined {
+  return parseJson(command, output) ?? parseJunit(command, output) ?? parsePytest(command, output) ?? parseBun(command, output) ?? parseTap(command, output);
+}
+export function parseBunTestSummary(command: string, output: string): { testsPassed: number; testsTotal: number } | undefined {
+  const parsed = parseBun(command, output); return parsed ? { testsPassed: parsed.passed, testsTotal: parsed.total } : undefined;
 }
