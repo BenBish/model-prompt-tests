@@ -407,7 +407,7 @@ async function cmdReportCompare(values: Record<string, unknown>): Promise<void> 
     batchAfter,
     dataAfter.summaries,
     new Date().toISOString(),
-    { before: sweBefore.summaries, after: sweAfter.summaries },
+    { before: sweBefore.summaries, after: sweAfter.summaries, statisticalAnalysis: sweAfter.statisticalAnalysis, compatibility },
   );
   const outPath =
     (values.out as string | undefined) ?? `${REPORTS_DIR}/compare-${batchBefore}-vs-${batchAfter}.html`;
@@ -535,7 +535,7 @@ async function cmdReport(values: Record<string, unknown>): Promise<void> {
     synthesisAssessmentSection,
   );
   const summaryJson = sweData.summaries.length > 0
-    ? { prompt: data.summaries, swe: sweData.summaries }
+    ? { prompt: data.summaries, swe: sweData.summaries, statisticalAnalysis: sweData.statisticalAnalysis }
     : data.summaries;
 
   // Write the deterministic outputs first: they're fully computable from the local DB and

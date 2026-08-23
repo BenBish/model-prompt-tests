@@ -170,6 +170,12 @@ export function renderSweAssessmentSection(data: SweReportData): string {
   }
 
   const sections = [`## SWE Task Summary\n\n${[header, ...rows].join("\n")}`];
+  if (data.statisticalAnalysis.comparisons.length > 0) {
+    const comparisonRows = data.statisticalAnalysis.comparisons.map((c) =>
+      `| \`${c.baselineId}\` → \`${c.candidateId}\` | ${c.matchedTasks}/${c.unionTasks} | ${formatPercent(c.coverage)} | ${formatPercent(c.delta)} (${formatPercent(c.interval.low)} to ${formatPercent(c.interval.high)}) | ${c.wins}/${c.losses}/${c.ties} | **${c.verdict}** |`,
+    );
+    sections.push(`### Paired uncertainty and verdicts\n\n| Baseline → candidate | Matched/union tasks | Coverage | Paired delta (95% hierarchical bootstrap CI) | W/L/T | Verdict |\n| --- | ---: | ---: | ---: | ---: | --- |\n${comparisonRows.join("\n")}\n\nRank stability: ${data.statisticalAnalysis.rankStability.topModelId ? `\`${data.statisticalAnalysis.rankStability.topModelId}\` is top in ${formatPercent(data.statisticalAnalysis.rankStability.topRankProbability)} of bootstrap samples` : "unavailable"}.\n\n${data.statisticalAnalysis.warnings.length ? data.statisticalAnalysis.warnings.map((warning) => `- Warning: ${warning}`).join("\n") : "No statistical warnings."}`);
+  }
   sections.push(
     [
       "### Metric notes",
@@ -220,10 +226,15 @@ export function renderSweReportSection(data: SweReportData): string {
     );
   }
   const metricNotes = metricNotesParts.join("\n");
+  const statisticalHtml = data.statisticalAnalysis.comparisons.length ? `<h3>Paired uncertainty and verdicts</h3>
+    <p class="muted">Matched-task correctness deltas use a hierarchical bootstrap across tasks and repeats. A win/loss requires minimum coverage/sample gates and the full 95% interval beyond the practical-equivalence threshold (${formatPercent(data.statisticalAnalysis.config.practicalEquivalence)}).</p>
+    <table class="summary-table"><thead><tr><th>Baseline → candidate</th><th>Matched/union</th><th>Coverage</th><th>Delta (95% CI)</th><th>W/L/T</th><th>Verdict</th></tr></thead><tbody>${data.statisticalAnalysis.comparisons.map((c) => `<tr><th>${escapeHtml(c.baselineId)} → ${escapeHtml(c.candidateId)}</th><td>${c.matchedTasks}/${c.unionTasks}</td><td>${formatPercent(c.coverage)}</td><td>${formatPercent(c.delta)} (${formatPercent(c.interval.low)} to ${formatPercent(c.interval.high)})</td><td>${c.wins}/${c.losses}/${c.ties}</td><td><b>${c.verdict}</b></td></tr>`).join("")}</tbody></table>
+    <p class="muted">Rank stability: ${data.statisticalAnalysis.rankStability.topModelId ? `${escapeHtml(data.statisticalAnalysis.rankStability.topModelId)} top in ${formatPercent(data.statisticalAnalysis.rankStability.topRankProbability)} of bootstrap samples.` : "unavailable."} ${data.statisticalAnalysis.warnings.map((warning) => `Warning: ${escapeHtml(warning)}.`).join(" ")}</p>` : "";
 
   return `
   <h2>SWE Task Summary</h2>
   ${metricNotes}
+  ${statisticalHtml}
   <table class="summary-table">
     <thead>
       <tr>

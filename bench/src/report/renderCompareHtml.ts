@@ -1,6 +1,8 @@
 import { escapeHtml } from "../util/html";
 import type { ModelSummary } from "./queryData";
 import type { SweSummary } from "../swe/sweReportData";
+import type { CompatibilityResult } from "../experiment/compatibility";
+import type { StatisticalAnalysis } from "./statistics";
 import {
   assignSeriesSlots,
   chartFigure,
@@ -35,7 +37,7 @@ export function renderCompareHtml(
   labelAfter: string,
   summariesAfter: ModelSummary[],
   generatedAt: string,
-  swe?: { before: SweSummary[]; after: SweSummary[] },
+  swe?: { before: SweSummary[]; after: SweSummary[]; statisticalAnalysis?: StatisticalAnalysis; compatibility?: CompatibilityResult },
 ): string {
   const modelIds = [...new Set([...summariesBefore.map((s) => s.modelId), ...summariesAfter.map((s) => s.modelId)])].sort();
   const slots = assignSeriesSlots(modelIds);
@@ -80,6 +82,9 @@ export function renderCompareHtml(
       const before = sweBefore.get(id), after = sweAfter.get(id);
       return `<tr><th>${escapeHtml(id)}</th><td>${pct(before?.passAt1)}</td><td>${pct(after?.passAt1)}</td><td>${pct(before?.repeatedTrialSolveRate)}</td><td>${pct(after?.repeatedTrialSolveRate)}</td><td>${before?.infrastructureFailures ?? "—"} / ${after?.infrastructureFailures ?? "—"}</td><td>${before?.publicationBlockedRuns ?? "—"} / ${after?.publicationBlockedRuns ?? "—"}</td></tr>`;
     }).join("")}</tbody></table>` : "";
+  const statisticalSection = swe?.statisticalAnalysis?.comparisons.length ? `<h2>Paired statistical verdicts</h2>
+    <p>${swe.compatibility?.compatible === false ? "Experiments are incompatible; all comparisons are warning-path evidence only. " : ""}Deltas use matched tasks and hierarchical task/repeat bootstrap intervals.</p>
+    <table class="summary-table"><thead><tr><th>Baseline → candidate</th><th>Matched</th><th>Coverage</th><th>Delta (95% CI)</th><th>W/L/T</th><th>Verdict</th></tr></thead><tbody>${swe.statisticalAnalysis.comparisons.map((c) => `<tr><th>${escapeHtml(c.baselineId)} → ${escapeHtml(c.candidateId)}</th><td>${c.matchedTasks}</td><td>${pct(c.coverage)}</td><td>${pct(c.delta)} (${pct(c.interval.low)} to ${pct(c.interval.high)})</td><td>${c.wins}/${c.losses}/${c.ties}</td><td>${swe.compatibility?.compatible === false ? "inconclusive" : c.verdict}</td></tr>`).join("")}</tbody></table>` : "";
 
   return `<!doctype html>
 <html>
@@ -102,6 +107,7 @@ ${paletteStyleBlock()}
       <button type="button" class="theme-toggle" aria-label="Toggle color theme">Auto</button>
     </header>
     ${sweSection}
+    ${statisticalSection}
 
     <div class="stat-tiles">
       <div class="stat-tile">

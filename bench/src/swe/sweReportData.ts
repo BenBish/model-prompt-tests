@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { average, median, type JudgeReportRow } from "../report/queryData";
 import type { VerificationDetail } from "./verifyOutputParser";
+import { analyzePairedTrials, type StatisticalAnalysis } from "../report/statistics";
 
 export type SweOutcomeCategory = "passed" | "candidate_failure" | "timeout" | "invalid_output" | "harness_error" | "verifier_error" | "judge_error";
 
@@ -42,6 +43,7 @@ export interface SweReportRow {
   verificationDetail?: VerificationDetail;
   outcomeCategory?: SweOutcomeCategory;
   publicationStatus: "comparable" | "quarantined";
+  environmentFingerprint?: string;
   serverPromptTokens?: number;
   serverPromptSeconds?: number;
   serverPredictedTokens?: number;
@@ -117,6 +119,7 @@ export interface SweReportData {
   harnessModelIds: string[];
   rows: Map<string, Map<string, SweReportRow[]>>;
   summaries: SweSummary[];
+  statisticalAnalysis: StatisticalAnalysis;
 }
 
 export interface QuerySweOptions {
@@ -170,6 +173,7 @@ function rowToSweReportRow(row: any): SweReportRow {
     verificationDetail: row.verification_detail ? JSON.parse(row.verification_detail) : undefined,
     outcomeCategory: row.outcome_category ?? undefined,
     publicationStatus: row.publication_status ?? "quarantined",
+    environmentFingerprint: row.environment_fingerprint ?? undefined,
     serverPromptTokens: row.server_prompt_tokens ?? undefined,
     serverPromptSeconds: row.server_prompt_seconds ?? undefined,
     serverPredictedTokens: row.server_predicted_tokens ?? undefined,
@@ -354,7 +358,8 @@ export function querySweReportData(db: Database, options: QuerySweOptions = {}):
            swe_results.server_prompt_tokens, swe_results.server_prompt_seconds,
            swe_results.server_predicted_tokens, swe_results.server_predicted_seconds,
            swe_results.verify_tests_passed, swe_results.verify_tests_total,
-           swe_results.verification_detail, swe_results.outcome_category, swe_results.publication_status
+           swe_results.verification_detail, swe_results.outcome_category, swe_results.publication_status,
+           swe_results.environment_fingerprint
     FROM runs
     LEFT JOIN swe_results ON swe_results.run_id = runs.id
     WHERE runs.kind = 'swe'
@@ -427,5 +432,17 @@ export function querySweReportData(db: Database, options: QuerySweOptions = {}):
   }
   const harnessModelIds = [...harnessModelIdSet].sort();
 
-  return { taskIds, harnessModelIds, rows: grouped, summaries: summarizeSwe(harnessModelIds, selectedRows) };
+  const infrastructure = new Set<SweOutcomeCategory>(["harness_error", "verifier_error", "judge_error"]);
+  const statisticalAnalysis = analyzePairedTrials(selectedRows
+    .filter((row) => row.taskType !== "code-review" && row.publicationStatus === "comparable")
+    .map((row) => ({
+      taskId: row.taskId,
+      modelId: row.harnessModelId,
+      repeatIndex: row.repeatIndex,
+      outcome: (row.verifyPassed === true || row.outcomeCategory === "passed") ? 1 as const : 0 as const,
+      infrastructureFailure: row.outcomeCategory ? infrastructure.has(row.outcomeCategory) : row.runStatus === "error",
+      judgeScore: median(peerScoresForSweRow(row)),
+      environmentFingerprint: row.environmentFingerprint,
+    })));
+  return { taskIds, harnessModelIds, rows: grouped, summaries: summarizeSwe(harnessModelIds, selectedRows), statisticalAnalysis };
 }

@@ -363,7 +363,7 @@ export async function exportBatch(options: ExportBatchOptions): Promise<ExportBa
     summaries: data.summaries,
     sweSummaries: sweData.summaries.length ? sweData.summaries : undefined,
   };
-  const summaryJson = sweData.summaries.length ? { prompt: data.summaries, swe: sweData.summaries } : data.summaries;
+  const summaryJson = sweData.summaries.length ? { prompt: data.summaries, swe: sweData.summaries, statisticalAnalysis: sweData.statisticalAnalysis } : data.summaries;
 
   const files: { path: string; content: string }[] = [
     { path: "experiment-manifest.json", content: experiment ? `${JSON.stringify(redactManifest(experiment.manifest), null, 2)}\n` : `${JSON.stringify({ provenance: "missing", legacy: true }, null, 2)}\n` },
