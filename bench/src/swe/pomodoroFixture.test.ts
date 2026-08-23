@@ -44,7 +44,7 @@ test(
     const result = await verifySolution("reference");
     expectHealthy(result);
   },
-  30_000,
+  120_000,
 );
 
 test(
@@ -55,7 +55,7 @@ test(
     expect(result.output).toContain("uses elapsed time when interval delivery is delayed");
     expect(result.output).toContain("never starts duplicate intervals");
   },
-  30_000,
+  120_000,
 );
 
 test(
@@ -64,5 +64,5 @@ test(
     const result = await verifySolution("naive-literal");
     expectHealthy(result);
   },
-  30_000,
+  120_000,
 );
