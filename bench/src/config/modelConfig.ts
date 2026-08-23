@@ -131,6 +131,9 @@ function normalizeModel(raw: unknown, index: number): ModelMatrixEntry {
     timeoutMs: optionalPositiveInteger(obj, "timeoutMs", context),
     enabled: optionalBoolean(obj, "enabled", context),
     pricing: optionalPricing(obj, "pricing", context),
+    immutableRevision: optionalString(obj, "immutableRevision", context),
+    weightsSha256: optionalString(obj, "weightsSha256", context),
+    quantization: optionalString(obj, "quantization", context),
   };
 
   if (kind === "anthropic") {

@@ -1,0 +1,6 @@
+import type { Database } from "bun:sqlite";
+import { canonicalJson, manifestId, type ExperimentManifest } from "../experiment/manifest";
+export interface ExperimentRecord { id: string; manifest: ExperimentManifest; createdAt: string }
+export function insertExperiment(db: Database, manifest: ExperimentManifest): string { const id = manifestId(manifest); db.prepare("INSERT OR IGNORE INTO experiments (id, schema_version, manifest_json, created_at) VALUES ($id, $version, $json, $createdAt)").run({ $id: id, $version: manifest.schemaVersion, $json: canonicalJson(manifest), $createdAt: manifest.createdAt }); return id; }
+export function getExperiment(db: Database, id: string): ExperimentRecord | undefined { const row = db.query("SELECT * FROM experiments WHERE id = $id").get({ $id: id }) as any; return row ? { id: row.id, manifest: JSON.parse(row.manifest_json), createdAt: row.created_at } : undefined; }
+export function getExperimentForBatch(db: Database, batchId: string): ExperimentRecord | undefined { const row = db.query("SELECT experiment_id FROM runs WHERE run_batch_id = $batch AND experiment_id IS NOT NULL LIMIT 1").get({ $batch: batchId }) as any; return row ? getExperiment(db, row.experiment_id) : undefined; }

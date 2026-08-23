@@ -139,6 +139,7 @@ describe("exportBatch", () => {
         "run-config.md",
         "report.html",
         "data.json",
+        "experiment-manifest.json",
         "article.md",
         "x-thread.md",
       ].sort(),

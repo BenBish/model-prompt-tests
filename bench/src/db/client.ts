@@ -14,6 +14,11 @@ interface ColumnMigration {
 }
 
 const COLUMN_MIGRATIONS: ColumnMigration[] = [
+  { table: "runs", column: "experiment_id", ddlType: "TEXT REFERENCES experiments(id)" },
+  { table: "scores", column: "experiment_id", ddlType: "TEXT REFERENCES experiments(id)" },
+  { table: "peer_ranks", column: "experiment_id", ddlType: "TEXT REFERENCES experiments(id)" },
+  { table: "syntheses", column: "experiment_id", ddlType: "TEXT REFERENCES experiments(id)" },
+  { table: "tool_probe_results", column: "experiment_id", ddlType: "TEXT REFERENCES experiments(id)" },
   { table: "runs", column: "repeat_index", ddlType: "INTEGER NOT NULL DEFAULT 0" },
   { table: "scores", column: "dimension_scores", ddlType: "TEXT" },
   { table: "scores", column: "weighted_score", ddlType: "REAL" },
@@ -76,7 +81,8 @@ CREATE TABLE IF NOT EXISTS peer_ranks (
   cost_usd           REAL,
   status             TEXT NOT NULL CHECK (status IN ('ok', 'error')),
   error              TEXT,
-  ranked_at          TEXT NOT NULL
+  ranked_at          TEXT NOT NULL,
+  experiment_id      TEXT REFERENCES experiments(id)
 );
 CREATE INDEX IF NOT EXISTS idx_peer_ranks_batch ON peer_ranks(run_batch_id);
 CREATE INDEX IF NOT EXISTS idx_peer_ranks_prompt ON peer_ranks(prompt_id);
@@ -98,7 +104,8 @@ CREATE TABLE IF NOT EXISTS syntheses (
   cost_usd           REAL,
   status             TEXT NOT NULL CHECK (status IN ('ok', 'error')),
   error              TEXT,
-  synthesized_at     TEXT NOT NULL
+  synthesized_at     TEXT NOT NULL,
+  experiment_id      TEXT REFERENCES experiments(id)
 );
 CREATE INDEX IF NOT EXISTS idx_syntheses_batch ON syntheses(run_batch_id);
 CREATE INDEX IF NOT EXISTS idx_syntheses_prompt ON syntheses(prompt_id);
@@ -115,22 +122,29 @@ CREATE TABLE IF NOT EXISTS tool_probe_results (
   valid_args     INTEGER NOT NULL DEFAULT 0,
   called_tool    TEXT,
   arguments_raw  TEXT,
-  notes          TEXT
+  notes          TEXT,
+  experiment_id  TEXT REFERENCES experiments(id)
 );
 CREATE INDEX IF NOT EXISTS idx_tool_probe_results_run ON tool_probe_results(run_id);
 `;
 
 export function applyMigrations(target: Database): void {
+  target.exec(`CREATE TABLE IF NOT EXISTS experiments (id TEXT PRIMARY KEY, schema_version INTEGER NOT NULL, manifest_json TEXT NOT NULL, created_at TEXT NOT NULL)`);
   for (const migration of COLUMN_MIGRATIONS) {
     ensureColumn(target, migration);
   }
   target.exec("CREATE INDEX IF NOT EXISTS idx_runs_batch ON runs(run_batch_id)");
+  target.exec("CREATE INDEX IF NOT EXISTS idx_runs_experiment ON runs(experiment_id)");
   // New table for BSH-153 peer ranking; CREATE IF NOT EXISTS is safe on existing DBs.
   target.exec(PEER_RANKS_DDL);
   // New table for BSH-150 chairman synthesis.
   target.exec(SYNTHESES_DDL);
   // New table for the Hermes tool-calling probe.
   target.exec(TOOL_PROBE_RESULTS_DDL);
+  target.exec(`CREATE TRIGGER IF NOT EXISTS scores_experiment_after_insert AFTER INSERT ON scores WHEN NEW.experiment_id IS NULL BEGIN UPDATE scores SET experiment_id=(SELECT experiment_id FROM runs WHERE id=NEW.run_id) WHERE id=NEW.id; END`);
+  target.exec(`CREATE TRIGGER IF NOT EXISTS peer_ranks_experiment_after_insert AFTER INSERT ON peer_ranks WHEN NEW.experiment_id IS NULL BEGIN UPDATE peer_ranks SET experiment_id=(SELECT experiment_id FROM runs WHERE run_batch_id=NEW.run_batch_id AND experiment_id IS NOT NULL LIMIT 1) WHERE id=NEW.id; END`);
+  target.exec(`CREATE TRIGGER IF NOT EXISTS syntheses_experiment_after_insert AFTER INSERT ON syntheses WHEN NEW.experiment_id IS NULL BEGIN UPDATE syntheses SET experiment_id=(SELECT experiment_id FROM runs WHERE run_batch_id=NEW.run_batch_id AND experiment_id IS NOT NULL LIMIT 1) WHERE id=NEW.id; END`);
+  target.exec(`CREATE TRIGGER IF NOT EXISTS tool_probe_experiment_after_insert AFTER INSERT ON tool_probe_results WHEN NEW.experiment_id IS NULL BEGIN UPDATE tool_probe_results SET experiment_id=(SELECT experiment_id FROM runs WHERE id=NEW.run_id) WHERE id=NEW.id; END`);
 }
 
 export function openDb(dbPath: string): Database {

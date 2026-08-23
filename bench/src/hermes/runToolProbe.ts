@@ -5,6 +5,8 @@ import { insertToolProbeResult } from "../db/toolProbeResultsRepo";
 import { createLimiter } from "../util/concurrency";
 import { scoreToolProbeCase } from "./scoreToolCall";
 import { TOOL_PROBE_CASES, type ToolProbeCase } from "./toolCases";
+import { insertExperiment } from "../db/experimentsRepo";
+import { EXPERIMENT_SCHEMA_VERSION, fingerprintEnvironment, repositoryState, sha256 } from "../experiment/manifest";
 
 export interface ToolProbeCandidate {
   modelId: string;
@@ -48,6 +50,8 @@ export async function runToolProbe(options: RunToolProbeOptions): Promise<RunToo
   const cases = options.cases ?? TOOL_PROBE_CASES;
   const defaultConcurrency = options.defaultConcurrency ?? DEFAULT_CONCURRENCY;
   const runBatchId = makeRunBatchId();
+  const createdAt = new Date().toISOString();
+  const experimentId = insertExperiment(db, { schemaVersion: EXPERIMENT_SCHEMA_VERSION, createdAt, suite: { id: "hermes-tools", version: "1" }, repository: repositoryState(process.cwd()), tasks: cases.map((testCase) => ({ id: testCase.id, sha256: sha256(JSON.stringify(testCase)) })).sort((a, b) => a.id.localeCompare(b.id)), models: candidates.map((candidate) => ({ id: candidate.modelId, provider: candidate.providerId, model: candidate.adapter.modelName, immutableRevision: candidate.adapter.modelName })), judges: [], harness: { id: "tool-probe", version: "1", config: {} }, prompts: {}, limits: {}, toolPermissions: [...new Set(cases.flatMap((testCase) => testCase.tools.map((tool) => tool.function.name)))].sort(), plannedRepeats: 1, exclusions: [], environment: fingerprintEnvironment({ executionDomain: process.env.BENCH_EXECUTION_DOMAIN ?? "interactive-lab", concurrency: defaultConcurrency }) });
 
   const summaries: ToolProbeCandidateSummary[] = [];
 
@@ -73,6 +77,7 @@ export async function runToolProbe(options: RunToolProbeOptions): Promise<RunToo
             const score = scoreToolProbeCase(result.toolCalls, testCase);
 
             const runId = insertRun(db, {
+              experimentId,
               runBatchId,
               promptId,
               providerId: candidate.providerId,
@@ -111,6 +116,7 @@ export async function runToolProbe(options: RunToolProbeOptions): Promise<RunToo
           } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             insertRun(db, {
+              experimentId,
               runBatchId,
               promptId,
               providerId: candidate.providerId,

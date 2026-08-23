@@ -36,6 +36,9 @@ import { cmdCalibrate } from "./calibrate/cmd";
 import { querySynthesisReportData, querySynthesisReportForReportBatches } from "./synthesize/reportData";
 import { renderSynthesisAssessmentSection, renderSynthesisHtmlSection } from "./synthesize/renderSection";
 import { groupsFromBatch, runSynthesisForGroups } from "./synthesize/groups";
+import { getExperiment, getExperimentForBatch } from "./db/experimentsRepo";
+import { compareExperiments } from "./experiment/compatibility";
+import { manifestId, publicationIssues } from "./experiment/manifest";
 
 const REPO_ROOT = process.cwd();
 const DB_PATH = `${REPO_ROOT}/bench/data/bench.sqlite`;
@@ -52,6 +55,7 @@ function usage(): void {
   bun bench/src/cli.ts report [--out <path>] [--batch <run_batch_id>] [--all-runs] [--narrative] [--judge <id>]
   bun bench/src/cli.ts report --compare <batchA> --compare <batchB> [--out <path>]
   bun bench/src/cli.ts export --name <slug> (--batch <run_batch_id> | --latest)
+  bun bench/src/cli.ts reproduce --batch <run_batch_id>
   bun bench/src/cli.ts publish [--out <dir>] [--results-dir <dir>]
   bun bench/src/cli.ts models <list|init|validate|set-judge|add-openai-compatible|add-anthropic|remove>
   bun bench/src/cli.ts list
@@ -236,7 +240,7 @@ async function cmdRun(positionals: string[], values: Record<string, unknown>): P
   }
 
   const runners = matrix.map((entry) =>
-    candidateRunnerFromAdapter(entry.id, createAdapter(entry), entry.maxConcurrent, entry.pricing),
+    candidateRunnerFromAdapter(entry.id, createAdapter(entry), entry.maxConcurrent, entry.pricing, entry),
   );
 
   const db = openDb(DB_PATH);
@@ -378,6 +382,18 @@ async function cmdReportCompare(values: Record<string, unknown>): Promise<void> 
   }
   const [batchBefore, batchAfter] = compareFlag as [string, string];
   const db = openDb(DB_PATH);
+  const experimentBefore = getExperimentForBatch(db, batchBefore);
+  const experimentAfter = getExperimentForBatch(db, batchAfter);
+  if (!experimentBefore || !experimentAfter) throw new Error("comparison requires experiment provenance; one or both batches are legacy rows");
+  const compatibility = compareExperiments(experimentBefore.manifest, experimentAfter.manifest);
+  if (!compatibility.compatible && values["allow-incompatible"] !== true) {
+    throw new Error(`incompatible experiments:\n${compatibility.differences.map((d) => `- [${d.category}] ${d.path}`).join("\n")}\nPass --allow-incompatible for an explicit warning-path override.`);
+  }
+  if (!compatibility.performanceComparable) {
+    const justification = values["allow-cross-domain-performance"];
+    if (typeof justification !== "string" || justification.trim() === "") throw new Error("execution environments differ; refusing cross-domain performance rankings. Pass --allow-cross-domain-performance <justification> for an explicit analysis override.");
+    console.warn(`[warn] cross-domain performance override: ${justification}`);
+  }
   const dataBefore = queryReportData(db, { runBatchId: batchBefore, allRuns: true });
   const dataAfter = queryReportData(db, { runBatchId: batchAfter, allRuns: true });
   if (dataBefore.promptIds.length === 0) throw new Error(`no runs found for batch "${batchBefore}"`);
@@ -448,7 +464,7 @@ async function cmdReport(values: Record<string, unknown>): Promise<void> {
   }
 
   const db = openDb(DB_PATH);
-  const runBatchId = values.batch as string | undefined;
+  const runBatchId = (values.batch as string | undefined) ?? (values["all-runs"] === true ? undefined : getLatestRunBatchId(db));
   const data = queryReportData(db, {
     runBatchId,
     allRuns: values["all-runs"] === true,
@@ -562,6 +578,19 @@ async function cmdReport(values: Record<string, unknown>): Promise<void> {
     await Bun.write(`${REPORTS_DIR}/latest.assessment.md`, assessmentWithNarrative);
     console.log(`Assessment updated with narrative at ${assessmentPath}`);
   }
+}
+
+async function cmdReproduce(values: Record<string, unknown>): Promise<void> {
+  const db = openDb(DB_PATH);
+  const batch = values.batch as string | undefined;
+  const id = values.experiment as string | undefined;
+  if ((batch ? 1 : 0) + (id ? 1 : 0) !== 1) throw new Error("reproduce requires exactly one of --batch or --experiment");
+  const experiment = batch ? getExperimentForBatch(db, batch) : getExperiment(db, id!);
+  if (!experiment) throw new Error("experiment provenance not found (legacy batches cannot be rehydrated)");
+  const calculated = manifestId(experiment.manifest);
+  if (calculated !== experiment.id) throw new Error(`manifest hash mismatch: stored ${experiment.id}, calculated ${calculated}`);
+  const issues = publicationIssues(experiment.manifest);
+  console.log(JSON.stringify({ id: experiment.id, valid: true, publicationEligible: issues.length === 0, publicationIssues: issues, manifest: experiment.manifest }, null, 2));
 }
 
 async function cmdModels(rest: string[]): Promise<void> {
@@ -808,6 +837,8 @@ async function main(): Promise<void> {
           narrative: { type: "boolean" },
           judge: { type: "string" },
           compare: { type: "string", multiple: true },
+          "allow-incompatible": { type: "boolean" },
+          "allow-cross-domain-performance": { type: "string" },
         },
       });
       await cmdReport(values);
@@ -824,6 +855,11 @@ async function main(): Promise<void> {
         },
       });
       await cmdExport(values);
+      break;
+    }
+    case "reproduce": {
+      const { values } = parseArgs({ args: rest, allowPositionals: false, options: { batch: { type: "string" }, experiment: { type: "string" } } });
+      await cmdReproduce(values);
       break;
     }
     case "publish": {
