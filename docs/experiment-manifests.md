@@ -6,6 +6,8 @@ The versioned manifest freezes repository SHA/dirty state, prompt and rubric has
 
 Local aliases are publication-eligible only when backed by a cached weights SHA-256 or immutable upstream revision. A cached import/download checksum avoids rehashing large weights on every run.
 
+Set `weightsSha256`, `immutableRevision`, and (when applicable) `quantization` on local model entries. Execution-domain launchers may provide `BENCH_ACCELERATOR`, `BENCH_ACCELERATOR_RUNTIME`, `BENCH_ACCELERATOR_DRIVER`, `BENCH_BUILD_FLAGS`, `BENCH_POWER_PROFILE`, `BENCH_THERMAL_STATE`, `BENCH_SERVER_TOPOLOGY`, and `BENCH_PRODUCTION_SERVICES` so discoverable host details are frozen without recording a hostname.
+
 ## Comparative claims
 
 Semantic comparisons require identical suite, tasks and prompt hashes, graders/rubrics, models, harness, prompts, limits, and tool permissions. `report --compare` lists every difference and refuses incompatible experiments unless `--allow-incompatible` is explicit.

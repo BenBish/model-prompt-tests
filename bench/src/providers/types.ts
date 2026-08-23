@@ -70,6 +70,9 @@ export interface AnthropicAdapterConfig {
   timeoutMs?: number;
   enabled?: boolean;
   pricing?: ModelPricing;
+  immutableRevision?: string;
+  weightsSha256?: string;
+  quantization?: string;
 }
 
 export interface OpenAICompatibleAdapterConfig {
@@ -86,6 +89,9 @@ export interface OpenAICompatibleAdapterConfig {
   timeoutMs?: number;
   enabled?: boolean;
   pricing?: ModelPricing;
+  immutableRevision?: string;
+  weightsSha256?: string;
+  quantization?: string;
 }
 
 export type ModelMatrixEntry = AnthropicAdapterConfig | OpenAICompatibleAdapterConfig;

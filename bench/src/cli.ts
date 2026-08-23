@@ -389,7 +389,11 @@ async function cmdReportCompare(values: Record<string, unknown>): Promise<void> 
   if (!compatibility.compatible && values["allow-incompatible"] !== true) {
     throw new Error(`incompatible experiments:\n${compatibility.differences.map((d) => `- [${d.category}] ${d.path}`).join("\n")}\nPass --allow-incompatible for an explicit warning-path override.`);
   }
-  if (!compatibility.performanceComparable) console.warn("[warn] execution environments differ; performance metrics must not be ranked across these experiments");
+  if (!compatibility.performanceComparable) {
+    const justification = values["allow-cross-domain-performance"];
+    if (typeof justification !== "string" || justification.trim() === "") throw new Error("execution environments differ; refusing cross-domain performance rankings. Pass --allow-cross-domain-performance <justification> for an explicit analysis override.");
+    console.warn(`[warn] cross-domain performance override: ${justification}`);
+  }
   const dataBefore = queryReportData(db, { runBatchId: batchBefore, allRuns: true });
   const dataAfter = queryReportData(db, { runBatchId: batchAfter, allRuns: true });
   if (dataBefore.promptIds.length === 0) throw new Error(`no runs found for batch "${batchBefore}"`);
@@ -834,6 +838,7 @@ async function main(): Promise<void> {
           judge: { type: "string" },
           compare: { type: "string", multiple: true },
           "allow-incompatible": { type: "boolean" },
+          "allow-cross-domain-performance": { type: "string" },
         },
       });
       await cmdReport(values);

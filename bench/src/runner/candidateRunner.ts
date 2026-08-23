@@ -40,7 +40,9 @@ export function candidateRunnerFromAdapter(
       id, provider: adapter.providerId, model: adapter.modelName,
       generation: { maxTokens: config.maxTokens, timeoutMs: config.timeoutMs, reasoningEffort: config.kind === "openai-compatible" ? config.reasoningEffort : undefined },
       backend: config.kind === "openai-compatible" ? config.providerId : "anthropic",
-      immutableRevision: /^(local|lab-candidate)(:|$)/i.test(id) ? undefined : adapter.modelName,
+      immutableRevision: config.immutableRevision ?? (/^(local|lab-candidate)(:|$)/i.test(id) ? undefined : adapter.modelName),
+      weightsSha256: config.weightsSha256,
+      quantization: config.quantization,
     } : undefined,
     async run(prompt: PromptDefinition): Promise<CandidateRunResult> {
       const result = await adapter.call({ userPrompt: prompt.promptText });

@@ -39,6 +39,15 @@ afterEach(() => {
 });
 
 describe("runBatch concurrency", () => {
+  test("links every new run to one durable experiment", async () => {
+    spyOn(console, "log").mockImplementation(() => {});
+    const db = createDb();
+    const summary = await runBatch({ db, prompts: [prompts[0]!], runners: [candidate("model-a", "provider", async () => ({ outputText: "ok", raw: {}, latencyMs: 1 }))], defaultConcurrency: 1 });
+    const row = db.query("SELECT experiment_id FROM runs WHERE run_batch_id = ?").get(summary.runBatchId) as { experiment_id: string };
+    expect(row.experiment_id).toStartWith("exp_");
+    expect((db.query("SELECT COUNT(*) AS count FROM experiments WHERE id = ?").get(row.experiment_id) as { count: number }).count).toBe(1);
+    db.close();
+  });
   test("shares the default concurrency limit across models from one provider", async () => {
     spyOn(console, "log").mockImplementation(() => {});
     const db = createDb();

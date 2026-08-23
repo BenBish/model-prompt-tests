@@ -12,7 +12,7 @@ import { createLimiter, type Limiter } from "../util/concurrency";
 import { withRetry } from "../util/retry";
 import type { CandidateRunner } from "./candidateRunner";
 import { insertExperiment } from "../db/experimentsRepo";
-import { EXPERIMENT_SCHEMA_VERSION, fingerprintEnvironment, repositoryState, sha256, type ExperimentManifest } from "../experiment/manifest";
+import { EXPERIMENT_SCHEMA_VERSION, canonicalJson, fingerprintEnvironment, repositoryState, sha256, type ExperimentManifest } from "../experiment/manifest";
 
 export interface RunBatchOptions {
   db: Database;
@@ -94,9 +94,9 @@ export async function runBatch(options: RunBatchOptions): Promise<RunBatchSummar
     createdAt,
     suite: { id: "model-prompt-tests", version: "1" },
     repository: repositoryState(process.cwd()),
-    tasks: prompts.map((prompt) => ({ id: prompt.id, sha256: sha256(prompt.promptText) })).sort((a, b) => a.id.localeCompare(b.id)),
+    tasks: prompts.map((prompt) => ({ id: prompt.id, sha256: sha256(canonicalJson({ title: prompt.title, promptText: prompt.promptText, whatThisTests: prompt.whatThisTests, strongSignals: prompt.strongSignals, weakSignals: prompt.weakSignals, rubric: prompt.rubric, dimensions: prompt.dimensions })) })).sort((a, b) => a.id.localeCompare(b.id)),
     models: runners.map((runner) => runner.manifestIdentity ?? ({ id: runner.id, provider: runner.providerId, model: runner.modelName })),
-    judges: judges.map((judge) => ({ id: judge.modelId, modelId: judge.modelId, sha256: sha256(judge.modelId) })),
+    judges: judges.map((judge) => ({ id: judge.modelId, modelId: judge.modelId, sha256: sha256(canonicalJson({ modelId: judge.modelId, graders: prompts.map((prompt) => ({ id: prompt.id, rubric: prompt.rubric, dimensions: prompt.dimensions })) })) })),
     harness: { id: "prompt-runner", version: "1", config: { concurrency: defaultConcurrency } },
     prompts: {}, limits: {}, toolPermissions: [], plannedRepeats: repeats, exclusions: [],
     environment: fingerprintEnvironment({ executionDomain: process.env.BENCH_EXECUTION_DOMAIN ?? "interactive-lab", concurrency: defaultConcurrency }),
