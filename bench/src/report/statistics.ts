@@ -9,6 +9,7 @@ export interface StatisticalTrial {
   infrastructureFailure?: boolean;
   judgeScore?: number;
   environmentFingerprint?: string;
+  provenanceId?: string;
 }
 
 export interface StatisticalConfig {
@@ -70,7 +71,8 @@ export function analyzePairedPreferences(observations: PairedPreferenceObservati
 // Wilson score interval for a binary proportion. z=1.96 is the documented 95% default.
 export function wilsonInterval(successes: number, trials: number, confidence = 0.95): Interval | undefined {
   if (trials <= 0) return undefined;
-  const z = confidence === 0.95 ? 1.959963984540054 : 1.959963984540054;
+  if (confidence !== 0.95) throw new Error("Wilson intervals currently support confidence=0.95 only");
+  const z = 1.959963984540054;
   const p = successes / trials;
   const denominator = 1 + z * z / trials;
   const center = (p + z * z / (2 * trials)) / denominator;
@@ -136,14 +138,17 @@ export function analyzePairedTrials(trials: StatisticalTrial[], options: Partial
     const interval = hierarchicalBootstrapDelta(pairs, config.bootstrapSamples, config.confidence);
     const coverage = union.size ? matched.length / union.size : 0;
     const environments = [...new Set([...baselineRows, ...candidateRows].flatMap((row) => row.environmentFingerprint ? [row.environmentFingerprint] : []))].sort();
+    const provenanceIds = [...new Set([...baselineRows, ...candidateRows].flatMap((row) => row.provenanceId ? [row.provenanceId] : []))];
     const warnings: string[] = [];
     if (matched.length < config.minimumMatchedTasks) warnings.push(`low sample size: ${matched.length} matched tasks; minimum is ${config.minimumMatchedTasks}`);
     if (coverage < config.minimumCoverage) warnings.push(`low paired coverage: ${(coverage * 100).toFixed(0)}%; minimum is ${(config.minimumCoverage * 100).toFixed(0)}%`);
     if (environments.length > 1) warnings.push("cross-domain correctness result is exploratory; performance deltas are not portable");
+    if (provenanceIds.length > 1) warnings.push("incompatible or unverified experiment provenance: verdict requires one compatible experiment");
     let verdict: StatisticalVerdict = "inconclusive";
-    const infrastructureOnly = matched.length === 0 && trials.some((row) => row.infrastructureFailure);
+    const pairScheduled = trials.filter((row) => row.modelId === baselineId || row.modelId === candidateId);
+    const infrastructureOnly = matched.length === 0 && pairScheduled.some((row) => row.infrastructureFailure);
     if (infrastructureOnly) verdict = "invalid-infrastructure";
-    else if (warnings.filter((w) => w.startsWith("low ")).length === 0) {
+    else if (warnings.filter((w) => w.startsWith("low ") || w.startsWith("incompatible ")).length === 0) {
       if (interval.low > config.practicalEquivalence) verdict = "win";
       else if (interval.high < -config.practicalEquivalence) verdict = "loss";
     }
@@ -152,11 +157,11 @@ export function analyzePairedTrials(trials: StatisticalTrial[], options: Partial
       ties: taskEffects.filter((x) => x.delta === 0).length, delta, interval, verdict,
       environmentFingerprints: environments, exploratory: environments.length > 1, taskEffects, warnings });
   }
-  const taskIds = [...allTasks];
+  const taskIds = [...allTasks].filter((taskId) => modelIds.every((modelId) => usable.some((row) => row.modelId === modelId && row.taskId === taskId)));
   const random = mulberry32(0x5221); const topCounts = new Map<string, number>();
   for (let sample = 0; sample < config.bootstrapSamples && taskIds.length; sample++) {
     const sampled = Array.from({ length: taskIds.length }, () => taskIds[Math.floor(random() * taskIds.length)]!);
-    const scores = modelIds.map((modelId) => ({ modelId, score: mean(sampled.map((task) => { const rows = usable.filter((r) => r.modelId === modelId && r.taskId === task); return rows.length ? mean(rows.map((r) => r.outcome)) : 0; })) }));
+    const scores = modelIds.map((modelId) => ({ modelId, score: mean(sampled.map((task) => { const rows = usable.filter((r) => r.modelId === modelId && r.taskId === task); return mean(rows.map((r) => r.outcome)); })) }));
     scores.sort((a, b) => b.score - a.score || a.modelId.localeCompare(b.modelId));
     if (scores[0]) topCounts.set(scores[0].modelId, (topCounts.get(scores[0].modelId) ?? 0) + 1);
   }
@@ -164,8 +169,37 @@ export function analyzePairedTrials(trials: StatisticalTrial[], options: Partial
   const topRankProbability = top ? top[1] / config.bootstrapSamples : undefined;
   const warnings = comparisons.flatMap((comparison) => comparison.warnings);
   if (comparisons.length > config.maximumComparisons) warnings.push(`excessive multiple comparisons: ${comparisons.length}; predeclare a primary comparison`);
+  if (taskIds.length < allTasks.size) warnings.push(`rank stability uses ${taskIds.length}/${allTasks.size} tasks with complete model coverage`);
   if (topRankProbability !== undefined && topRankProbability < 0.8) warnings.push(`unstable ranks: top-rank probability ${(topRankProbability * 100).toFixed(0)}%`);
   if (rates.some((rate) => rate.ceilingConcentration >= 0.8)) warnings.push("ceiling concentration limits discrimination");
   if (rates.some((rate) => rate.floorConcentration >= 0.8)) warnings.push("floor concentration limits discrimination");
   return { config, rates, comparisons, rankStability: { topModelId: top?.[0], topRankProbability, stable: (topRankProbability ?? 0) >= 0.8, samples: config.bootstrapSamples }, warnings: [...new Set(warnings)] };
+}
+
+/** Compare the same model across two compatible batches on matched tasks. */
+export function analyzePairedBatchTransitions(
+  before: StatisticalTrial[], after: StatisticalTrial[], compatible: boolean,
+  options: Partial<StatisticalConfig> = {},
+): StatisticalAnalysis {
+  const config = { ...DEFAULT_STATISTICAL_CONFIG, ...options };
+  const models = [...new Set(before.map((row) => row.modelId).filter((id) => after.some((row) => row.modelId === id)))].sort();
+  const comparisons: PairedComparison[] = [];
+  const warnings: string[] = [];
+  for (const modelId of models) {
+    const analysis = analyzePairedTrials([
+      ...before.filter((row) => row.modelId === modelId).map((row) => ({ ...row, modelId: `0:${modelId}`, provenanceId: undefined })),
+      ...after.filter((row) => row.modelId === modelId).map((row) => ({ ...row, modelId: `1:${modelId}`, provenanceId: undefined })),
+    ], options);
+    const comparison = analysis.comparisons[0];
+    if (!comparison) continue;
+    comparison.baselineId = `${modelId} (before)`;
+    comparison.candidateId = `${modelId} (after)`;
+    if (!compatible) {
+      comparison.verdict = "inconclusive";
+      comparison.warnings.push("incompatible experiments: before/after verdict suppressed");
+    }
+    comparisons.push(comparison);
+    warnings.push(...comparison.warnings);
+  }
+  return { config, rates: [], comparisons, rankStability: { stable: false, samples: 0 }, warnings: [...new Set(warnings)] };
 }

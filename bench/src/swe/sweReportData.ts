@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { average, median, type JudgeReportRow } from "../report/queryData";
 import type { VerificationDetail } from "./verifyOutputParser";
-import { analyzePairedTrials, type StatisticalAnalysis } from "../report/statistics";
+import { analyzePairedTrials, type StatisticalAnalysis, type StatisticalTrial } from "../report/statistics";
 
 export type SweOutcomeCategory = "passed" | "candidate_failure" | "timeout" | "invalid_output" | "harness_error" | "verifier_error" | "judge_error";
 
@@ -44,6 +44,7 @@ export interface SweReportRow {
   outcomeCategory?: SweOutcomeCategory;
   publicationStatus: "comparable" | "quarantined";
   environmentFingerprint?: string;
+  experimentId?: string;
   serverPromptTokens?: number;
   serverPromptSeconds?: number;
   serverPredictedTokens?: number;
@@ -120,6 +121,7 @@ export interface SweReportData {
   rows: Map<string, Map<string, SweReportRow[]>>;
   summaries: SweSummary[];
   statisticalAnalysis: StatisticalAnalysis;
+  statisticalTrials: StatisticalTrial[];
 }
 
 export interface QuerySweOptions {
@@ -174,6 +176,7 @@ function rowToSweReportRow(row: any): SweReportRow {
     outcomeCategory: row.outcome_category ?? undefined,
     publicationStatus: row.publication_status ?? "quarantined",
     environmentFingerprint: row.environment_fingerprint ?? undefined,
+    experimentId: row.experiment_id ?? undefined,
     serverPromptTokens: row.server_prompt_tokens ?? undefined,
     serverPromptSeconds: row.server_prompt_seconds ?? undefined,
     serverPredictedTokens: row.server_predicted_tokens ?? undefined,
@@ -433,7 +436,7 @@ export function querySweReportData(db: Database, options: QuerySweOptions = {}):
   const harnessModelIds = [...harnessModelIdSet].sort();
 
   const infrastructure = new Set<SweOutcomeCategory>(["harness_error", "verifier_error", "judge_error"]);
-  const statisticalAnalysis = analyzePairedTrials(selectedRows
+  const statisticalTrials = selectedRows
     .filter((row) => row.taskType !== "code-review" && row.publicationStatus === "comparable")
     .map((row) => ({
       taskId: row.taskId,
@@ -443,6 +446,8 @@ export function querySweReportData(db: Database, options: QuerySweOptions = {}):
       infrastructureFailure: row.outcomeCategory ? infrastructure.has(row.outcomeCategory) : row.runStatus === "error",
       judgeScore: median(peerScoresForSweRow(row)),
       environmentFingerprint: row.environmentFingerprint,
-    })));
-  return { taskIds, harnessModelIds, rows: grouped, summaries: summarizeSwe(harnessModelIds, selectedRows), statisticalAnalysis };
+      provenanceId: row.experimentId ?? row.runBatchId,
+    }));
+  const statisticalAnalysis = analyzePairedTrials(statisticalTrials);
+  return { taskIds, harnessModelIds, rows: grouped, summaries: summarizeSwe(harnessModelIds, selectedRows), statisticalAnalysis, statisticalTrials };
 }

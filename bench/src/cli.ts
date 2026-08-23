@@ -17,6 +17,7 @@ import { getLatestRunBatchId } from "./db/runsRepo";
 import { queryReportData } from "./report/queryData";
 import { renderReportHtml } from "./report/renderHtml";
 import { renderCompareHtml } from "./report/renderCompareHtml";
+import { analyzePairedBatchTransitions } from "./report/statistics";
 import { buildAssessmentSummary, buildNarrativePrompt, renderAssessmentMarkdown } from "./report/renderAssessment";
 import { exportBatch, validateExportName } from "./export/exportBatch";
 import { publishSite } from "./publish/publishSite";
@@ -407,7 +408,8 @@ async function cmdReportCompare(values: Record<string, unknown>): Promise<void> 
     batchAfter,
     dataAfter.summaries,
     new Date().toISOString(),
-    { before: sweBefore.summaries, after: sweAfter.summaries, statisticalAnalysis: sweAfter.statisticalAnalysis, compatibility },
+    { before: sweBefore.summaries, after: sweAfter.summaries,
+      statisticalAnalysis: analyzePairedBatchTransitions(sweBefore.statisticalTrials, sweAfter.statisticalTrials, compatibility.compatible), compatibility },
   );
   const outPath =
     (values.out as string | undefined) ?? `${REPORTS_DIR}/compare-${batchBefore}-vs-${batchAfter}.html`;
