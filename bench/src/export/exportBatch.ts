@@ -16,6 +16,7 @@ import { querySweReportData, type SweSummary } from "../swe/sweReportData";
 import { renderSweReportSection } from "../swe/renderSweSection";
 import { getExperimentForBatch } from "../db/experimentsRepo";
 import { publicationIssues, redactManifest } from "../experiment/manifest";
+import type { CalibrationAssessment } from "../calibrate/anchors";
 
 const NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
@@ -329,6 +330,7 @@ export interface ExportBatchOptions {
   name: string;
   outDir: string;
   generatedAt?: string;
+  calibration?: CalibrationAssessment;
 }
 
 export interface ExportBatchResult {
@@ -344,6 +346,9 @@ export async function exportBatch(options: ExportBatchOptions): Promise<ExportBa
   const sweData = querySweReportData(options.db, { runBatchId: options.runBatchId, allRuns: true });
   if (data.promptIds.length === 0 && sweData.taskIds.length === 0) {
     throw new Error(`no runs found for batch "${options.runBatchId}"`);
+  }
+  if (!options.calibration?.publicationEligible) {
+    throw new Error(`judge calibration is ${options.calibration?.status ?? "uncalibrated"}; publication export fails closed`);
   }
 
   mkdirSync(options.outDir, { recursive: true });
@@ -366,6 +371,7 @@ export async function exportBatch(options: ExportBatchOptions): Promise<ExportBa
   const summaryJson = sweData.summaries.length ? { prompt: data.summaries, swe: sweData.summaries, statisticalAnalysis: sweData.statisticalAnalysis } : data.summaries;
 
   const files: { path: string; content: string }[] = [
+    { path: "calibration-status.json", content: `${JSON.stringify(options.calibration, null, 2)}\n` },
     { path: "experiment-manifest.json", content: experiment ? `${JSON.stringify(redactManifest(experiment.manifest), null, 2)}\n` : `${JSON.stringify({ provenance: "missing", legacy: true }, null, 2)}\n` },
     { path: "summary.json", content: `${JSON.stringify(summaryJson, null, 2)}\n` },
     { path: "raw-outputs-and-scores.json", content: `${JSON.stringify(rawRows, null, 2)}\n` },
@@ -379,6 +385,7 @@ export async function exportBatch(options: ExportBatchOptions): Promise<ExportBa
         renderSweReportSection(sweData),
         "",
         renderSynthesisHtmlSection(querySynthesisReportData(options.db, { runBatchId: options.runBatchId })),
+        options.calibration,
       ),
     },
     { path: "data.json", content: `${JSON.stringify(sitePayload, null, 2)}\n` },

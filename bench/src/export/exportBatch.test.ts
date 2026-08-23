@@ -7,6 +7,9 @@ import { insertRun } from "../db/runsRepo";
 import { insertScore } from "../db/scoresRepo";
 import type { BenchModelsConfig } from "../config/modelConfig";
 import { exportBatch, validateExportName } from "./exportBatch";
+import type { CalibrationAssessment } from "../calibrate/anchors";
+
+const calibrated: CalibrationAssessment = { status: "calibrated", publicationEligible: true, corpusSha256: "test", evidenceSha256: "test", failures: [], warnings: [], monotonicityFailures: [], extremeConcentration: 0, judgeDisagreement: 0, positionEffect: 0, ties: 0, humanCoverage: 1, categories: [], judgeFamilyBias: {}, styleCorrelations: {} };
 
 function createDb(): Database {
   const db = new Database(":memory:");
@@ -129,6 +132,7 @@ describe("exportBatch", () => {
       name: "demo-run",
       outDir,
       generatedAt: "2026-07-13T01:00:00.000Z",
+      calibration: calibrated,
     });
 
     expect(result.files.sort()).toEqual(
@@ -140,6 +144,7 @@ describe("exportBatch", () => {
         "report.html",
         "data.json",
         "experiment-manifest.json",
+        "calibration-status.json",
         "article.md",
         "x-thread.md",
       ].sort(),
@@ -180,10 +185,17 @@ describe("exportBatch", () => {
     const reportHtml = readFileSync(join(outDir, "report.html"), "utf8");
     expect(reportHtml).toContain("<!doctype html>");
     expect(reportHtml).toContain("test:sonnet");
+    expect(reportHtml).toContain("Judge calibration: CALIBRATED");
 
     const article = readFileSync(join(outDir, "article.md"), "utf8");
     expect(article).toContain("Demo Run");
     db.close();
+  });
+
+  test("fails closed without calibrated judge evidence", async () => {
+    const db = createDb(); seedBatch(db, "batch-1");
+    const root = mkdtempSync(join(tmpdir(), "bench-export-")); tempRoots.push(root);
+    await expect(exportBatch({ db, config, runBatchId: "batch-1", name: "uncalibrated", outDir: join(root, "x") })).rejects.toThrow("uncalibrated");
   });
 
   test("rejects an unsafe export name before writing anything", async () => {

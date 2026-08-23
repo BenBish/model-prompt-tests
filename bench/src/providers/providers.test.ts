@@ -18,7 +18,7 @@ describe("provider adapters", () => {
   test("passes a configured timeout signal", async () => {
     process.env.TEST_ANTHROPIC_API_KEY = "test";
     let requestSignal: AbortSignal | null | undefined;
-    globalThis.fetch = (async (_input, init) => {
+    globalThis.fetch = (async (_input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
       requestSignal = init?.signal;
       return new Response(
         JSON.stringify({
@@ -194,7 +194,7 @@ describe("provider adapters", () => {
 
   test("sends tools and tool_choice when input.tools is set", async () => {
     let requestBody: any;
-    globalThis.fetch = (async (_input, init) => {
+    globalThis.fetch = (async (_input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
       requestBody = JSON.parse(String(init?.body));
       return new Response(
         JSON.stringify({ choices: [{ message: { content: "ok" }, finish_reason: "stop" }], usage: {} }),
@@ -222,7 +222,7 @@ describe("provider adapters", () => {
 
   test("omits tools from the request body when input.tools is not set", async () => {
     let requestBody: any;
-    globalThis.fetch = (async (_input, init) => {
+    globalThis.fetch = (async (_input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
       requestBody = JSON.parse(String(init?.body));
       return new Response(
         JSON.stringify({ choices: [{ message: { content: "ok" }, finish_reason: "stop" }], usage: {} }),
@@ -264,7 +264,7 @@ describe("provider adapters", () => {
 
   test("passes configured OpenAI-compatible reasoning effort", async () => {
     let requestBody: any;
-    globalThis.fetch = (async (_input, init) => {
+    globalThis.fetch = (async (_input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
       requestBody = JSON.parse(String(init?.body));
       return new Response(
         JSON.stringify({
@@ -312,7 +312,7 @@ describe("provider adapters", () => {
   test("Anthropic adapter sends a forced tool call for jsonSchema and decodes the tool_use block", async () => {
     process.env.TEST_ANTHROPIC_API_KEY = "test";
     let requestBody: any;
-    globalThis.fetch = (async (_input, init) => {
+    globalThis.fetch = (async (_input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
       requestBody = JSON.parse(String(init?.body));
       return new Response(
         JSON.stringify({
@@ -341,7 +341,7 @@ describe("provider adapters", () => {
 
   test("OpenAI-compatible adapter sends response_format json_schema for jsonSchema", async () => {
     let requestBody: any;
-    globalThis.fetch = (async (_input, init) => {
+    globalThis.fetch = (async (_input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
       requestBody = JSON.parse(String(init?.body));
       return new Response(
         JSON.stringify({
