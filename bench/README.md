@@ -29,6 +29,8 @@ bun bench/src/cli.ts run all --dry-run
 bun bench/src/cli.ts run debugging/javascript-debounce --models anthropic:sonnet,openai:gpt-4o-mini
 bun bench/src/cli.ts synthesize --latest --dry-run
 bun bench/src/cli.ts report
+// Validate and print a frozen experiment without model calls:
+bun bench/src/cli.ts reproduce --batch <run_batch_id>
 ```
 
 Or via the package script alias: `bun run bench <subcommand> ...`.
@@ -187,6 +189,8 @@ Every normal `report` invocation writes three files (plus `latest.*` mirrors):
 `<timestamp>.assessment.md` (deterministic markdown writeup).
 
 ### `export` / `publish`
+
+New runs are backed by immutable experiment manifests; see [`docs/experiment-manifests.md`](../docs/experiment-manifests.md) for compatibility and publication rules.
 
 Package a batch into a shareable directory, then assemble exported runs into a static
 site under `docs/` (GitHub Pages). Both `--name` and either `--batch` or `--latest` are

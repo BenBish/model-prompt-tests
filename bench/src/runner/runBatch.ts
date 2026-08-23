@@ -11,12 +11,15 @@ import type { Chairman } from "../synthesize/runSynthesis";
 import { createLimiter, type Limiter } from "../util/concurrency";
 import { withRetry } from "../util/retry";
 import type { CandidateRunner } from "./candidateRunner";
+import { insertExperiment } from "../db/experimentsRepo";
+import { EXPERIMENT_SCHEMA_VERSION, fingerprintEnvironment, repositoryState, sha256, type ExperimentManifest } from "../experiment/manifest";
 
 export interface RunBatchOptions {
   db: Database;
   prompts: PromptDefinition[];
   runners: CandidateRunner[];
   defaultConcurrency: number;
+  experimentManifest?: ExperimentManifest;
   /** Number of independent runs per (prompt, runner) cell. Defaults to 1. */
   repeats?: number;
   judge?: {
@@ -85,6 +88,20 @@ export async function runBatch(options: RunBatchOptions): Promise<RunBatchSummar
   const judges = options.judges ?? (options.judge ? [options.judge] : []);
   const started = performance.now();
   const runBatchId = makeRunBatchId();
+  const createdAt = new Date().toISOString();
+  const experimentManifest: ExperimentManifest = options.experimentManifest ?? {
+    schemaVersion: EXPERIMENT_SCHEMA_VERSION,
+    createdAt,
+    suite: { id: "model-prompt-tests", version: "1" },
+    repository: repositoryState(process.cwd()),
+    tasks: prompts.map((prompt) => ({ id: prompt.id, sha256: sha256(prompt.promptText) })).sort((a, b) => a.id.localeCompare(b.id)),
+    models: runners.map((runner) => runner.manifestIdentity ?? ({ id: runner.id, provider: runner.providerId, model: runner.modelName })),
+    judges: judges.map((judge) => ({ id: judge.modelId, modelId: judge.modelId, sha256: sha256(judge.modelId) })),
+    harness: { id: "prompt-runner", version: "1", config: { concurrency: defaultConcurrency } },
+    prompts: {}, limits: {}, toolPermissions: [], plannedRepeats: repeats, exclusions: [],
+    environment: fingerprintEnvironment({ executionDomain: process.env.BENCH_EXECUTION_DOMAIN ?? "interactive-lab", concurrency: defaultConcurrency }),
+  };
+  const experimentId = insertExperiment(db, experimentManifest);
 
   for (const judge of judges) {
     if (runners.some((r) => r.id === judge.modelId)) {
@@ -170,6 +187,7 @@ export async function runBatch(options: RunBatchOptions): Promise<RunBatchSummar
         repeatIndex,
         stopReason: result.stopReason,
         costUsd: resolveCostUsd(runner, result),
+        experimentId,
       };
       const runId = insertRun(db, record);
       ok++;
@@ -193,6 +211,7 @@ export async function runBatch(options: RunBatchOptions): Promise<RunBatchSummar
         status: "error",
         error: message,
         repeatIndex,
+        experimentId,
       });
       errored++;
       console.log(`[error] ${label}: ${message}`);
