@@ -8,8 +8,8 @@ export interface ExternalTaskDefinition {
   datasetVersion: string;
   runnerVersion: string;
   command: string[];
-  resultFile: string;
-  artifacts?: string[];
+  resultPattern: string;
+  artifactPatterns?: string[];
   citation: string;
   license: string;
   config?: Record<string, unknown>;
@@ -18,7 +18,7 @@ export interface ExternalTaskDefinition {
 
 export interface ExternalAdapterConfig {
   schemaVersion: 1;
-  ecosystems: Record<ExternalEcosystem, { executable: string; tasks: ExternalTaskDefinition[] }>;
+  ecosystems: Record<ExternalEcosystem, { executable: string; versionCommand: string[]; tasks: ExternalTaskDefinition[] }>;
 }
 
 export interface ExternalPlan {
@@ -51,7 +51,7 @@ export interface ExternalRunResult {
   cacheKey: string;
   outcome: NormalizedOutcome;
   native: ExternalNativeResult;
-  provenance: { command: string[]; citation: string; license: string; isolation?: ExternalTaskDefinition["isolation"] };
+  provenance: { command: string[]; citation: string; license: string; observedRunnerVersion: string; isolation?: ExternalTaskDefinition["isolation"] };
   logs: { stdout: string; stderr: string; exitCode: number; latencyMs: number };
   artifacts: string[];
 }
@@ -59,7 +59,7 @@ export interface ExternalRunResult {
 export interface ExternalAdapter {
   readonly ecosystem: ExternalEcosystem;
   discover(): ExternalTaskDefinition[];
-  checkDependency(): Promise<{ executable: string; available: boolean }>;
+  checkDependency(): Promise<{ executable: string; available: boolean; observedVersion?: string }>;
   resolve(taskId: string): ExternalTaskDefinition;
   plan(taskId: string, model: string): ExternalPlan;
   execute(plan: ExternalPlan, outputDir: string): Promise<ExternalRunResult>;

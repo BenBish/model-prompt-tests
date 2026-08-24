@@ -24,7 +24,7 @@ bun run bench external run --ecosystem inspect --task inspect-evals/hello-world 
   --model openai/gpt-4o-mini --out bench/reports/external/inspect-hello
 ```
 
-Use `--config path/to/catalog.json` to supply an organization-pinned catalog. The runner must write its native JSON to the task's `resultFile`; listed artifacts are copied by reference into the versioned `external-result.json` envelope. The offline integration tests execute a pinned fixture for every ecosystem:
+Use `--config path/to/catalog.json` to supply an organization-pinned catalog. Each ecosystem uses a native result glob (`resultPattern`) and artifact globs rather than assuming a shared filename. The declared runner version is checked against the installed runner's version probe and both declared and observed versions are preserved in the versioned `external-result.json` envelope. The offline integration tests execute a pinned fixture for every ecosystem:
 
 ```sh
 bun test bench/src/external/adapter.test.ts
