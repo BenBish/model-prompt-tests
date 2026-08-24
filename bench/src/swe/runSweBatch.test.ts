@@ -81,8 +81,8 @@ describe("runSweBatch", () => {
   test("reuses a frozen SWE experiment for a task subset without inserting or rewriting it", async () => {
     spyOn(console, "log").mockImplementation(() => {});
     const db = createDb();
-    const taskA = makeFixtureTask({ id: "fixture/a" });
-    const taskB = makeFixtureTask({ id: "fixture/b" });
+    const taskA = makeFixtureTask({ id: "fixture/a", agentTimeoutMs: 10_000 });
+    const taskB = makeFixtureTask({ id: "fixture/b", agentTimeoutMs: 30_000 });
     const workspacesRoot = join(makeTempDir(), "workspaces");
     const harness = fakeHarness("fake-cc", { sonnet: "fake-model" }, async (input) => {
       writeFileSync(join(input.workDir, "value.txt"), "fixed\n");
@@ -90,7 +90,7 @@ describe("runSweBatch", () => {
     });
     const cells: SweRunnerCell[] = [{ harnessId: "fake-cc", harness, modelAlias: "sonnet" }];
     const first = await runSweBatch({ db, tasks: [taskA, taskB], cells, workspacesRoot });
-    const second = await runSweBatch({ db, tasks: [taskB], cells, workspacesRoot, experimentId: first.experimentId });
+    const second = await runSweBatch({ db, tasks: [taskA], cells, workspacesRoot, experimentId: first.experimentId });
 
     expect(second.experimentId).toBe(first.experimentId);
     expect(second.runBatchId).not.toBe(first.runBatchId);

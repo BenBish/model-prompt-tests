@@ -107,7 +107,18 @@ export async function runBatch(options: RunBatchOptions): Promise<RunBatchSummar
     environment: fingerprintEnvironment({ executionDomain: process.env.BENCH_EXECUTION_DOMAIN ?? "interactive-lab", concurrency: defaultConcurrency }),
   };
   const experimentId = options.experimentId
-    ? (resolveReusableExperiment(db, options.experimentId, experimentManifest), options.experimentId)
+    ? (
+        resolveReusableExperiment(db, options.experimentId, experimentManifest, (proposed, frozen) => ({
+          ...proposed,
+          judges: proposed.judges.map((judge) => {
+            const frozenJudge = frozen.judges.find(
+              (candidate) => candidate.id === judge.id && candidate.modelId === judge.modelId,
+            );
+            return frozenJudge ? { ...judge, sha256: frozenJudge.sha256 } : judge;
+          }),
+        })),
+        options.experimentId
+      )
     : insertExperiment(db, experimentManifest);
 
   for (const judge of judges) {

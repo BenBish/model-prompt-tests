@@ -74,10 +74,17 @@ describe("runBatch concurrency", () => {
     spyOn(console, "log").mockImplementation(() => {});
     const db = createDb();
     const runner = candidate("model-a", "provider", async () => ({ outputText: "ok", raw: {}, latencyMs: 1 }));
-    const first = await runBatch({ db, prompts: prompts.slice(0, 2), runners: [runner], defaultConcurrency: 1 });
+    const judge: ModelAdapter = {
+      providerId: "judge",
+      modelName: "judge",
+      async call() {
+        return { text: '{"score":5,"rationale":"ok"}', raw: {}, latencyMs: 1 };
+      },
+    };
+    const first = await runBatch({ db, prompts: prompts.slice(0, 2), runners: [runner], defaultConcurrency: 1, judge: { adapter: judge, modelId: "judge" } });
     // Model a window kill after the full suite was frozen but before prompt 2 completed.
     db.query("DELETE FROM runs WHERE run_batch_id = ? AND prompt_id = ?").run(first.runBatchId, prompts[1]!.id);
-    const second = await runBatch({ db, prompts: [prompts[1]!], runners: [runner], defaultConcurrency: 1, experimentId: first.experimentId });
+    const second = await runBatch({ db, prompts: [prompts[1]!], runners: [runner], defaultConcurrency: 1, experimentId: first.experimentId, judge: { adapter: judge, modelId: "judge" } });
 
     expect(second.experimentId).toBe(first.experimentId);
     expect(second.runBatchId).not.toBe(first.runBatchId);

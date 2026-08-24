@@ -113,7 +113,35 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
     prompts: { developer: "SWE task text plus harness-specific scaffold recorded in systemsUnderTest" }, limits: { timeoutMs: Math.max(...tasks.map((task) => task.agentTimeoutMs)), ...Object.fromEntries(cells.flatMap((cell) => [[`${cell.harnessId}.context`, cell.systemUnderTest?.contextLimit], [`${cell.harnessId}.output`, cell.systemUnderTest?.outputLimit]])) }, toolPermissions: [...new Set(cells.flatMap((cell) => cell.systemUnderTest?.toolPermissions ?? ["workspace-write"]))].sort(), plannedRepeats: repeats, exclusions: options.pairedExperiment?.exclusions ?? [], environment: fingerprintEnvironment({ executionDomain: process.env.BENCH_EXECUTION_DOMAIN ?? "interactive-lab", concurrency: defaultConcurrency }),
   };
   const experimentId = options.experimentId
-    ? (resolveReusableExperiment(db, options.experimentId, experimentManifest), options.experimentId)
+    ? (
+        resolveReusableExperiment(db, options.experimentId, experimentManifest, (proposed, frozen) => {
+          const frozenSystems = Array.isArray(frozen.harness.config.systemsUnderTest)
+            ? frozen.harness.config.systemsUnderTest
+            : [];
+          const proposedSystems = Array.isArray(proposed.harness.config.systemsUnderTest)
+            ? proposed.harness.config.systemsUnderTest
+            : [];
+          return {
+            ...proposed,
+            limits: { ...proposed.limits, timeoutMs: frozen.limits.timeoutMs },
+            harness: {
+              ...proposed.harness,
+              config: {
+                ...proposed.harness.config,
+                systemsUnderTest: proposedSystems.map((system) => {
+                  const value = system as Record<string, unknown>;
+                  const frozenSystem = frozenSystems.find((candidate) => {
+                    const frozenValue = candidate as Record<string, unknown>;
+                    return frozenValue.harnessId === value.harnessId && frozenValue.modelAlias === value.modelAlias;
+                  }) as Record<string, unknown> | undefined;
+                  return frozenSystem ? { ...value, timeoutMs: frozenSystem.timeoutMs } : value;
+                }),
+              },
+            },
+          };
+        }),
+        options.experimentId
+      )
     : insertExperiment(db, experimentManifest);
 
   let ok = 0;

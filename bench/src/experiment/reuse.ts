@@ -7,6 +7,10 @@ export function resolveReusableExperiment(
   db: Database,
   experimentId: string,
   proposed: ExperimentManifest,
+  normalizeForComparison?: (
+    proposed: ExperimentManifest,
+    frozen: ExperimentManifest,
+  ) => ExperimentManifest,
 ): ExperimentManifest {
   const stored = getExperiment(db, experimentId);
   if (!stored) throw new Error(`unknown experiment id "${experimentId}"`);
@@ -19,8 +23,9 @@ export function resolveReusableExperiment(
     );
   }
 
+  const comparable = normalizeForComparison?.(proposed, stored.manifest) ?? proposed;
   const comparison = compareExperiments(stored.manifest, {
-    ...proposed,
+    ...comparable,
     tasks: stored.manifest.tasks,
   });
   const semanticPaths = comparison.differences
