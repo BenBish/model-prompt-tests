@@ -89,6 +89,8 @@ export interface ReportData {
 
 export interface QueryOptions {
   runBatchId?: string;
+  /** Explicit run selection used by multi-batch contract composition. */
+  runIds?: number[];
   allRuns?: boolean;
 }
 
@@ -297,6 +299,10 @@ export function queryReportData(db: Database, options: QueryOptions = {}): Repor
   if (options.runBatchId) {
     sql += " AND runs.run_batch_id = $runBatchId";
     params.$runBatchId = options.runBatchId;
+  }
+  if (options.runIds) {
+    if (options.runIds.length === 0) sql += " AND 0";
+    else sql += ` AND runs.id IN (${options.runIds.map((id) => Number(id)).join(",")})`;
   }
   sql += " ORDER BY runs.prompt_id, runs.model_id, runs.started_at ASC";
 

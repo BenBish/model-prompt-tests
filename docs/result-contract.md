@@ -17,7 +17,7 @@ that needs the durable identity reads this file, never stdout.
 ## Fetching the contract
 
 ```
-bun bench/src/cli.ts experiment export --batch <run_batch_id> --model <model_id> [--kind swe|prompt] [--out <path>]
+bun bench/src/cli.ts experiment export --batch <id1> [--batch <id2> ...] --model <model_id> [--kind swe|prompt|tool-probe] [--out <path>]
 ```
 
 Prints (or writes to `--out`) a `ResultContract` (see `bench/src/contract/resultContract.ts`):
@@ -37,6 +37,23 @@ so consumers cannot mistake a stale identifier or model-id typo for a benchmark 
 | `metrics.primary` | The one number a verdict should compare against a baseline's — `intentionToEvaluatePassRate` for SWE (with a Wilson interval from the paired-trial statistics layer), `avgScore` for prompt suites (no interval yet; prompt suites are not wired into the statistics layer — tracked as a follow-up). Undefined when nothing reached evaluation. |
 | `metrics.secondary` | Everything else (latency, throughput, timeouts, infra-failure counts) a report or verdict may want, by name. Prompt contracts include `infrastructureFailures` and `candidateFailures`; these aggregate the prompt categories described above and are zero when the selected model has no failures of that class. |
 | `artifacts.runBatchId` | The batch id, for cross-referencing exports/reports produced by other bench commands. |
+| `runBatchIds` / `artifacts.runBatchIds` | Present only for a multi-batch export and lists every contributing batch in command-line order. The singular fields remain the first batch for schema-v1 compatibility. |
+
+## Resumed suites and repeated batches
+
+Repeated `--batch` flags compose a cell set rather than concatenating rows. A prompt cell is
+`(promptId, modelId, repeatIndex)`, a SWE cell is `(taskId, harnessModelId, repeatIndex)`, and a
+tool-probe cell is `(caseId, modelId, repeatIndex)`. Missing cells stay missing. When batches
+overlap, a completed comparable row replaces an interrupted, errored, or quarantined row for
+the same cell. Two completed comparable rows for one cell are ambiguous and make export fail.
+
+Every selected batch must contain evidence for the requested model and kind. Legacy batches
+may be composed only with other legacy batches; they cannot be mixed with manifest-bearing
+batches. Manifest-bearing batches must be semantically compatible according to
+`compareExperiments()`. Environment differences are permitted for a quality-only contract,
+but fail export whenever the resulting contract includes latency or throughput metrics.
+Aggregation is still performed by the normal report/statistics/health code over the selected
+union; the contract layer does not invent missing zeros or duplicate report formulas.
 
 ## Ownership boundary
 

@@ -143,6 +143,25 @@ describe("bench models CLI", () => {
     );
   });
 
+  test("experiment export accepts repeated batch flags", () => {
+    const repoRoot = makeTempRepo();
+    createBenchDb(repoRoot);
+    const db = new Database(join(repoRoot, "bench", "data", "bench.sqlite"));
+    for (const [batch, prompt] of [["batch-a", "prompt-a"], ["batch-b", "prompt-b"]] as const) {
+      db.run(
+        `INSERT INTO runs (run_batch_id, prompt_id, provider_id, model_id, model_name, started_at, status, output_text, kind, outcome_category)
+         VALUES (?, ?, 'local', 'local:test', 'test-model', '2026-08-23T00:00:00Z', 'ok', 'answer', 'prompt', 'passed')`,
+        [batch, prompt],
+      );
+    }
+    db.close();
+
+    const result = runCli(repoRoot, ["experiment", "export", "--batch", "batch-a", "--batch", "batch-b", "--model", "local:test", "--kind", "prompt"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout.toString())).toMatchObject({ totalRuns: 2, runBatchIds: ["batch-a", "batch-b"] });
+  });
+
   test("adds OpenAI-compatible extra headers", () => {
     const repoRoot = makeTempRepo();
 

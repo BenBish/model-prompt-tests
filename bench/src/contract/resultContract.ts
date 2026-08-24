@@ -8,6 +8,7 @@
 import type { Database } from "bun:sqlite";
 import { getExperiment, getExperimentForBatch } from "../db/experimentsRepo";
 import type { EnvironmentFingerprint, ExperimentManifest } from "../experiment/manifest";
+import { compareExperiments } from "../experiment/compatibility";
 import { queryReportData } from "../report/queryData";
 import type { Interval } from "../report/statistics";
 import type { PromptOutcomeCategory } from "../runner/promptOutcome";
@@ -41,6 +42,8 @@ export interface ResultContract {
   generatedAt: string;
   kind: "prompt" | "swe" | "tool-probe";
   runBatchId: string;
+  /** Present for a composed export; omitted to preserve the single-batch v1 shape. */
+  runBatchIds?: string[];
   modelId: string;
   /** True when this batch predates experiment provenance (BSH-220) and cannot be rehydrated. */
   legacy: boolean;
@@ -52,7 +55,45 @@ export interface ResultContract {
   outcomeCounts: Partial<Record<SweOutcomeCategory | PromptOutcomeCategory | "unknown", number>>;
   health: ResultContractHealth;
   metrics: ResultContractMetrics;
-  artifacts: { runBatchId: string };
+  artifacts: { runBatchId: string; runBatchIds?: string[] };
+}
+
+interface SelectedRuns { runIds: number[]; batchIds: string[] }
+
+function selectRuns(
+  db: Database,
+  batchIds: string[],
+  modelId: string,
+  kind: "prompt" | "swe" | "tool-probe",
+): SelectedRuns {
+  const selected = new Map<string, { id: number; complete: boolean; startedAt: string }>();
+  for (const batchId of batchIds) {
+    const rows = db.query<any, [string, string]>(
+      `SELECT r.id, r.prompt_id, r.model_id, r.repeat_index, r.status, r.started_at,
+              s.publication_status, t.case_id
+         FROM runs r
+         LEFT JOIN swe_results s ON s.run_id = r.id
+         LEFT JOIN tool_probe_results t ON t.run_id = r.id
+        WHERE r.run_batch_id = ? AND r.model_id = ?
+          AND ${kind === "tool-probe" ? "t.run_id IS NOT NULL" : `r.kind = '${kind}'${kind === "prompt" ? " AND t.run_id IS NULL" : ""}`}`,
+    ).all(batchId, modelId);
+    if (rows.length === 0) {
+      throw new Error(`no ${kind} evidence found for model "${modelId}" in batch "${batchId}"`);
+    }
+    for (const row of rows) {
+      const cellPart = kind === "tool-probe" ? row.case_id : row.prompt_id;
+      const key = `${cellPart}\0${row.model_id}\0${row.repeat_index ?? 0}`;
+      const complete = row.status === "ok" && (kind !== "swe" || row.publication_status === "comparable");
+      const previous = selected.get(key);
+      if (previous?.complete && complete) {
+        throw new Error(`duplicate completed ${kind} cell "${cellPart}" repeat ${row.repeat_index ?? 0} across selected batches`);
+      }
+      if (!previous || (complete && !previous.complete) || (!complete && !previous.complete && row.started_at > previous.startedAt)) {
+        selected.set(key, { id: row.id, complete, startedAt: row.started_at });
+      }
+    }
+  }
+  return { runIds: [...selected.values()].map((row) => row.id), batchIds };
 }
 
 function manifestOf(db: Database, batchId: string): ExperimentManifest | undefined {
@@ -68,8 +109,8 @@ function experimentIdOf(db: Database, batchId: string): string | undefined {
   return row?.experiment_id ?? undefined;
 }
 
-function buildSweContract(db: Database, batchId: string, modelId: string): ResultContract {
-  const data = querySweReportData(db, { runBatchId: batchId, allRuns: true });
+function buildSweContract(db: Database, batchId: string, modelId: string, runIds?: number[]): ResultContract {
+  const data = querySweReportData(db, runIds ? { runIds, allRuns: true } : { runBatchId: batchId, allRuns: true });
   const summary = data.summaries.find((s) => s.harnessModelId === modelId);
   const rate = data.statisticalAnalysis.rates.find((r) => r.modelId === modelId);
 
@@ -77,7 +118,7 @@ function buildSweContract(db: Database, batchId: string, modelId: string): Resul
     .query<{ health_status: string | null; publication_status: string }, [string, string]>(
       `SELECT s.health_status, s.publication_status
          FROM runs r JOIN swe_results s ON s.run_id = r.id
-        WHERE r.run_batch_id = ? AND r.model_id = ?`,
+        WHERE ${runIds ? `r.id IN (${runIds.join(",")}) AND ? IS NOT NULL AND ? IS NOT NULL` : "r.run_batch_id = ? AND r.model_id = ?"}`,
     )
     .all(batchId, modelId);
   const statuses = new Set(healthRows.map((r) => r.health_status ?? "unknown"));
@@ -98,7 +139,7 @@ function buildSweContract(db: Database, batchId: string, modelId: string): Resul
     .query<{ outcome_category: string | null; n: number }, [string, string]>(
       `SELECT s.outcome_category, COUNT(*) as n
          FROM runs r JOIN swe_results s ON s.run_id = r.id
-        WHERE r.run_batch_id = ? AND r.model_id = ?
+        WHERE ${runIds ? `r.id IN (${runIds.join(",")}) AND ? IS NOT NULL AND ? IS NOT NULL` : "r.run_batch_id = ? AND r.model_id = ?"}
         GROUP BY s.outcome_category`,
     )
     .all(batchId, modelId);
@@ -112,7 +153,7 @@ function buildSweContract(db: Database, batchId: string, modelId: string): Resul
 
   const costRow = db
     .query<{ total: number | null }, [string, string]>(
-      `SELECT SUM(cost_usd) as total FROM runs WHERE run_batch_id = ? AND model_id = ?`,
+      `SELECT SUM(cost_usd) as total FROM runs WHERE ${runIds ? `id IN (${runIds.join(",")}) AND ? IS NOT NULL AND ? IS NOT NULL` : "run_batch_id = ? AND model_id = ?"}`,
     )
     .get(batchId, modelId);
 
@@ -161,8 +202,8 @@ function buildSweContract(db: Database, batchId: string, modelId: string): Resul
   };
 }
 
-function buildPromptContract(db: Database, batchId: string, modelId: string): ResultContract {
-  const data = queryReportData(db, { runBatchId: batchId, allRuns: true });
+function buildPromptContract(db: Database, batchId: string, modelId: string, runIds?: number[]): ResultContract {
+  const data = queryReportData(db, runIds ? { runIds, allRuns: true } : { runBatchId: batchId, allRuns: true });
   const summary = data.summaries.find((s) => s.modelId === modelId);
   const experimentId = experimentIdOf(db, batchId);
   const manifest = manifestOf(db, batchId);
@@ -170,7 +211,7 @@ function buildPromptContract(db: Database, batchId: string, modelId: string): Re
   const emptyRow = db
     .query<{ empty: number }, [string, string]>(
       `SELECT COUNT(*) as empty FROM runs
-        WHERE run_batch_id = ? AND model_id = ? AND kind = 'prompt' AND status = 'ok'
+        WHERE ${runIds ? `id IN (${runIds.join(",")}) AND ? IS NOT NULL AND ? IS NOT NULL` : "run_batch_id = ? AND model_id = ?"} AND kind = 'prompt' AND status = 'ok'
           AND TRIM(COALESCE(output_text, '')) = ''`,
     )
     .get(batchId, modelId);
@@ -191,7 +232,7 @@ function buildPromptContract(db: Database, batchId: string, modelId: string): Re
   const outcomeRows = db
     .query<{ outcome_category: string | null; n: number }, [string, string]>(
       `SELECT outcome_category, COUNT(*) AS n FROM runs
-        WHERE run_batch_id = ? AND model_id = ? AND kind = 'prompt'
+        WHERE ${runIds ? `id IN (${runIds.join(",")}) AND ? IS NOT NULL AND ? IS NOT NULL` : "run_batch_id = ? AND model_id = ?"} AND kind = 'prompt'
         GROUP BY outcome_category`,
     )
     .all(batchId, modelId);
@@ -223,12 +264,12 @@ function buildPromptContract(db: Database, batchId: string, modelId: string): Re
   };
 }
 
-function buildToolProbeContract(db: Database, batchId: string, modelId: string): ResultContract {
+function buildToolProbeContract(db: Database, batchId: string, modelId: string, runIds?: number[]): ResultContract {
   const rows = db
     .query<{ well_formed: number; correct_tool: number; valid_args: number }, [string, string]>(
       `SELECT t.well_formed, t.correct_tool, t.valid_args
          FROM tool_probe_results t JOIN runs r ON r.id = t.run_id
-        WHERE r.run_batch_id = ? AND r.model_id = ?`,
+        WHERE ${runIds ? `r.id IN (${runIds.join(",")}) AND ? IS NOT NULL AND ? IS NOT NULL` : "r.run_batch_id = ? AND r.model_id = ?"}`,
     )
     .all(batchId, modelId);
 
@@ -266,10 +307,32 @@ function buildToolProbeContract(db: Database, batchId: string, modelId: string):
 
 export function buildResultContract(
   db: Database,
-  batchId: string,
+  batchIdOrIds: string | string[],
   modelId: string,
   kind: "prompt" | "swe" | "tool-probe",
 ): ResultContract {
+  const batchIds = [...new Set(Array.isArray(batchIdOrIds) ? batchIdOrIds : [batchIdOrIds])];
+  if (batchIds.length === 0) throw new Error("at least one batch id is required");
+  const batchId = batchIds[0]!;
+  // Validate evidence before provenance so an unknown/stale id retains the single-batch
+  // fail-closed error instead of being misreported as a legacy compatibility problem.
+  const selection = batchIds.length > 1 ? selectRuns(db, batchIds, modelId, kind) : undefined;
+  if (batchIds.length > 1) {
+    const experiments = batchIds.map((id) => ({ id, experiment: getExperimentForBatch(db, id) }));
+    const legacy = experiments.map((entry) => entry.experiment === undefined);
+    if (legacy.some(Boolean) && legacy.some((value) => !value)) {
+      throw new Error("cannot mix legacy and provenance-bearing batches");
+    }
+    if (!legacy[0]) {
+      const base = experiments[0]!.experiment!.manifest;
+      for (const entry of experiments.slice(1)) {
+        const comparison = compareExperiments(base, entry.experiment!.manifest);
+        if (!comparison.compatible) {
+          throw new Error(`incompatible experiment manifests for batches "${batchId}" and "${entry.id}": ${comparison.differences.filter((d) => d.category === "semantic").map((d) => d.path).join(", ")}`);
+        }
+      }
+    }
+  }
   // A typo, stale batch id, or mismatched kind must not look like valid zero-coverage evidence
   // to a cross-repository consumer. Halo treats a successfully parsed contract as the
   // benchmark's authoritative result, so missing evidence belongs on the CLI error path.
@@ -301,10 +364,27 @@ export function buildResultContract(
 
   const contract =
     kind === "swe"
-      ? buildSweContract(db, batchId, modelId)
+      ? buildSweContract(db, batchId, modelId, selection?.runIds)
       : kind === "tool-probe"
-        ? buildToolProbeContract(db, batchId, modelId)
-        : buildPromptContract(db, batchId, modelId);
+        ? buildToolProbeContract(db, batchId, modelId, selection?.runIds)
+        : buildPromptContract(db, batchId, modelId, selection?.runIds);
+
+  if (batchIds.length > 1) {
+    const baseManifest = manifestOf(db, batchId);
+    if (baseManifest) {
+      for (const otherId of batchIds.slice(1)) {
+        const comparison = compareExperiments(baseManifest, manifestOf(db, otherId)!);
+        const hasPerformanceMetrics = contract.metrics.secondary.avgLatencyMs !== undefined ||
+          contract.metrics.secondary.avgDecodeTokensPerSec !== undefined ||
+          contract.metrics.secondary.avgPromptTokensPerSec !== undefined;
+        if (!comparison.performanceComparable && hasPerformanceMetrics) {
+          throw new Error(`environment-incompatible experiment manifests for batches "${batchId}" and "${otherId}": ${comparison.differences.filter((d) => d.category === "environment").map((d) => d.path).join(", ")}`);
+        }
+      }
+    }
+    contract.runBatchIds = batchIds;
+    contract.artifacts.runBatchIds = batchIds;
+  }
 
   return contract;
 }
