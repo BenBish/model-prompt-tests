@@ -3,7 +3,7 @@ import type { ModelSummary } from "./queryData";
 import { renderCompareHtml } from "./renderCompareHtml";
 
 function summary(modelId: string, avgScore: number | undefined): ModelSummary {
-  return { modelId, okRuns: 5, errorRuns: 0, missingJudgeScores: 0, avgScore, truncatedRuns: 0 };
+  return { modelId, okRuns: 5, errorRuns: 0, infrastructureFailures: 0, candidateFailures: 0, missingJudgeScores: 0, avgScore, truncatedRuns: 0 };
 }
 
 test("renders a delta table and highlights the biggest mover", () => {

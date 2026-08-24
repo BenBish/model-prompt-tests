@@ -13,6 +13,7 @@ import { withRetry } from "../util/retry";
 import type { CandidateRunner } from "./candidateRunner";
 import { insertExperiment } from "../db/experimentsRepo";
 import { EXPERIMENT_SCHEMA_VERSION, canonicalJson, fingerprintEnvironment, repositoryState, sha256, type ExperimentManifest } from "../experiment/manifest";
+import { classifyPromptError } from "./promptOutcome";
 
 export interface RunBatchOptions {
   db: Database;
@@ -185,6 +186,7 @@ export async function runBatch(options: RunBatchOptions): Promise<RunBatchSummar
         outputText: result.outputText,
         rawResponse: JSON.stringify(result.raw),
         status: "ok",
+        outcomeCategory: result.outputText.trim() === "" ? "candidate_failure" : "passed",
         repeatIndex,
         stopReason: result.stopReason,
         costUsd: resolveCostUsd(runner, result),
@@ -210,6 +212,7 @@ export async function runBatch(options: RunBatchOptions): Promise<RunBatchSummar
         modelName: runner.modelName,
         startedAt,
         status: "error",
+        outcomeCategory: classifyPromptError(err),
         error: message,
         repeatIndex,
         experimentId,

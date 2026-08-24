@@ -146,6 +146,7 @@ describe("buildResultContract", () => {
       status: "ok",
       kind: "prompt",
       outputText: "a real answer",
+      outcomeCategory: "passed",
     });
 
     const contract = buildResultContract(db, "batch-3", modelId, "prompt");
@@ -154,6 +155,9 @@ describe("buildResultContract", () => {
     expect(contract.health.status).toBe("not-applicable");
     expect(contract.metrics.secondary.emptyRuns).toBe(0);
     expect(contract.metrics.secondary.totalCostUsd).toBe(0);
+    expect(contract.metrics.secondary.infrastructureFailures).toBe(0);
+    expect(contract.metrics.secondary.candidateFailures).toBe(0);
+    expect(contract.outcomeCounts.passed).toBe(1);
   });
 
   test("tool-probe contract reports wellFormedPct without task health", () => {

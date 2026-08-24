@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS runs (
   raw_response  TEXT,
   error         TEXT,
   status        TEXT NOT NULL CHECK (status IN ('ok', 'error')),
+  outcome_category TEXT CHECK (outcome_category IN ('passed','candidate_failure','timeout','rate_limit','provider_error','connection_error','harness_error')),
   repeat_index  INTEGER NOT NULL DEFAULT 0,
   kind          TEXT NOT NULL DEFAULT 'prompt' CHECK (kind IN ('prompt', 'swe')),
   harness_id    TEXT,

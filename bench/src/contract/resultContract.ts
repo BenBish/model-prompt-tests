@@ -10,6 +10,7 @@ import { getExperiment, getExperimentForBatch } from "../db/experimentsRepo";
 import type { EnvironmentFingerprint, ExperimentManifest } from "../experiment/manifest";
 import { queryReportData } from "../report/queryData";
 import type { Interval } from "../report/statistics";
+import type { PromptOutcomeCategory } from "../runner/promptOutcome";
 import { querySweReportData, type SweOutcomeCategory } from "../swe/sweReportData";
 
 export const RESULT_CONTRACT_VERSION = 1 as const;
@@ -48,7 +49,7 @@ export interface ResultContract {
   environmentFingerprint?: EnvironmentFingerprint;
   totalRuns: number;
   okRuns: number;
-  outcomeCounts: Partial<Record<SweOutcomeCategory | "unknown", number>>;
+  outcomeCounts: Partial<Record<SweOutcomeCategory | PromptOutcomeCategory | "unknown", number>>;
   health: ResultContractHealth;
   metrics: ResultContractMetrics;
   artifacts: { runBatchId: string };
@@ -183,6 +184,21 @@ function buildPromptContract(db: Database, batchId: string, modelId: string): Re
     if (summary.avgLatencyMs !== undefined) secondary.avgLatencyMs = summary.avgLatencyMs;
     if (summary.medianScore !== undefined) secondary.medianScore = summary.medianScore;
     secondary.errorRuns = summary.errorRuns;
+    secondary.infrastructureFailures = summary.infrastructureFailures;
+    secondary.candidateFailures = summary.candidateFailures;
+  }
+
+  const outcomeRows = db
+    .query<{ outcome_category: string | null; n: number }, [string, string]>(
+      `SELECT outcome_category, COUNT(*) AS n FROM runs
+        WHERE run_batch_id = ? AND model_id = ? AND kind = 'prompt'
+        GROUP BY outcome_category`,
+    )
+    .all(batchId, modelId);
+  const outcomeCounts: Partial<Record<PromptOutcomeCategory | "unknown", number>> = {};
+  for (const row of outcomeRows) {
+    const key = (row.outcome_category ?? "unknown") as PromptOutcomeCategory | "unknown";
+    outcomeCounts[key] = row.n;
   }
 
   return {
@@ -197,7 +213,7 @@ function buildPromptContract(db: Database, batchId: string, modelId: string): Re
     environmentFingerprint: manifest?.environment,
     totalRuns: (summary?.okRuns ?? 0) + (summary?.errorRuns ?? 0),
     okRuns: summary?.okRuns ?? 0,
-    outcomeCounts: {},
+    outcomeCounts,
     health: { status: "not-applicable", comparableRuns: summary?.okRuns ?? 0, quarantinedRuns: 0 },
     metrics: {
       primary: summary?.avgScore !== undefined ? { name: "avgScore", value: summary.avgScore } : undefined,

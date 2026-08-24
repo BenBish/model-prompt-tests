@@ -39,6 +39,27 @@ afterEach(() => {
 });
 
 describe("runBatch concurrency", () => {
+  test("persists prompt outcome categories for successful and failed calls", async () => {
+    spyOn(console, "log").mockImplementation(() => {});
+    const db = createDb();
+    const providerError = Object.assign(new Error("provider error 503: unavailable"), { status: 503 });
+    await runBatch({
+      db,
+      prompts: [prompts[0]!],
+      runners: [
+        candidate("ok-model", "provider", async () => ({ outputText: "", raw: {}, latencyMs: 1 })),
+        candidate("failed-model", "provider", async () => { throw providerError; }),
+      ],
+      defaultConcurrency: 2,
+    });
+
+    const rows = db.query("SELECT model_id, outcome_category FROM runs ORDER BY model_id").all();
+    expect(rows).toEqual([
+      { model_id: "failed-model", outcome_category: "provider_error" },
+      { model_id: "ok-model", outcome_category: "candidate_failure" },
+    ]);
+    db.close();
+  });
   test("links every new run to one durable experiment", async () => {
     spyOn(console, "log").mockImplementation(() => {});
     const db = createDb();
