@@ -1,1 +1,20 @@
-import{test,expect}from'bun:test';import{createWebhookHandler}from'../src/webhook';test('processes',async()=>{let n=0;const s=new Set<string>();expect(await createWebhookHandler({has:async x=>s.has(x),add:async x=>{s.add(x)}},async()=>{n++})({id:'a'})).toBe('processed');expect(n).toBe(1)});
+import { test, expect } from "bun:test";
+import { createWebhookHandler } from "../src/webhook";
+test("processes", async () => {
+  let n = 0;
+  const s = new Set<string>();
+  expect(
+    await createWebhookHandler(
+      {
+        has: async (x) => s.has(x),
+        add: async (x) => {
+          s.add(x);
+        },
+      },
+      async () => {
+        n++;
+      },
+    )({ id: "a" }),
+  ).toBe("processed");
+  expect(n).toBe(1);
+});

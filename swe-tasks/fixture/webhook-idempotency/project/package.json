@@ -1,1 +1,6 @@
-{"scripts":{"test":"bun test"},"type":"module"}
+{
+  "scripts": {
+    "test": "bun test"
+  },
+  "type": "module"
+}

@@ -4,7 +4,7 @@ lifecycle: draft
 graderVersion: 1.0.0
 repoUrl: https://github.com/sindresorhus/p-limit.git
 commitSha: df476048d023ff868cd45b35ee47f5fb0ca2b25a
-verify: npm test
+verify: npx ava test.js test-abort.js
 verifyTimeoutMs: 120000
 agentTimeoutMs: 600000
 testPaths: test.js

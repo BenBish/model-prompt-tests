@@ -1,1 +1,17 @@
-export async function migrateAccounts(db:any,n:number){let after=db.checkpoint??'';for(;;){const rows=await db.list(after,n);if(!rows.length){db.newReads=true;return}const apply=async()=>{for(const r of rows)if(!r.displayName)await db.update(r.id,{displayName:r.name});db.checkpoint=rows.at(-1).id};await(db.transaction?db.transaction(apply):apply());after=rows.at(-1).id}}
+export async function migrateAccounts(db: any, n: number) {
+  let after = db.checkpoint ?? "";
+  for (;;) {
+    const rows = await db.list(after, n);
+    if (!rows.length) {
+      db.newReads = true;
+      return;
+    }
+    const apply = async () => {
+      for (const r of rows)
+        if (!r.displayName) await db.update(r.id, { displayName: r.name });
+      db.checkpoint = rows.at(-1).id;
+    };
+    await (db.transaction ? db.transaction(apply) : apply());
+    after = rows.at(-1).id;
+  }
+}

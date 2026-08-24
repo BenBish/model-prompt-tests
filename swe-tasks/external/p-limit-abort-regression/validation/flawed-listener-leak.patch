@@ -1,1 +1,15 @@
-# Known bad: races Promise.race with abort but never removes the listener; expected listener-leak signal.
+diff --git a/index.js b/index.js
+index 5ecd392..aaaaaaa 100644
+--- a/index.js
++++ b/index.js
+@@ -109,4 +109,10 @@ export default function pLimit(concurrency) {
+ 				return Promise.all(promises);
+ 			},
+ 		},
++		withSignal: {
++			value: (signal, function_, ...arguments_) => Promise.race([
++				generator(function_, ...arguments_),
++				new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason))),
++			]),
++		},
+ 	});
