@@ -22,7 +22,8 @@ import { runReviewMatcher } from "./reviewMatcher";
 import { diffLlamaCppMetrics, sampleLlamaCppMetrics } from "./llamaCppMetrics";
 import { provisionCodeReviewWorkspace } from "./reviewWorkspace";
 import { insertExperiment } from "../db/experimentsRepo";
-import { EXPERIMENT_SCHEMA_VERSION, fingerprintEnvironment, repositoryState, sha256 } from "../experiment/manifest";
+import { EXPERIMENT_SCHEMA_VERSION, fingerprintEnvironment, repositoryState, sha256, type ExperimentManifest } from "../experiment/manifest";
+import { resolveReusableExperiment } from "../experiment/reuse";
 import {
   captureDiff,
   cleanupWorkspace,
@@ -60,6 +61,8 @@ export interface RunSweBatchOptions {
     maxConcurrent?: number;
   }[];
   pairedExperiment?: PairedExperimentPlan;
+  /** Attach this batch to an existing frozen experiment after subset/compatibility validation. */
+  experimentId?: string;
 }
 
 export interface RunSweBatchSummary {
@@ -102,13 +105,16 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
   const started = performance.now();
   const runBatchId = makeRunBatchId();
   const createdAt = new Date().toISOString();
-  const experimentId = insertExperiment(db, {
+  const experimentManifest: ExperimentManifest = {
     schemaVersion: EXPERIMENT_SCHEMA_VERSION, createdAt, suite: { id: "model-prompt-tests-swe", version: "1" }, repository: repositoryState(process.cwd()),
     tasks: tasks.map((task) => ({ id: task.id, sha256: sha256(JSON.stringify(task)) })).sort((a, b) => a.id.localeCompare(b.id)),
     models: cells.map((cell) => ({ id: `${cell.harnessId}:${cell.modelAlias}`, provider: cell.systemUnderTest?.provider ?? cell.harnessId, model: cell.systemUnderTest?.underlyingModel ?? cell.modelAlias, immutableRevision: cell.systemUnderTest?.immutableRevision ?? cell.harness.resolveModel(cell.modelAlias), weightsSha256: cell.systemUnderTest?.weightsSha256, backend: cell.systemUnderTest?.backend, quantization: cell.systemUnderTest?.quantization, generation: cell.systemUnderTest?.sampling })),
     judges: judges.map((judge) => ({ id: judge.modelId, modelId: judge.modelId, sha256: sha256(judge.modelId) })), harness: { id: "swe", version: "2", config: { workspacesRoot, concurrency: defaultConcurrency, pairedExperiment: options.pairedExperiment, systemsUnderTest: cells.map((cell) => ({ harnessId: cell.harnessId, modelAlias: cell.modelAlias, resolvedModel: cell.harness.resolveModel(cell.modelAlias), identity: cell.systemUnderTest, timeoutMs: Math.max(...tasks.map((task) => task.agentTimeoutMs)) })) } },
     prompts: { developer: "SWE task text plus harness-specific scaffold recorded in systemsUnderTest" }, limits: { timeoutMs: Math.max(...tasks.map((task) => task.agentTimeoutMs)), ...Object.fromEntries(cells.flatMap((cell) => [[`${cell.harnessId}.context`, cell.systemUnderTest?.contextLimit], [`${cell.harnessId}.output`, cell.systemUnderTest?.outputLimit]])) }, toolPermissions: [...new Set(cells.flatMap((cell) => cell.systemUnderTest?.toolPermissions ?? ["workspace-write"]))].sort(), plannedRepeats: repeats, exclusions: options.pairedExperiment?.exclusions ?? [], environment: fingerprintEnvironment({ executionDomain: process.env.BENCH_EXECUTION_DOMAIN ?? "interactive-lab", concurrency: defaultConcurrency }),
-  });
+  };
+  const experimentId = options.experimentId
+    ? (resolveReusableExperiment(db, options.experimentId, experimentManifest), options.experimentId)
+    : insertExperiment(db, experimentManifest);
 
   let ok = 0;
   let errored = 0;

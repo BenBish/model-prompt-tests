@@ -261,6 +261,7 @@ export async function cmdSweRun(
       maxConcurrent: entry.maxConcurrent,
     })),
     pairedExperiment,
+    experimentId: typeof values.experiment === "string" ? values.experiment : undefined,
   });
 
   if (typeof values["summary-out"] === "string") {
