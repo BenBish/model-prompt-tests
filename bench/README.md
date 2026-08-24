@@ -470,6 +470,26 @@ Exit code is nonzero if any harness is unavailable or the probe run fails/times 
   harnesses against their own `models` map) — an unresolved combination errors before
   anything runs.
 - `--repeats <n>`, `--concurrency <n>` (per-harness limiter, default 1 and capped by harness `maxConcurrency`), `--judge`/`--judges`/`--no-judge`, `--dry-run`, `--timeout <ms>` (overrides every selected task's `agentTimeoutMs`), `--keep-workspaces` (workspaces under `bench/data/workspaces/`, gitignored, are always kept on error and cleaned up on success unless this flag is set).
+- `--paired` declares a controlled same-model experiment. It requires exactly one alias, raw-api plus at least one agent-loop harness, 3–5 repeats, and a `systemUnderTest` identity for every cell. Before a real run it executes startup probes; probe failures are infrastructure failures and no candidate cells are scheduled.
+
+### Controlled same-model cross-harness experiments
+
+Use one shared OpenAI-compatible backend and map the same CLI alias in both the raw API model config and agent harness. Record the complete identity under each harness entry's `systemUnderTest.<alias>` object; the checked-in Gemma example shows every field. Replace all placeholder revision, checksum, and CLI version values before collecting evidence.
+
+```sh
+bun run bench swe health fixture/smoke
+bun run bench swe run fixture/smoke --harnesses raw-api,codex --models local:gemma --paired --repeats 3 --dry-run
+bun run bench swe run fixture/smoke --harnesses raw-api,codex --models local:gemma --paired --repeats 3 --no-judge
+bun run bench report
+```
+
+Identity rules:
+
+- A **harness-effect comparison** requires the same underlying model, immutable revision or cached weights checksum, provider, backend, and quantization in every cell, with `hermetic: true`. Only these pairs are eligible for harness-uplift language.
+- A **pure model comparison** changes the immutable model identity while keeping the harness/system fixed. Ordinary paired model statistics cover this case; it is not a harness-effect claim.
+- A **full agent-system comparison** has differing model/backend identity or any non-hermetic cell. It remains reportable, is visibly flagged, and is excluded from harness-uplift summaries.
+- `systemUnderTest` also freezes sampling/reasoning settings, scaffold/prompts, harness and CLI versions, tool permissions, context/output limits, timeout, and the experiment environment. Reports read the frozen manifest rather than current config files.
+- Use at least three repeats per task/harness cell (five is supported). Correctness, latency, cost, diff size, and peer-judge deltas are task-paired with hierarchical-bootstrap uncertainty. Positive latency/cost/diff deltas are not improvements. Infrastructure outcomes are excluded from candidate denominators and called out separately.
 
 For Codex-backed local servers, set `isolateCodexHome: true` to run each cell with a fresh `CODEX_HOME`; this prevents personal plugins, MCP servers, memories, and user configuration from contaminating the measurement. Reports distinguish a **clean pass** (verification passed and the agent completed before timeout) from a patch that only **verified after timeout**.
 

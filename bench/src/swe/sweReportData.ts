@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { average, median, type JudgeReportRow } from "../report/queryData";
 import type { VerificationDetail } from "./verifyOutputParser";
-import { analyzePairedTrials, type StatisticalAnalysis, type StatisticalTrial } from "../report/statistics";
+import { analyzePairedTrials, hierarchicalBootstrapDelta, type Interval, type StatisticalAnalysis, type StatisticalTrial } from "../report/statistics";
 
 export type SweOutcomeCategory = "passed" | "candidate_failure" | "timeout" | "invalid_output" | "harness_error" | "verifier_error" | "judge_error";
 
@@ -18,6 +18,7 @@ export interface SweReportRow {
   latencyMs?: number;
   inputTokens?: number;
   outputTokens?: number;
+  costUsd?: number;
   finalMessage?: string;
   error?: string;
   runStatus: "ok" | "error";
@@ -122,7 +123,11 @@ export interface SweReportData {
   summaries: SweSummary[];
   statisticalAnalysis: StatisticalAnalysis;
   statisticalTrials: StatisticalTrial[];
+  harnessComparisons: HarnessComparison[];
 }
+
+export interface HarnessMetricDelta { metric: "correctness" | "latencyMs" | "costUsd" | "diffLines" | "judgeScore"; delta?: number; interval?: Interval; matchedTasks: number }
+export interface HarnessComparison { experimentId: string; underlyingModel: string; baselineId: string; candidateId: string; kind: "harness-effect" | "agent-system"; excluded: boolean; reasons: string[]; metrics: HarnessMetricDelta[] }
 
 export interface QuerySweOptions {
   runBatchId?: string;
@@ -152,6 +157,7 @@ function rowToSweReportRow(row: any): SweReportRow {
     latencyMs: row.latency_ms ?? undefined,
     inputTokens: row.input_tokens ?? undefined,
     outputTokens: row.output_tokens ?? undefined,
+    costUsd: row.cost_usd ?? undefined,
     finalMessage: row.output_text ?? undefined,
     error: row.error ?? undefined,
     runStatus: row.status,
@@ -449,5 +455,37 @@ export function querySweReportData(db: Database, options: QuerySweOptions = {}):
       provenanceId: row.experimentId ?? row.runBatchId,
     }));
   const statisticalAnalysis = analyzePairedTrials(statisticalTrials);
-  return { taskIds, harnessModelIds, rows: grouped, summaries: summarizeSwe(harnessModelIds, selectedRows), statisticalAnalysis, statisticalTrials };
+  const experimentRows = db.query("SELECT id, manifest_json FROM experiments").all() as Array<{ id: string; manifest_json: string }>;
+  const manifests = new Map(experimentRows.map((row) => [row.id, JSON.parse(row.manifest_json)]));
+  const harnessComparisons: HarnessComparison[] = [];
+  for (const [experimentId, manifest] of manifests) {
+    const paired = manifest.harness?.config?.pairedExperiment;
+    if (!paired) continue;
+    const experimentData = selectedRows.filter((row) => row.experimentId === experimentId && row.publicationStatus === "comparable");
+    const raw = paired.cells.find((cell: any) => cell.harnessId === "raw-api");
+    if (!raw) continue;
+    for (const agent of paired.cells.filter((cell: any) => cell.harnessId !== "raw-api")) {
+      const baselineId = `${raw.harnessId}:${raw.modelAlias}`, candidateId = `${agent.harnessId}:${agent.modelAlias}`;
+      const baseline = experimentData.filter((row) => row.harnessModelId === baselineId), candidate = experimentData.filter((row) => row.harnessModelId === candidateId);
+      const taskIds = [...new Set(baseline.map((row) => row.taskId).filter((id) => candidate.some((row) => row.taskId === id)))];
+      const definitions: Array<[HarnessMetricDelta["metric"], (row: SweReportRow) => number | undefined]> = [
+        ["correctness", (row) => row.verifyPassed === true ? 1 : row.outcomeCategory && !["harness_error", "verifier_error", "judge_error"].includes(row.outcomeCategory) ? 0 : undefined],
+        ["latencyMs", (row) => row.latencyMs], ["costUsd", (row) => row.costUsd],
+        ["diffLines", (row) => row.linesAdded === undefined && row.linesRemoved === undefined ? undefined : (row.linesAdded ?? 0) + (row.linesRemoved ?? 0)],
+        ["judgeScore", (row) => median(peerScoresForSweRow(row))],
+      ];
+      const metrics = definitions.map(([metric, value]): HarnessMetricDelta => {
+        const pairs = taskIds.flatMap((taskId) => {
+          const a = baseline.filter((row) => row.taskId === taskId).map(value).filter((v): v is number => v !== undefined);
+          const b = candidate.filter((row) => row.taskId === taskId).map(value).filter((v): v is number => v !== undefined);
+          return a.length && b.length ? [{ baseline: a, candidate: b }] : [];
+        });
+        if (!pairs.length) return { metric, matchedTasks: 0 };
+        const taskDeltas = pairs.map((pair) => average(pair.candidate)! - average(pair.baseline)!);
+        return { metric, matchedTasks: pairs.length, delta: average(taskDeltas), interval: hierarchicalBootstrapDelta(pairs) };
+      });
+      harnessComparisons.push({ experimentId, underlyingModel: paired.underlyingModel, baselineId, candidateId, kind: paired.kind, excluded: paired.kind !== "harness-effect", reasons: paired.exclusions ?? [], metrics });
+    }
+  }
+  return { taskIds, harnessModelIds, rows: grouped, summaries: summarizeSwe(harnessModelIds, selectedRows), statisticalAnalysis, statisticalTrials, harnessComparisons };
 }

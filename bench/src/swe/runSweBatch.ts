@@ -8,6 +8,8 @@ import { insertSweResult } from "../db/sweResultsRepo";
 import { createLimiter, type Limiter } from "../util/concurrency";
 import { runSweJudge } from "./sweJudge";
 import type { SweHarness } from "./harness/types";
+import type { SystemUnderTestIdentity } from "./harnessConfig";
+import type { PairedExperimentPlan } from "./pairedExperiment";
 import type { CodeReviewSweTask, ExternalSweTask, FixtureSweTask, SweTask } from "./taskSpec";
 import {
   prepareExternalVerify,
@@ -39,6 +41,7 @@ export interface SweRunnerCell {
   maxConcurrency?: number;
   /** llama.cpp server base URL to sample /metrics around each cell for throughput. */
   metricsUrl?: string;
+  systemUnderTest?: SystemUnderTestIdentity;
 }
 
 export interface RunSweBatchOptions {
@@ -56,6 +59,7 @@ export interface RunSweBatchOptions {
     modelId: string;
     maxConcurrent?: number;
   }[];
+  pairedExperiment?: PairedExperimentPlan;
 }
 
 export interface RunSweBatchSummary {
@@ -100,9 +104,9 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
   const experimentId = insertExperiment(db, {
     schemaVersion: EXPERIMENT_SCHEMA_VERSION, createdAt, suite: { id: "model-prompt-tests-swe", version: "1" }, repository: repositoryState(process.cwd()),
     tasks: tasks.map((task) => ({ id: task.id, sha256: sha256(JSON.stringify(task)) })).sort((a, b) => a.id.localeCompare(b.id)),
-    models: cells.map((cell) => ({ id: `${cell.harnessId}:${cell.modelAlias}`, provider: cell.harnessId, model: cell.modelAlias, immutableRevision: cell.harness.resolveModel(cell.modelAlias) })),
-    judges: judges.map((judge) => ({ id: judge.modelId, modelId: judge.modelId, sha256: sha256(judge.modelId) })), harness: { id: "swe", version: "1", config: { workspacesRoot, concurrency: defaultConcurrency } },
-    prompts: {}, limits: {}, toolPermissions: ["workspace-write"], plannedRepeats: repeats, exclusions: [], environment: fingerprintEnvironment({ executionDomain: process.env.BENCH_EXECUTION_DOMAIN ?? "interactive-lab", concurrency: defaultConcurrency }),
+    models: cells.map((cell) => ({ id: `${cell.harnessId}:${cell.modelAlias}`, provider: cell.systemUnderTest?.provider ?? cell.harnessId, model: cell.systemUnderTest?.underlyingModel ?? cell.modelAlias, immutableRevision: cell.systemUnderTest?.immutableRevision ?? cell.harness.resolveModel(cell.modelAlias), weightsSha256: cell.systemUnderTest?.weightsSha256, backend: cell.systemUnderTest?.backend, quantization: cell.systemUnderTest?.quantization, generation: cell.systemUnderTest?.sampling })),
+    judges: judges.map((judge) => ({ id: judge.modelId, modelId: judge.modelId, sha256: sha256(judge.modelId) })), harness: { id: "swe", version: "2", config: { workspacesRoot, concurrency: defaultConcurrency, pairedExperiment: options.pairedExperiment, systemsUnderTest: cells.map((cell) => ({ harnessId: cell.harnessId, modelAlias: cell.modelAlias, resolvedModel: cell.harness.resolveModel(cell.modelAlias), identity: cell.systemUnderTest, timeoutMs: Math.max(...tasks.map((task) => task.agentTimeoutMs)) })) } },
+    prompts: { developer: "SWE task text plus harness-specific scaffold recorded in systemsUnderTest" }, limits: { timeoutMs: Math.max(...tasks.map((task) => task.agentTimeoutMs)), ...Object.fromEntries(cells.flatMap((cell) => [[`${cell.harnessId}.context`, cell.systemUnderTest?.contextLimit], [`${cell.harnessId}.output`, cell.systemUnderTest?.outputLimit]])) }, toolPermissions: [...new Set(cells.flatMap((cell) => cell.systemUnderTest?.toolPermissions ?? ["workspace-write"]))].sort(), plannedRepeats: repeats, exclusions: options.pairedExperiment?.exclusions ?? [], environment: fingerprintEnvironment({ executionDomain: process.env.BENCH_EXECUTION_DOMAIN ?? "interactive-lab", concurrency: defaultConcurrency }),
   });
 
   let ok = 0;

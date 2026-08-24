@@ -23,6 +23,24 @@ export interface ClaudeCodeHarnessConfig {
    * meaningful for local single-tenant harnesses; omit for cloud-backed harnesses.
    */
   metricsUrl?: string;
+  systemUnderTest?: Record<string, SystemUnderTestIdentity>;
+}
+
+export interface SystemUnderTestIdentity {
+  underlyingModel: string;
+  immutableRevision?: string;
+  weightsSha256?: string;
+  provider: string;
+  backend: string;
+  quantization?: string;
+  sampling?: Record<string, unknown>;
+  scaffold?: string;
+  harnessVersion: string;
+  cliVersion?: string;
+  toolPermissions?: string[];
+  contextLimit?: number;
+  outputLimit?: number;
+  hermetic?: boolean;
 }
 
 export interface RawApiHarnessConfig {
@@ -33,6 +51,7 @@ export interface RawApiHarnessConfig {
   enabled?: boolean;
   maxConcurrency?: number;
   metricsUrl?: string;
+  systemUnderTest?: Record<string, SystemUnderTestIdentity>;
 }
 
 export type CodexSandboxMode = "read-only" | "workspace-write" | "danger-full-access";
@@ -62,6 +81,7 @@ export interface CodexHarnessConfig {
   enabled?: boolean;
   maxConcurrency?: number;
   metricsUrl?: string;
+  systemUnderTest?: Record<string, SystemUnderTestIdentity>;
 }
 
 export type GenericCliPromptVia = "stdin" | "arg" | "file";
@@ -91,6 +111,7 @@ export interface GenericCliHarnessConfig {
   enabled?: boolean;
   maxConcurrency?: number;
   metricsUrl?: string;
+  systemUnderTest?: Record<string, SystemUnderTestIdentity>;
 }
 
 export type HarnessMatrixEntry =
@@ -199,6 +220,42 @@ function optionalStringArray(obj: Record<string, unknown>, key: string, context:
   return value as string[];
 }
 
+function optionalSystemIdentities(obj: Record<string, unknown>, context: string): Record<string, SystemUnderTestIdentity> | undefined {
+  const value = obj.systemUnderTest;
+  if (value === undefined) return undefined;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error(`${context}: "systemUnderTest" must be an object`);
+  const result: Record<string, SystemUnderTestIdentity> = {};
+  for (const [alias, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) throw new Error(`${context}: "systemUnderTest.${alias}" must be an object`);
+    const identity = raw as Record<string, unknown>;
+    const string = (key: string, required = false) => {
+      const current = identity[key];
+      if (current === undefined && !required) return undefined;
+      if (typeof current !== "string" || current.trim() === "") throw new Error(`${context}: "systemUnderTest.${alias}.${key}" must be a non-empty string`);
+      return current;
+    };
+    const number = (key: string) => {
+      const current = identity[key];
+      if (current === undefined) return undefined;
+      if (!Number.isInteger(current) || (current as number) < 1) throw new Error(`${context}: "systemUnderTest.${alias}.${key}" must be a positive integer`);
+      return current as number;
+    };
+    const hermetic = identity.hermetic;
+    if (hermetic !== undefined && typeof hermetic !== "boolean") throw new Error(`${context}: "systemUnderTest.${alias}.hermetic" must be boolean`);
+    const sampling = identity.sampling;
+    if (sampling !== undefined && (typeof sampling !== "object" || sampling === null || Array.isArray(sampling))) throw new Error(`${context}: "systemUnderTest.${alias}.sampling" must be an object`);
+    const permissions = identity.toolPermissions;
+    if (permissions !== undefined && (!Array.isArray(permissions) || permissions.some((item) => typeof item !== "string"))) throw new Error(`${context}: "systemUnderTest.${alias}.toolPermissions" must be a string array`);
+    result[alias] = {
+      underlyingModel: string("underlyingModel", true)!, provider: string("provider", true)!, backend: string("backend", true)!,
+      harnessVersion: string("harnessVersion", true)!, immutableRevision: string("immutableRevision"), weightsSha256: string("weightsSha256"),
+      quantization: string("quantization"), scaffold: string("scaffold"), cliVersion: string("cliVersion"), sampling: sampling as Record<string, unknown> | undefined,
+      toolPermissions: permissions as string[] | undefined, contextLimit: number("contextLimit"), outputLimit: number("outputLimit"), hermetic: hermetic as boolean | undefined,
+    };
+  }
+  return result;
+}
+
 const CODEX_SANDBOX_MODES = new Set(["read-only", "workspace-write", "danger-full-access"]);
 const PROMPT_VIA_MODES = new Set(["stdin", "arg", "file"]);
 
@@ -214,6 +271,7 @@ function normalizeHarness(raw: unknown, index: number): HarnessMatrixEntry {
     enabled: optionalBoolean(obj, "enabled", context),
     maxConcurrency: optionalPositiveInteger(obj, "maxConcurrency", context),
     metricsUrl: optionalString(obj, "metricsUrl", context),
+    systemUnderTest: optionalSystemIdentities(obj, context),
   };
   // Metrics sampling reads the shared server's cumulative /metrics counters before/after each
   // cell with no cross-cell locking, so concurrent cells against the same server would sample

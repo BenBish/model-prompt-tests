@@ -17,6 +17,7 @@ import {
 } from "./harnessConfig";
 import { formatDoctorReport, runSweDoctor } from "./doctor";
 import { runSweBatch, type SweRunnerCell } from "./runSweBatch";
+import { validatePairedExperiment } from "./pairedExperiment";
 import { isComparableTask, readTaskHealthRecord, validateTaskHealth, writeTaskHealthRecord } from "./taskHealth";
 
 export function createHarnessInstance(entry: HarnessMatrixEntry, modelsConfig: BenchModelsConfig): SweHarness {
@@ -102,6 +103,7 @@ function resolveCells(
         modelAlias: alias,
         maxConcurrency: entry.maxConcurrency,
         metricsUrl: entry.metricsUrl,
+        systemUnderTest: entry.systemUnderTest?.[alias],
       });
     }
   }
@@ -184,6 +186,7 @@ export async function cmdSweRun(
   }
 
   const repeats = parsePositiveInteger(values.repeats, "--repeats") ?? 1;
+  const pairedExperiment = values.paired === true ? validatePairedExperiment(harnessEntries, modelAliases, repeats) : undefined;
   const concurrency = parsePositiveInteger(values.concurrency, "--concurrency");
   const timeoutOverrideMs = parsePositiveInteger(values.timeout, "--timeout");
   if (timeoutOverrideMs) {
@@ -201,6 +204,7 @@ export async function cmdSweRun(
       const availabilitySuffix = availability.ok ? "" : ` — UNAVAILABLE (${availability.reason})`;
       console.log(`  cell: ${cell.harnessId}:${cell.modelAlias}${availabilitySuffix}`);
     }
+    if (pairedExperiment) console.log(`Paired comparison: ${pairedExperiment.kind} for ${pairedExperiment.underlyingModel}${pairedExperiment.exclusions.length ? ` (excluded from harness-uplift claims: ${pairedExperiment.exclusions.join("; ")})` : ""}`);
     const totalCells = tasks.length * cells.length * repeats;
     const worstCaseMs =
       tasks.reduce((sum, task) => sum + task.agentTimeoutMs + task.verifyTimeoutMs, 0) * cells.length * repeats;
@@ -215,6 +219,12 @@ export async function cmdSweRun(
     );
     console.log("(dry run — no processes spawned, no network calls made)");
     return;
+  }
+
+  if (pairedExperiment) {
+    const startup = await runSweDoctor(harnessEntries, modelsConfig, createHarnessInstance, { timeoutMs: timeoutOverrideMs ?? 30_000 });
+    const failedStartup = startup.filter((result) => !result.ok);
+    if (failedStartup.length) throw new Error(`paired startup validation failed (infrastructure):\n${formatDoctorReport(failedStartup)}`);
   }
 
   for (const task of tasks) {
@@ -249,6 +259,7 @@ export async function cmdSweRun(
       modelId: entry.id,
       maxConcurrent: entry.maxConcurrent,
     })),
+    pairedExperiment,
   });
 
   if (summary.errored > 0 || summary.judgeErrored > 0) {
