@@ -4,7 +4,10 @@
   "type": "module",
   "scripts": {
     "bench": "bun bench/src/cli.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "typecheck": "bun x tsc --noEmit",
+    "ops": "bun bench/src/ops/cli.ts",
+    "ci:deterministic": "bun run typecheck && bun test"
   },
   "devDependencies": {
     "@types/bun": "latest"
