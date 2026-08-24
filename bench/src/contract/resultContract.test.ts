@@ -3,6 +3,7 @@ import { Database } from "bun:sqlite";
 import { readFileSync } from "node:fs";
 import { insertRun } from "../db/runsRepo";
 import { insertSweResult } from "../db/sweResultsRepo";
+import { insertToolProbeResult } from "../db/toolProbeResultsRepo";
 import { insertExperiment } from "../db/experimentsRepo";
 import { fingerprintEnvironment, sha256, EXPERIMENT_SCHEMA_VERSION, type ExperimentManifest } from "../experiment/manifest";
 import { buildResultContract, RESULT_CONTRACT_VERSION } from "./resultContract";
@@ -147,5 +148,29 @@ describe("buildResultContract", () => {
 
     expect(contract.kind).toBe("prompt");
     expect(contract.health.status).toBe("not-applicable");
+  });
+
+  test("tool-probe contract reports wellFormedPct without task health", () => {
+    const db = createDb();
+    const modelId = "local:candidate";
+    const runId = insertRun(db, {
+      runBatchId: "batch-4",
+      promptId: "case-1",
+      providerId: "local",
+      modelId,
+      modelName: "candidate",
+      startedAt: "2026-08-23T00:00:00.000Z",
+      status: "ok",
+      kind: "prompt",
+    });
+    insertToolProbeResult(db, { runId, caseId: "case-1", wellFormed: true, correctTool: true, validArgs: false });
+
+    const contract = buildResultContract(db, "batch-4", modelId, "tool-probe");
+
+    expect(contract.kind).toBe("tool-probe");
+    expect(contract.health.status).toBe("not-applicable");
+    expect(contract.metrics.primary?.name).toBe("wellFormedPct");
+    expect(contract.metrics.primary?.value).toBe(100);
+    expect(contract.metrics.secondary.validArgs).toBe(0);
   });
 });

@@ -38,7 +38,7 @@ export interface ResultContractMetrics {
 export interface ResultContract {
   schemaVersion: typeof RESULT_CONTRACT_VERSION;
   generatedAt: string;
-  kind: "prompt" | "swe";
+  kind: "prompt" | "swe" | "tool-probe";
   runBatchId: string;
   modelId: string;
   /** True when this batch predates experiment provenance (BSH-220) and cannot be rehydrated. */
@@ -184,13 +184,56 @@ function buildPromptContract(db: Database, batchId: string, modelId: string): Re
   };
 }
 
+function buildToolProbeContract(db: Database, batchId: string, modelId: string): ResultContract {
+  const rows = db
+    .query<{ well_formed: number; correct_tool: number; valid_args: number }, [string, string]>(
+      `SELECT t.well_formed, t.correct_tool, t.valid_args
+         FROM tool_probe_results t JOIN runs r ON r.id = t.run_id
+        WHERE r.run_batch_id = ? AND r.model_id = ?`,
+    )
+    .all(batchId, modelId);
+
+  const wellFormed = rows.filter((r) => r.well_formed === 1).length;
+  const wellFormedPct = rows.length > 0 ? (wellFormed / rows.length) * 100 : undefined;
+  const experimentId = experimentIdOf(db, batchId);
+  const manifest = manifestOf(db, batchId);
+
+  return {
+    schemaVersion: RESULT_CONTRACT_VERSION,
+    generatedAt: new Date().toISOString(),
+    kind: "tool-probe",
+    runBatchId: batchId,
+    modelId,
+    legacy: experimentId === undefined,
+    experimentId,
+    manifestHash: experimentId,
+    environmentFingerprint: manifest?.environment,
+    totalRuns: rows.length,
+    okRuns: rows.length,
+    outcomeCounts: {},
+    health: { status: "not-applicable", comparableRuns: rows.length, quarantinedRuns: 0 },
+    metrics: {
+      primary: wellFormedPct !== undefined ? { name: "wellFormedPct", value: wellFormedPct } : undefined,
+      secondary: {
+        cases: rows.length,
+        wellFormed,
+        correctTool: rows.filter((r) => r.correct_tool === 1).length,
+        validArgs: rows.filter((r) => r.valid_args === 1).length,
+      },
+    },
+    artifacts: { runBatchId: batchId },
+  };
+}
+
 export function buildResultContract(
   db: Database,
   batchId: string,
   modelId: string,
-  kind: "prompt" | "swe",
+  kind: "prompt" | "swe" | "tool-probe",
 ): ResultContract {
-  return kind === "swe" ? buildSweContract(db, batchId, modelId) : buildPromptContract(db, batchId, modelId);
+  if (kind === "swe") return buildSweContract(db, batchId, modelId);
+  if (kind === "tool-probe") return buildToolProbeContract(db, batchId, modelId);
+  return buildPromptContract(db, batchId, modelId);
 }
 
 /** Rehydrate a contract by experiment id alone, when the batch id has been discarded. */

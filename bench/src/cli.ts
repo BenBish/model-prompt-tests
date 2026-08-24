@@ -630,7 +630,9 @@ async function cmdExperimentExport(values: Record<string, unknown>): Promise<voi
   const kind = (values.kind as string | undefined) ?? "swe";
   if (!batch) throw new Error("experiment export requires --batch <run_batch_id>");
   if (!modelId) throw new Error("experiment export requires --model <model_id>");
-  if (kind !== "swe" && kind !== "prompt") throw new Error('--kind must be "swe" or "prompt"');
+  if (kind !== "swe" && kind !== "prompt" && kind !== "tool-probe") {
+    throw new Error('--kind must be "swe", "prompt", or "tool-probe"');
+  }
   const contract = buildResultContract(db, batch, modelId, kind);
   const json = JSON.stringify(contract, null, 2);
   if (typeof values.out === "string") {
