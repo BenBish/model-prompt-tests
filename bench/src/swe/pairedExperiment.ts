@@ -9,6 +9,10 @@ function immutableKey(identity: SystemUnderTestIdentity): string | undefined {
   return revision ? `${identity.underlyingModel}\0${revision}\0${identity.provider}\0${identity.backend}\0${identity.quantization ?? ""}` : undefined;
 }
 
+function isPlaceholder(value: string | undefined): boolean {
+  return value === undefined || /^(replace[-_ ]with|placeholder|todo|unknown|example)/i.test(value);
+}
+
 export function validatePairedExperiment(entries: HarnessMatrixEntry[], aliases: string[], repeats: number): PairedExperimentPlan {
   if (entries.length < 2) throw new Error("paired experiment requires at least two harnesses");
   if (!entries.some((entry) => entry.kind === "raw-api") || !entries.some((entry) => entry.kind !== "raw-api")) throw new Error("paired experiment requires raw-api and at least one agent-loop harness");
@@ -18,7 +22,8 @@ export function validatePairedExperiment(entries: HarnessMatrixEntry[], aliases:
   const cells = entries.map((entry) => {
     const identity = entry.systemUnderTest?.[alias];
     if (!identity) throw new Error(`paired experiment identity missing for ${entry.id}:${alias} (set systemUnderTest.${alias})`);
-    if (!identity.weightsSha256 && !identity.immutableRevision) throw new Error(`paired experiment identity ${entry.id}:${alias} needs weightsSha256 or immutableRevision`);
+    const immutableIdentity = identity.weightsSha256 ?? identity.immutableRevision;
+    if (isPlaceholder(immutableIdentity)) throw new Error(`paired experiment identity ${entry.id}:${alias} needs a real weightsSha256 or immutableRevision (placeholders are not evidence)`);
     return { harnessId: entry.id, modelAlias: alias, identity };
   });
   const keys = new Set(cells.map((cell) => immutableKey(cell.identity)));

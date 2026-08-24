@@ -477,9 +477,9 @@ Exit code is nonzero if any harness is unavailable or the probe run fails/times 
 Use one shared OpenAI-compatible backend and map the same CLI alias in both the raw API model config and agent harness. Record the complete identity under each harness entry's `systemUnderTest.<alias>` object; the checked-in Gemma example shows every field. Replace all placeholder revision, checksum, and CLI version values before collecting evidence.
 
 ```sh
-bun run bench swe health fixture/smoke
-bun run bench swe run fixture/smoke --harnesses raw-api,codex --models local:gemma --paired --repeats 3 --dry-run
-bun run bench swe run fixture/smoke --harnesses raw-api,codex --models local:gemma --paired --repeats 3 --no-judge
+bun run bench swe health fixture/pomodoro-timer
+bun run bench swe run fixture/pomodoro-timer --harnesses raw-api,codex --models local:gemma --paired --repeats 3 --dry-run
+bun run bench swe run fixture/pomodoro-timer --harnesses raw-api,codex --models local:gemma --paired --repeats 3 --no-judge
 bun run bench report
 ```
 
