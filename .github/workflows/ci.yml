@@ -19,7 +19,7 @@ jobs:
           bun-version-file: .bun-version
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
-      - run: bun test
+      - run: bun run test:deterministic
       - name: Validate schema migrations on a fresh database
         run: DB_PATH="${RUNNER_TEMP}/migration.sqlite" bun -e 'import { openDb } from "./bench/src/db/client"; openDb(process.env.DB_PATH!)'
       - name: Fast oracle and task-health checks

@@ -65,15 +65,10 @@ export async function runCommand(input: RunCommandInput): Promise<RunCommandResu
     cmd,
     cwd: input.cwd,
     env: input.env,
-    stdin: input.stdin !== undefined ? "pipe" : "ignore",
+    stdin: input.stdin !== undefined ? new Blob([input.stdin]) : "ignore",
     stdout: "pipe",
     stderr: "pipe",
   });
-
-  if (input.stdin !== undefined && proc.stdin && typeof proc.stdin !== "number") {
-    proc.stdin.write(input.stdin);
-    proc.stdin.end();
-  }
 
   let timedOut = false;
   const timeout = setTimeout(() => {

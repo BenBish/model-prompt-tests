@@ -10,5 +10,7 @@ jobs:
           bun-version: 1.3.14
       - uses: browser-actions/setup-chrome@v2
       - run: bun install --frozen-lockfile
-      - run: bun test
+      # Subprocess- and Chromium-heavy tests run in isolated phases via this script
+      # to avoid CI runner contention, lost stdin, and browser timeouts.
+      - run: bun run test:deterministic
       - run: bun bench/src/cli.ts swe health all

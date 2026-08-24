@@ -5,9 +5,10 @@
   "scripts": {
     "bench": "bun bench/src/cli.ts",
     "test": "bun test",
+    "test:deterministic": "bun test bench/src/swe/pomodoroFixture.test.ts --max-concurrency=1 && bun test bench/src/swe/harness/runCommand.test.ts --max-concurrency=1 && bun test --path-ignore-patterns='bench/src/swe/pomodoroFixture.test.ts' --path-ignore-patterns='bench/src/swe/harness/runCommand.test.ts'",
     "typecheck": "bun x tsc --noEmit",
     "ops": "bun bench/src/ops/cli.ts",
-    "ci:deterministic": "bun run typecheck && bun test"
+    "ci:deterministic": "bun run typecheck && bun run test:deterministic"
   },
   "devDependencies": {
     "@types/bun": "latest"
