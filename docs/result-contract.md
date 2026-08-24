@@ -41,6 +41,11 @@ so consumers cannot mistake a stale identifier or model-id typo for a benchmark 
 
 ## Resumed suites and repeated batches
 
+Create later batches with the original frozen experiment id as described in
+[Resuming a frozen suite](experiment-manifests.md#resuming-a-frozen-suite). A narrower selector
+without `--experiment <original-experiment-id>` mints a different subset manifest and cannot be
+composed with the first batch.
+
 Repeated `--batch` flags compose a cell set rather than concatenating rows. A prompt cell is
 `(promptId, modelId, repeatIndex)`, a SWE cell is `(taskId, harnessModelId, repeatIndex)`, and a
 tool-probe cell is `(caseId, modelId, repeatIndex)`. Missing cells stay missing. When batches

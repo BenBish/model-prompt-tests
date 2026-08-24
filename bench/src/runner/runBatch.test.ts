@@ -5,6 +5,7 @@ import type { ModelAdapter } from "../providers/types";
 import type { PromptDefinition } from "../types";
 import type { CandidateRunner } from "./candidateRunner";
 import { runBatch } from "./runBatch";
+import { buildResultContract } from "../contract/resultContract";
 
 const prompts: PromptDefinition[] = [1, 2, 3].map((number) => ({
   id: `test/prompt-${number}`,
@@ -67,6 +68,51 @@ describe("runBatch concurrency", () => {
     const row = db.query("SELECT experiment_id FROM runs WHERE run_batch_id = ?").get(summary.runBatchId) as { experiment_id: string };
     expect(row.experiment_id).toStartWith("exp_");
     expect((db.query("SELECT COUNT(*) AS count FROM experiments WHERE id = ?").get(row.experiment_id) as { count: number }).count).toBe(1);
+    db.close();
+  });
+  test("reuses a frozen experiment for a prompt subset without rewriting its manifest", async () => {
+    spyOn(console, "log").mockImplementation(() => {});
+    const db = createDb();
+    const runner = candidate("model-a", "provider", async () => ({ outputText: "ok", raw: {}, latencyMs: 1 }));
+    const judge: ModelAdapter = {
+      providerId: "judge",
+      modelName: "judge",
+      async call() {
+        return { text: '{"score":5,"rationale":"ok"}', raw: {}, latencyMs: 1 };
+      },
+    };
+    const first = await runBatch({ db, prompts: prompts.slice(0, 2), runners: [runner], defaultConcurrency: 1, judge: { adapter: judge, modelId: "judge" } });
+    // Model a window kill after the full suite was frozen but before prompt 2 completed.
+    db.query("DELETE FROM runs WHERE run_batch_id = ? AND prompt_id = ?").run(first.runBatchId, prompts[1]!.id);
+    const second = await runBatch({ db, prompts: [prompts[1]!], runners: [runner], defaultConcurrency: 1, experimentId: first.experimentId, judge: { adapter: judge, modelId: "judge" } });
+
+    expect(second.experimentId).toBe(first.experimentId);
+    expect(second.runBatchId).not.toBe(first.runBatchId);
+    expect((db.query("SELECT COUNT(*) AS count FROM experiments").get() as { count: number }).count).toBe(1);
+    const manifest = JSON.parse((db.query("SELECT manifest_json FROM experiments WHERE id = ?").get(first.experimentId) as { manifest_json: string }).manifest_json);
+    expect(manifest.tasks.map((task: { id: string }) => task.id)).toEqual(["test/prompt-1", "test/prompt-2"]);
+
+    const contract = buildResultContract(
+      db,
+      [first.runBatchId, second.runBatchId],
+      "model-a",
+      "prompt",
+    );
+    expect(contract.runBatchIds).toEqual([first.runBatchId, second.runBatchId]);
+    db.close();
+  });
+
+  test("rejects unknown experiments, tasks outside the frozen suite, and semantic drift before calls", async () => {
+    spyOn(console, "log").mockImplementation(() => {});
+    const db = createDb();
+    let calls = 0;
+    const runner = candidate("model-a", "provider", async () => { calls++; return { outputText: "ok", raw: {}, latencyMs: 1 }; });
+    await expect(runBatch({ db, prompts: [prompts[0]!], runners: [runner], defaultConcurrency: 1, experimentId: "exp_missing" })).rejects.toThrow('unknown experiment id "exp_missing"');
+    const first = await runBatch({ db, prompts: prompts.slice(0, 2), runners: [runner], defaultConcurrency: 1 });
+    const afterFirst = calls;
+    await expect(runBatch({ db, prompts: [prompts[2]!], runners: [runner], defaultConcurrency: 1, experimentId: first.experimentId })).rejects.toThrow(/absent from the frozen manifest.*test\/prompt-3/);
+    await expect(runBatch({ db, prompts: [prompts[0]!], runners: [candidate("model-b", "provider", runner.run)], defaultConcurrency: 1, experimentId: first.experimentId })).rejects.toThrow(/incompatible experiment manifest at models/);
+    expect(calls).toBe(afterFirst);
     db.close();
   });
   test("shares the default concurrency limit across models from one provider", async () => {

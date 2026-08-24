@@ -13,6 +13,7 @@ import { withRetry } from "../util/retry";
 import type { CandidateRunner } from "./candidateRunner";
 import { insertExperiment } from "../db/experimentsRepo";
 import { EXPERIMENT_SCHEMA_VERSION, canonicalJson, fingerprintEnvironment, repositoryState, sha256, type ExperimentManifest } from "../experiment/manifest";
+import { resolveReusableExperiment } from "../experiment/reuse";
 import { classifyPromptError } from "./promptOutcome";
 
 export interface RunBatchOptions {
@@ -21,6 +22,8 @@ export interface RunBatchOptions {
   runners: CandidateRunner[];
   defaultConcurrency: number;
   experimentManifest?: ExperimentManifest;
+  /** Attach this batch to an existing frozen experiment after subset/compatibility validation. */
+  experimentId?: string;
   /** Number of independent runs per (prompt, runner) cell. Defaults to 1. */
   repeats?: number;
   judge?: {
@@ -103,7 +106,20 @@ export async function runBatch(options: RunBatchOptions): Promise<RunBatchSummar
     prompts: {}, limits: {}, toolPermissions: [], plannedRepeats: repeats, exclusions: [],
     environment: fingerprintEnvironment({ executionDomain: process.env.BENCH_EXECUTION_DOMAIN ?? "interactive-lab", concurrency: defaultConcurrency }),
   };
-  const experimentId = insertExperiment(db, experimentManifest);
+  const experimentId = options.experimentId
+    ? (
+        resolveReusableExperiment(db, options.experimentId, experimentManifest, (proposed, frozen) => ({
+          ...proposed,
+          judges: proposed.judges.map((judge) => {
+            const frozenJudge = frozen.judges.find(
+              (candidate) => candidate.id === judge.id && candidate.modelId === judge.modelId,
+            );
+            return frozenJudge ? { ...judge, sha256: frozenJudge.sha256 } : judge;
+          }),
+        })),
+        options.experimentId
+      )
+    : insertExperiment(db, experimentManifest);
 
   for (const judge of judges) {
     if (runners.some((r) => r.id === judge.modelId)) {

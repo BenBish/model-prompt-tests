@@ -8,6 +8,25 @@ Local aliases are publication-eligible only when backed by a cached weights SHA-
 
 Set `weightsSha256`, `immutableRevision`, and (when applicable) `quantization` on local model entries. Execution-domain launchers may provide `BENCH_ACCELERATOR`, `BENCH_ACCELERATOR_RUNTIME`, `BENCH_ACCELERATOR_DRIVER`, `BENCH_BUILD_FLAGS`, `BENCH_POWER_PROFILE`, `BENCH_THERMAL_STATE`, `BENCH_SERVER_TOPOLOGY`, and `BENCH_PRODUCTION_SERVICES` so discoverable host details are frozen without recording a hostname.
 
+## Resuming a frozen suite
+
+By default, each `run` or `swe run` invocation mints an experiment whose task list is exactly
+the selected prompts or SWE tasks. For a staged suite, freeze the complete suite on the first
+invocation, retain the `experimentId` from `--summary-out`, and attach later subsets to it:
+
+```
+bun bench/src/cli.ts run <remaining-selector> --experiment <original-experiment-id> --models <ids>
+bun bench/src/cli.ts swe run <remaining-selector> --experiment <original-experiment-id> --harnesses <ids> --models <aliases>
+```
+
+Reuse creates a new batch but does not create or rewrite an experiment. Every selected task
+must already exist in the frozen manifest with the same content hash. Models, judges, suite,
+harness configuration, limits, and tool permissions must also remain semantically compatible;
+unknown experiment ids, added/changed tasks, and configuration drift fail before execution.
+The summary file reports the reused experiment id. Omitting `--experiment` retains the normal
+mint-new behavior. Consumers must pass the original experiment id when running a narrower
+selector; selecting only the remainder without it creates an incompatible subset experiment.
+
 ## Comparative claims
 
 Semantic comparisons require identical suite, tasks and prompt hashes, graders/rubrics, models, harness, prompts, limits, and tool permissions. `report --compare` lists every difference and refuses incompatible experiments unless `--allow-incompatible` is explicit.

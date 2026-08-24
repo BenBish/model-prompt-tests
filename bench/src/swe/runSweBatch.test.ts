@@ -78,6 +78,27 @@ afterEach(() => {
 });
 
 describe("runSweBatch", () => {
+  test("reuses a frozen SWE experiment for a task subset without inserting or rewriting it", async () => {
+    spyOn(console, "log").mockImplementation(() => {});
+    const db = createDb();
+    const taskA = makeFixtureTask({ id: "fixture/a", agentTimeoutMs: 10_000 });
+    const taskB = makeFixtureTask({ id: "fixture/b", agentTimeoutMs: 30_000 });
+    const workspacesRoot = join(makeTempDir(), "workspaces");
+    const harness = fakeHarness("fake-cc", { sonnet: "fake-model" }, async (input) => {
+      writeFileSync(join(input.workDir, "value.txt"), "fixed\n");
+      return { finalMessage: "Fixed", exitCode: 0, latencyMs: 1, timedOut: false, raw: {} };
+    });
+    const cells: SweRunnerCell[] = [{ harnessId: "fake-cc", harness, modelAlias: "sonnet" }];
+    const first = await runSweBatch({ db, tasks: [taskA, taskB], cells, workspacesRoot });
+    const second = await runSweBatch({ db, tasks: [taskA], cells, workspacesRoot, experimentId: first.experimentId });
+
+    expect(second.experimentId).toBe(first.experimentId);
+    expect(second.runBatchId).not.toBe(first.runBatchId);
+    expect((db.query("SELECT COUNT(*) AS count FROM experiments").get() as { count: number }).count).toBe(1);
+    const manifest = JSON.parse((db.query("SELECT manifest_json FROM experiments WHERE id = ?").get(first.experimentId) as { manifest_json: string }).manifest_json);
+    expect(manifest.tasks.map((task: { id: string }) => task.id)).toEqual(["fixture/a", "fixture/b"]);
+  });
+
   test("caps a one-slot harness even when higher concurrency is requested", async () => {
     spyOn(console, "log").mockImplementation(() => {});
     const db = createDb();
