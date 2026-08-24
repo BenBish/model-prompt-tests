@@ -43,6 +43,7 @@ import { compareExperiments } from "./experiment/compatibility";
 import { manifestId, publicationIssues } from "./experiment/manifest";
 import { writeRunSummary } from "./contract/summaryOut";
 import { buildResultContract } from "./contract/resultContract";
+import { cmdExternal } from "./external/cli";
 
 const REPO_ROOT = process.cwd();
 const DB_PATH = `${REPO_ROOT}/bench/data/bench.sqlite`;
@@ -68,7 +69,8 @@ function usage(): void {
   bun bench/src/cli.ts swe doctor [--harnesses <ids>] [--timeout <ms>]
   bun bench/src/cli.ts swe health [task-or-all]
   bun bench/src/cli.ts swe run <task-glob-or-all> --harnesses <ids> --models <aliases> [--paired] [--repeats <n>] [--concurrency <n>] [--judge <id>] [--judges id1,id2] [--no-judge] [--keep-workspaces] [--dry-run] [--timeout <ms>] [--summary-out <path>]
-  bun bench/src/cli.ts hermes tools --models <ids> [--concurrency <n>] [--dry-run] [--summary-out <path>]`);
+  bun bench/src/cli.ts hermes tools --models <ids> [--concurrency <n>] [--dry-run] [--summary-out <path>]
+  bun bench/src/cli.ts external <list|plan|run> [--ecosystem inspect|harbor|lm-eval] [--task <id>] [--model <id>] [--out <dir>] [--config <file>]`);
 }
 
 function requireFlag(values: Record<string, unknown>, key: string): string {
@@ -1019,6 +1021,22 @@ async function main(): Promise<void> {
         usage();
         process.exit(1);
       }
+      break;
+    }
+    case "external": {
+      const externalSubcommand = rest[0];
+      const { values } = parseArgs({
+        args: rest.slice(1),
+        allowPositionals: false,
+        options: {
+          ecosystem: { type: "string" },
+          task: { type: "string" },
+          model: { type: "string" },
+          out: { type: "string" },
+          config: { type: "string" },
+        },
+      });
+      await cmdExternal(REPO_ROOT, externalSubcommand, values);
       break;
     }
     default:

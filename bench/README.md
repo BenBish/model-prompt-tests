@@ -43,6 +43,23 @@ ownership boundary.
 
 Or via the package script alias: `bun run bench <subcommand> ...`.
 
+### `external`
+
+Discover, plan, and run version-pinned tasks through Inspect AI, Harbor/Terminal-Bench,
+or lm-evaluation-harness without installing those optional runners into this package:
+
+```sh
+bun run bench external list
+bun run bench external plan --ecosystem lm-eval --task lm-eval/hellaswag --model hf
+bun run bench external run --ecosystem lm-eval --task lm-eval/hellaswag --model hf --out bench/reports/external/hellaswag
+```
+
+Plans make no model or network calls. Results preserve native metrics and artifacts while
+adding a comparable outcome and collision-safe cache key. See
+[`docs/external-benchmark-adapters.md`](../docs/external-benchmark-adapters.md) for the
+versioned contract, isolated Harbor verifier requirements, installation, citations,
+licenses, and reproduction commands.
+
 ### `models`
 
 Initialize local model configuration:

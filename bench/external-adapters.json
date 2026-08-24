@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "ecosystems": {
+    "inspect": {
+      "executable": "inspect",
+      "versionCommand": ["inspect", "--version"],
+      "tasks": [{ "id": "inspect-evals/hello-world", "datasetVersion": "inspect-evals@0.3.90", "runnerVersion": "inspect-ai@0.3.139", "command": ["inspect", "eval", "inspect_evals/hello_world", "--model", "{model}", "--log-dir", "{output}", "--log-format", "json"], "resultPattern": "**/*.json", "artifactPatterns": ["**/*.json", "**/*.jsonl"], "citation": "https://inspect.aisi.org.uk/", "license": "MIT" }]
+    },
+    "harbor": {
+      "executable": "harbor",
+      "versionCommand": ["harbor", "--version"],
+      "tasks": [{ "id": "terminal-bench/hello-world", "datasetVersion": "terminal-bench/terminal-bench-2@2.0.0", "runnerVersion": "harbor@0.1.0", "command": ["harbor", "run", "-d", "terminal-bench/terminal-bench-2@2.0.0", "-m", "{model}", "-a", "terminus-2", "-o", "{output}"], "resultPattern": "**/result.json", "artifactPatterns": ["**/config.json", "**/result.json", "**/agent/**", "**/verifier/**", "**/artifacts/**"], "citation": "https://github.com/laude-institute/harbor", "license": "Apache-2.0", "isolation": { "agentEnvironment": "container", "verifierEnvironment": "locked-container", "verifierLocked": true } }]
+    },
+    "lm-eval": {
+      "executable": "lm_eval",
+      "versionCommand": ["lm_eval", "--version"],
+      "tasks": [{ "id": "lm-eval/hellaswag", "datasetVersion": "hellaswag@1.1.0", "runnerVersion": "lm-evaluation-harness@0.4.9.1", "command": ["lm_eval", "--model", "{model}", "--tasks", "hellaswag", "--limit", "10", "--log_samples", "--output_path", "{result}"], "resultPattern": "results.json", "artifactPatterns": ["results.json", "**/*.jsonl"], "citation": "https://github.com/EleutherAI/lm-evaluation-harness", "license": "MIT" }]
+    }
+  }
+}
