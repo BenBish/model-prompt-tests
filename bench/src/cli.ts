@@ -61,7 +61,7 @@ function usage(): void {
   bun bench/src/cli.ts report --compare <batchA> --compare <batchB> [--out <path>]
   bun bench/src/cli.ts export --name <slug> (--batch <run_batch_id> | --latest) --calibration-anchors <file> --calibration-evidence <file>
   bun bench/src/cli.ts reproduce --batch <run_batch_id>
-  bun bench/src/cli.ts experiment export --batch <run_batch_id> --model <model_id> [--kind swe|prompt] [--out <path>]
+  bun bench/src/cli.ts experiment export --batch <id1> [--batch <id2> ...] --model <model_id> [--kind swe|prompt|tool-probe] [--out <path>]
   bun bench/src/cli.ts publish [--out <dir>] [--results-dir <dir>]
   bun bench/src/cli.ts models <list|init|validate|set-judge|add-openai-compatible|add-anthropic|remove>
   bun bench/src/cli.ts list
