@@ -74,6 +74,9 @@ describe("buildResultContract", () => {
     expect(contract.metrics.primary?.name).toBe("intentionToEvaluatePassRate");
     expect(contract.metrics.primary?.value).toBe(1);
     expect(contract.metrics.primary?.interval).toBeDefined();
+    expect(contract.metrics.secondary.verifyPassed).toBe(1);
+    expect(contract.metrics.secondary.verifyFailed).toBe(0);
+    expect(contract.metrics.secondary.totalCostUsd).toBe(0);
   });
 
   test("a batch with no experiment provenance is marked legacy", () => {
@@ -142,12 +145,15 @@ describe("buildResultContract", () => {
       startedAt: "2026-08-23T00:00:00.000Z",
       status: "ok",
       kind: "prompt",
+      outputText: "a real answer",
     });
 
     const contract = buildResultContract(db, "batch-3", modelId, "prompt");
 
     expect(contract.kind).toBe("prompt");
     expect(contract.health.status).toBe("not-applicable");
+    expect(contract.metrics.secondary.emptyRuns).toBe(0);
+    expect(contract.metrics.secondary.totalCostUsd).toBe(0);
   });
 
   test("tool-probe contract reports wellFormedPct without task health", () => {

@@ -109,12 +109,23 @@ function buildSweContract(db: Database, batchId: string, modelId: string): Resul
   const experimentId = experimentIdOf(db, batchId);
   const manifest = manifestOf(db, batchId);
 
-  const secondary: Record<string, number> = {};
+  const costRow = db
+    .query<{ total: number | null }, [string, string]>(
+      `SELECT SUM(cost_usd) as total FROM runs WHERE run_batch_id = ? AND model_id = ?`,
+    )
+    .get(batchId, modelId);
+
+  const secondary: Record<string, number> = { totalCostUsd: costRow?.total ?? 0 };
   if (summary) {
     if (summary.avgAgentLatencyMs !== undefined) secondary.avgLatencyMs = summary.avgAgentLatencyMs;
     if (summary.avgDecodeTokensPerSec !== undefined) secondary.avgDecodeTokensPerSec = summary.avgDecodeTokensPerSec;
     if (summary.avgPromptTokensPerSec !== undefined) secondary.avgPromptTokensPerSec = summary.avgPromptTokensPerSec;
     if (summary.avgVerifyPassRate !== undefined) secondary.avgVerifyPassRate = summary.avgVerifyPassRate;
+    // Distinct from outcomeCounts.passed/candidate_failure: these two are restricted to `ok`
+    // runs with a terminal verify result, matching the pre-contract verifyPassed/verifyFailed
+    // definition legacy Halo reports still key off of.
+    secondary.verifyPassed = summary.passedRuns;
+    secondary.verifyFailed = summary.failedRuns;
     secondary.timeouts = summary.timeouts;
     secondary.infrastructureFailures = summary.infrastructureFailures;
     secondary.candidateFailures = summary.candidateFailures;
@@ -155,7 +166,19 @@ function buildPromptContract(db: Database, batchId: string, modelId: string): Re
   const experimentId = experimentIdOf(db, batchId);
   const manifest = manifestOf(db, batchId);
 
-  const secondary: Record<string, number> = {};
+  const emptyRow = db
+    .query<{ empty: number }, [string, string]>(
+      `SELECT COUNT(*) as empty FROM runs
+        WHERE run_batch_id = ? AND model_id = ? AND kind = 'prompt' AND status = 'ok'
+          AND TRIM(COALESCE(output_text, '')) = ''`,
+    )
+    .get(batchId, modelId);
+
+  const secondary: Record<string, number> = {
+    totalCostUsd: summary?.totalCostUsd ?? 0,
+    emptyRuns: emptyRow?.empty ?? 0,
+    emptyRatePct: summary && summary.okRuns > 0 ? ((emptyRow?.empty ?? 0) / summary.okRuns) * 100 : 0,
+  };
   if (summary) {
     if (summary.avgLatencyMs !== undefined) secondary.avgLatencyMs = summary.avgLatencyMs;
     if (summary.medianScore !== undefined) secondary.medianScore = summary.medianScore;
