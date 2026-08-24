@@ -172,9 +172,15 @@ export function renderSweAssessmentSection(data: SweReportData): string {
   const sections = [`## SWE Task Summary\n\n${[header, ...rows].join("\n")}`];
   if (data.statisticalAnalysis.comparisons.length > 0) {
     const comparisonRows = data.statisticalAnalysis.comparisons.map((c) =>
-      `| \`${c.baselineId}\` → \`${c.candidateId}\` | ${c.matchedTasks}/${c.unionTasks} | ${formatPercent(c.coverage)} | ${formatPercent(c.delta)} (${formatPercent(c.interval.low)} to ${formatPercent(c.interval.high)}) | ${c.wins}/${c.losses}/${c.ties} | **${c.verdict}** |`,
+      `| \`${c.baselineId}\` → \`${c.candidateId}\` | ${c.baselineId.split(":")[0] === c.candidateId.split(":")[0] ? "pure-model" : "full-agent-system"} | ${c.matchedTasks}/${c.unionTasks} | ${formatPercent(c.coverage)} | ${formatPercent(c.delta)} (${formatPercent(c.interval.low)} to ${formatPercent(c.interval.high)}) | ${c.wins}/${c.losses}/${c.ties} | **${c.verdict}** |`,
     );
-    sections.push(`### Paired uncertainty and verdicts\n\n| Baseline → candidate | Matched/union tasks | Coverage | Paired delta (95% hierarchical bootstrap CI) | W/L/T | Verdict |\n| --- | ---: | ---: | ---: | ---: | --- |\n${comparisonRows.join("\n")}\n\nRank stability: ${data.statisticalAnalysis.rankStability.topModelId ? `\`${data.statisticalAnalysis.rankStability.topModelId}\` is top in ${formatPercent(data.statisticalAnalysis.rankStability.topRankProbability)} of bootstrap samples` : "unavailable"}.\n\n${data.statisticalAnalysis.warnings.length ? data.statisticalAnalysis.warnings.map((warning) => `- Warning: ${warning}`).join("\n") : "No statistical warnings."}`);
+    sections.push(`### Paired uncertainty and verdicts\n\n| Baseline → candidate | Claim type | Matched/union tasks | Coverage | Paired delta (95% hierarchical bootstrap CI) | W/L/T | Verdict |\n| --- | --- | ---: | ---: | ---: | ---: | --- |\n${comparisonRows.join("\n")}\n\nRank stability: ${data.statisticalAnalysis.rankStability.topModelId ? `\`${data.statisticalAnalysis.rankStability.topModelId}\` is top in ${formatPercent(data.statisticalAnalysis.rankStability.topRankProbability)} of bootstrap samples` : "unavailable"}.\n\n${data.statisticalAnalysis.warnings.length ? data.statisticalAnalysis.warnings.map((warning) => `- Warning: ${warning}`).join("\n") : "No statistical warnings."}`);
+  }
+  if (data.harnessComparisons.length > 0) {
+    const comparisonRows = data.harnessComparisons.flatMap((comparison) => comparison.metrics.map((metric) =>
+      `| \`${comparison.baselineId}\` → \`${comparison.candidateId}\` | ${comparison.kind} | ${metric.metric} | ${metric.matchedTasks} | ${metric.delta === undefined ? "—" : formatNumber(metric.delta, 3)} | ${metric.interval ? `${formatNumber(metric.interval.low, 3)} to ${formatNumber(metric.interval.high, 3)}` : "—"} | ${comparison.excluded ? `excluded: ${comparison.reasons.join("; ")}` : "eligible"} |`,
+    ));
+    sections.push(`### Controlled cross-harness comparisons\n\nGrouped by immutable underlying model and matched task. Positive deltas mean the agent-loop harness is higher than raw API; latency, cost, and diff-size deltas are therefore not inherently improvements.\n\n| Raw API → agent loop | Claim type | Metric | Matched tasks | Delta | 95% hierarchical bootstrap CI | Harness-uplift status |\n| --- | --- | --- | ---: | ---: | --- | --- |\n${comparisonRows.join("\n")}`);
   }
   sections.push(
     [
@@ -228,13 +234,15 @@ export function renderSweReportSection(data: SweReportData): string {
   const metricNotes = metricNotesParts.join("\n");
   const statisticalHtml = data.statisticalAnalysis.comparisons.length ? `<h3>Paired uncertainty and verdicts</h3>
     <p class="muted">Matched-task correctness deltas use a hierarchical bootstrap across tasks and repeats. A win/loss requires minimum coverage/sample gates and the full 95% interval beyond the practical-equivalence threshold (${formatPercent(data.statisticalAnalysis.config.practicalEquivalence)}).</p>
-    <table class="summary-table"><thead><tr><th>Baseline → candidate</th><th>Matched/union</th><th>Coverage</th><th>Delta (95% CI)</th><th>W/L/T</th><th>Verdict</th></tr></thead><tbody>${data.statisticalAnalysis.comparisons.map((c) => `<tr><th>${escapeHtml(c.baselineId)} → ${escapeHtml(c.candidateId)}</th><td>${c.matchedTasks}/${c.unionTasks}</td><td>${formatPercent(c.coverage)}</td><td>${formatPercent(c.delta)} (${formatPercent(c.interval.low)} to ${formatPercent(c.interval.high)})</td><td>${c.wins}/${c.losses}/${c.ties}</td><td><b>${c.verdict}</b></td></tr>`).join("")}</tbody></table>
+    <table class="summary-table"><thead><tr><th>Baseline → candidate</th><th>Claim type</th><th>Matched/union</th><th>Coverage</th><th>Delta (95% CI)</th><th>W/L/T</th><th>Verdict</th></tr></thead><tbody>${data.statisticalAnalysis.comparisons.map((c) => `<tr><th>${escapeHtml(c.baselineId)} → ${escapeHtml(c.candidateId)}</th><td>${c.baselineId.split(":")[0] === c.candidateId.split(":")[0] ? "pure-model" : "full-agent-system"}</td><td>${c.matchedTasks}/${c.unionTasks}</td><td>${formatPercent(c.coverage)}</td><td>${formatPercent(c.delta)} (${formatPercent(c.interval.low)} to ${formatPercent(c.interval.high)})</td><td>${c.wins}/${c.losses}/${c.ties}</td><td><b>${c.verdict}</b></td></tr>`).join("")}</tbody></table>
     <p class="muted">Rank stability: ${data.statisticalAnalysis.rankStability.topModelId ? `${escapeHtml(data.statisticalAnalysis.rankStability.topModelId)} top in ${formatPercent(data.statisticalAnalysis.rankStability.topRankProbability)} of bootstrap samples.` : "unavailable."} ${data.statisticalAnalysis.warnings.map((warning) => `Warning: ${escapeHtml(warning)}.`).join(" ")}</p>` : "";
+  const harnessHtml = data.harnessComparisons.length ? `<h3>Controlled cross-harness comparisons</h3><p class="muted">Grouped by immutable underlying model and matched task. Positive deltas mean agent loop minus raw API.</p><table class="summary-table"><thead><tr><th>Raw API → agent loop</th><th>Claim type</th><th>Metric</th><th>Matched tasks</th><th>Delta (95% CI)</th><th>Status</th></tr></thead><tbody>${data.harnessComparisons.flatMap((comparison) => comparison.metrics.map((metric) => `<tr><th>${escapeHtml(comparison.baselineId)} → ${escapeHtml(comparison.candidateId)}</th><td>${escapeHtml(comparison.kind)}</td><td>${escapeHtml(metric.metric)}</td><td>${metric.matchedTasks}</td><td>${metric.delta === undefined ? "—" : `${formatNumber(metric.delta, 3)} (${formatNumber(metric.interval?.low, 3)} to ${formatNumber(metric.interval?.high, 3)})`}</td><td>${comparison.excluded ? `Excluded: ${escapeHtml(comparison.reasons.join("; "))}` : "Eligible for harness-effect interpretation"}</td></tr>`)).join("")}</tbody></table>` : "";
 
   return `
   <h2>SWE Task Summary</h2>
   ${metricNotes}
   ${statisticalHtml}
+  ${harnessHtml}
   <table class="summary-table">
     <thead>
       <tr>

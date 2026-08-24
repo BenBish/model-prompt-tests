@@ -67,7 +67,7 @@ function usage(): void {
   bun bench/src/cli.ts swe list
   bun bench/src/cli.ts swe doctor [--harnesses <ids>] [--timeout <ms>]
   bun bench/src/cli.ts swe health [task-or-all]
-  bun bench/src/cli.ts swe run <task-glob-or-all> --harnesses <ids> --models <aliases> [--repeats <n>] [--concurrency <n>] [--judge <id>] [--judges id1,id2] [--no-judge] [--keep-workspaces] [--dry-run] [--timeout <ms>] [--summary-out <path>]
+  bun bench/src/cli.ts swe run <task-glob-or-all> --harnesses <ids> --models <aliases> [--paired] [--repeats <n>] [--concurrency <n>] [--judge <id>] [--judges id1,id2] [--no-judge] [--keep-workspaces] [--dry-run] [--timeout <ms>] [--summary-out <path>]
   bun bench/src/cli.ts hermes tools --models <ids> [--concurrency <n>] [--dry-run] [--summary-out <path>]`);
 }
 
@@ -989,6 +989,7 @@ async function main(): Promise<void> {
             "dry-run": { type: "boolean" },
             "no-judge": { type: "boolean" },
             "keep-workspaces": { type: "boolean" },
+            paired: { type: "boolean" },
             "summary-out": { type: "string" },
           },
         });

@@ -15,12 +15,31 @@
       "kind": "codex",
       "models": {
         "gpt-5": "gpt-5",
-        "o4-mini": "o4-mini"
+        "o4-mini": "o4-mini",
+        "local:gemma": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf"
       },
       "sandbox": "workspace-write",
       "maxConcurrency": 1,
       "isolateCodexHome": true,
-      "metricsUrl": "http://127.0.0.1:18080"
+      "metricsUrl": "http://127.0.0.1:18080",
+      "systemUnderTest": {
+        "local:gemma": {
+          "underlyingModel": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+          "immutableRevision": "replace-with-upstream-revision",
+          "weightsSha256": "replace-with-cached-sha256",
+          "provider": "local",
+          "backend": "llama.cpp",
+          "quantization": "Q4_K_XL",
+          "sampling": { "temperature": 0 },
+          "scaffold": "codex-exec-default",
+          "harnessVersion": "replace-with-codex-version",
+          "cliVersion": "replace-with-codex-version",
+          "toolPermissions": ["workspace-write", "shell"],
+          "contextLimit": 120000,
+          "outputLimit": 32768,
+          "hermetic": true
+        }
+      }
     },
     {
       "id": "grok",
@@ -63,7 +82,24 @@
     {
       "id": "raw-api",
       "kind": "raw-api",
-      "maxContextBytes": 120000
+      "maxContextBytes": 120000,
+      "systemUnderTest": {
+        "local:gemma": {
+          "underlyingModel": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+          "immutableRevision": "replace-with-upstream-revision",
+          "weightsSha256": "replace-with-cached-sha256",
+          "provider": "local",
+          "backend": "llama.cpp",
+          "quantization": "Q4_K_XL",
+          "sampling": { "temperature": 0 },
+          "scaffold": "raw-api-unified-diff-v1",
+          "harnessVersion": "2",
+          "toolPermissions": [],
+          "contextLimit": 120000,
+          "outputLimit": 32768,
+          "hermetic": true
+        }
+      }
     }
   ]
 }

@@ -39,7 +39,10 @@
       "modelName": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
       "baseUrl": "http://localhost:8080/v1",
       "apiKeyEnvVar": "LOCAL_LLAMACPP_API_KEY",
-      "maxConcurrent": 1
+      "maxConcurrent": 1,
+      "immutableRevision": "replace-with-upstream-revision",
+      "weightsSha256": "replace-with-cached-sha256",
+      "quantization": "Q4_K_XL"
     },
     {
       "id": "local:lemonade",

@@ -31,6 +31,27 @@ function insertSweRun(
 }
 
 describe("querySweReportData", () => {
+  test("reports controlled harness deltas from the frozen paired manifest", () => {
+    const db = createDb();
+    const pairedExperiment = { kind: "harness-effect", underlyingModel: "model-rev", exclusions: [], cells: [
+      { harnessId: "raw-api", modelAlias: "shared", identity: {} },
+      { harnessId: "codex", modelAlias: "shared", identity: {} },
+    ] };
+    db.prepare("INSERT INTO experiments (id, schema_version, manifest_json, created_at) VALUES (?, 1, ?, ?)").run("exp-pair", JSON.stringify({ harness: { config: { pairedExperiment } } }), "2026-01-01");
+    for (const [modelId, latencyMs, costUsd, linesAdded, passed] of [
+      ["raw-api:shared", 100, 1, 2, false], ["codex:shared", 150, 2, 5, true],
+    ] as const) {
+      const runId = insertSweRun(db, { modelId, harnessId: modelId.split(":")[0], providerId: modelId.split(":")[0]!, latencyMs, costUsd, experimentId: "exp-pair" });
+      insertSweResult(db, { runId, taskType: "fixture", verifyPassed: passed, linesAdded, linesRemoved: 0, outcomeCategory: passed ? "passed" : "candidate_failure", publicationStatus: "comparable" });
+    }
+    const comparison = querySweReportData(db, { allRuns: true }).harnessComparisons[0]!;
+    expect(comparison.kind).toBe("harness-effect");
+    expect(comparison.metrics.find((metric) => metric.metric === "correctness")?.delta).toBe(1);
+    expect(comparison.metrics.find((metric) => metric.metric === "latencyMs")?.delta).toBe(50);
+    expect(comparison.metrics.find((metric) => metric.metric === "costUsd")?.delta).toBe(1);
+    expect(comparison.metrics.find((metric) => metric.metric === "diffLines")?.delta).toBe(3);
+  });
+
   test("excludes quarantined evidence from report summaries", () => {
     const db = createDb();
     const comparable = insertSweRun(db);
