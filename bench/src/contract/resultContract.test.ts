@@ -290,6 +290,43 @@ describe("buildResultContract", () => {
       .toThrow(/incompatible experiment manifests.*tasks/);
   });
 
+  test("rejects environment-incompatible composition when performance metrics are present", () => {
+    const db = createDb();
+    const first = insertExperiment(db, manifestFixture());
+    const changed = manifestFixture();
+    changed.environment = fingerprintEnvironment({ executionDomain: "different-domain", concurrency: 1 });
+    const second = insertExperiment(db, changed);
+    for (const [batch, promptId, experimentId] of [["batch-1", "prompt-a", first], ["batch-2", "prompt-b", second]] as const) {
+      insertRun(db, {
+        runBatchId: batch, promptId, providerId: "codex-lab", modelId: "codex-lab:candidate",
+        modelName: "candidate", startedAt: "2026-08-23T00:00:00.000Z", status: "ok",
+        kind: "prompt", latencyMs: 100, outcomeCategory: "passed", experimentId,
+      });
+    }
+
+    expect(() => buildResultContract(db, ["batch-1", "batch-2"], "codex-lab:candidate", "prompt"))
+      .toThrow(/environment-incompatible experiment manifests.*environment/);
+  });
+
+  test("allows environment-incompatible composition for a quality-only contract", () => {
+    const db = createDb();
+    const first = insertExperiment(db, manifestFixture());
+    const changed = manifestFixture();
+    changed.environment = fingerprintEnvironment({ executionDomain: "different-domain", concurrency: 1 });
+    const second = insertExperiment(db, changed);
+    for (const [batch, promptId, experimentId] of [["batch-1", "prompt-a", first], ["batch-2", "prompt-b", second]] as const) {
+      insertRun(db, {
+        runBatchId: batch, promptId, providerId: "codex-lab", modelId: "codex-lab:candidate",
+        modelName: "candidate", startedAt: "2026-08-23T00:00:00.000Z", status: "ok",
+        kind: "prompt", outcomeCategory: "passed", experimentId,
+      });
+    }
+
+    const contract = buildResultContract(db, ["batch-1", "batch-2"], "codex-lab:candidate", "prompt");
+    expect(contract.totalRuns).toBe(2);
+    expect(contract.metrics.secondary.avgLatencyMs).toBeUndefined();
+  });
+
   test("rejects mixing legacy and provenance-bearing batches", () => {
     const db = createDb();
     const experimentId = insertExperiment(db, manifestFixture());
