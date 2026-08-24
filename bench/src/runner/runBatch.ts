@@ -53,6 +53,7 @@ export interface RunBatchOptions {
 
 export interface RunBatchSummary {
   runBatchId: string;
+  experimentId: string;
   ok: number;
   errored: number;
   judgeErrored: number;
@@ -382,6 +383,7 @@ export async function runBatch(options: RunBatchOptions): Promise<RunBatchSummar
 
   return {
     runBatchId,
+    experimentId,
     ok,
     errored,
     judgeErrored,
