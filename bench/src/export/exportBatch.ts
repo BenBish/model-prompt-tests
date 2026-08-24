@@ -355,9 +355,11 @@ export async function exportBatch(options: ExportBatchOptions): Promise<ExportBa
 
   const rawRows = buildRawExportRows(data);
   const experiment = getExperimentForBatch(options.db, options.runBatchId);
-  if (experiment) {
-    const issues = publicationIssues(experiment.manifest);
-    if (issues.length > 0) throw new Error(`experiment is not publication-eligible: ${issues.join("; ")}`);
+  if (!experiment) throw new Error("experiment provenance is missing; publication export fails closed");
+  const issues = publicationIssues(experiment.manifest);
+  if (issues.length > 0) throw new Error(`experiment is not publication-eligible: ${issues.join("; ")}`);
+  if (sweData.summaries.some((summary) => summary.publicationBlockedRuns > 0)) {
+    throw new Error("task health or required SWE coverage is missing; publication export fails closed");
   }
   const sitePayload: SitePayload = {
     name: options.name,

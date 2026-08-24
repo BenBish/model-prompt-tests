@@ -8,6 +8,8 @@ import { insertScore } from "../db/scoresRepo";
 import type { BenchModelsConfig } from "../config/modelConfig";
 import { exportBatch, validateExportName } from "./exportBatch";
 import type { CalibrationAssessment } from "../calibrate/anchors";
+import { insertExperiment } from "../db/experimentsRepo";
+import type { ExperimentManifest } from "../experiment/manifest";
 
 const calibrated: CalibrationAssessment = { status: "calibrated", publicationEligible: true, corpusSha256: "test", evidenceSha256: "test", failures: [], warnings: [], monotonicityFailures: [], extremeConcentration: 0, judgeDisagreement: 0, positionEffect: 0, ties: 0, humanCoverage: 1, categories: [], judgeFamilyBias: {}, styleCorrelations: {} };
 
@@ -47,6 +49,15 @@ afterEach(() => {
 
 function seedBatch(db: Database, runBatchId: string): void {
   const startedAt = "2026-07-13T00:00:00.000Z";
+  const manifest: ExperimentManifest = {
+    schemaVersion: 1, createdAt: startedAt, suite: { id: "test", version: "1" }, repository: { sha: "abc", dirty: false },
+    tasks: [{ id: "writing/press-release", sha256: "task" }],
+    models: [{ id: "test:sonnet", provider: "anthropic", model: "claude-test" }, { id: "test:gpt", provider: "openai", model: "gpt-test" }],
+    judges: [{ id: "judge", modelId: "test:sonnet", sha256: "judge" }], harness: { id: "test", version: "1", config: {} },
+    prompts: {}, limits: {}, toolPermissions: [], plannedRepeats: 1, exclusions: [],
+    environment: { schemaVersion: 1, executionDomain: "test", os: { platform: "test", kernel: "test" }, cpu: "test", memoryBytes: 1, concurrency: 1, productionServices: "unknown" },
+  };
+  const experimentId = insertExperiment(db, manifest);
   const runA = insertRun(db, {
     runBatchId,
     promptId: "writing/press-release",
@@ -61,6 +72,7 @@ function seedBatch(db: Database, runBatchId: string): void {
     status: "ok",
     costUsd: 0.005,
     stopReason: "stop",
+    experimentId,
   });
   insertScore(db, {
     runId: runA,
@@ -85,6 +97,7 @@ function seedBatch(db: Database, runBatchId: string): void {
     status: "ok",
     costUsd: 0.002,
     stopReason: "length",
+    experimentId,
   });
   insertScore(db, {
     runId: runB,
@@ -196,6 +209,14 @@ describe("exportBatch", () => {
     const db = createDb(); seedBatch(db, "batch-1");
     const root = mkdtempSync(join(tmpdir(), "bench-export-")); tempRoots.push(root);
     await expect(exportBatch({ db, config, runBatchId: "batch-1", name: "uncalibrated", outDir: join(root, "x") })).rejects.toThrow("uncalibrated");
+  });
+
+  test("fails closed without immutable experiment provenance", async () => {
+    const db = createDb();
+    const startedAt = "2026-07-13T00:00:00.000Z";
+    insertRun(db, { runBatchId: "legacy", promptId: "p", providerId: "x", modelId: "m", modelName: "m", startedAt, status: "ok" });
+    const root = mkdtempSync(join(tmpdir(), "bench-export-")); tempRoots.push(root);
+    await expect(exportBatch({ db, config, runBatchId: "legacy", name: "legacy", outDir: join(root, "x"), calibration: calibrated })).rejects.toThrow("provenance is missing");
   });
 
   test("rejects an unsafe export name before writing anything", async () => {

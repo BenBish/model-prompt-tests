@@ -1,0 +1,36 @@
+name: scheduled-benchmark-health
+on:
+  schedule:
+    - cron: "17 9 * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
+concurrency:
+  group: generic-nightly-benchmark-health
+  cancel-in-progress: false
+jobs:
+  health-and-calibration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      BENCH_EXECUTION_DOMAIN: generic-ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - run: bun install --frozen-lockfile
+      - run: bun run ops validate-contract --contract bench/ops/nightly-contract.json
+      - run: bun run bench swe health all
+      - run: bun run bench calibrate --anchors bench/calibration/anchors-v1.json --evidence bench/calibration/reference-evidence-v1.json --out "${RUNNER_TEMP}/calibration-report.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-health-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/calibration-report.json
+            bench/task-health/
+
+# Model/network experiments are intentionally absent. Laptop runs are explicit;
+# Fedora runs are launched only by Halo-Maxxing with its lease contract.

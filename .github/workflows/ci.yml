@@ -1,0 +1,26 @@
+name: deterministic-ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: deterministic-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun test
+      - name: Validate schema migrations on a fresh database
+        run: DB_PATH="${RUNNER_TEMP}/migration.sqlite" bun -e 'import { openDb } from "./bench/src/db/client"; openDb(process.env.DB_PATH!)'
+      - name: Fast oracle and task-health checks
+        run: bun run bench swe health all

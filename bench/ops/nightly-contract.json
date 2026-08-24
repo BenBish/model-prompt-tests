@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "runId": "generic-nightly-health-calibration-v1",
+  "executionDomain": "generic-ci",
+  "requiredResources": ["cpu", "bun", "sqlite"],
+  "budget": {
+    "maxCalls": 1,
+    "maxTokens": 1,
+    "maxCostUsd": 0.01,
+    "maxElapsedMs": 1200000,
+    "maxConcurrency": 1
+  }
+}
