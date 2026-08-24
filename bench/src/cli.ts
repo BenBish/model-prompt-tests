@@ -41,6 +41,8 @@ import { groupsFromBatch, runSynthesisForGroups } from "./synthesize/groups";
 import { getExperiment, getExperimentForBatch } from "./db/experimentsRepo";
 import { compareExperiments } from "./experiment/compatibility";
 import { manifestId, publicationIssues } from "./experiment/manifest";
+import { writeRunSummary } from "./contract/summaryOut";
+import { buildResultContract } from "./contract/resultContract";
 
 const REPO_ROOT = process.cwd();
 const DB_PATH = `${REPO_ROOT}/bench/data/bench.sqlite`;
@@ -51,21 +53,22 @@ const DEFAULT_CONCURRENCY = 3;
 
 function usage(): void {
   console.log(`Usage:
-  bun bench/src/cli.ts run <prompt-glob-or-all|calibration> [--models id1,id2] [--judge <id>] [--judges id1,id2] [--concurrency <n>] [--repeats <n>] [--dry-run] [--no-judge] [--peer-rank] [--synthesize] [--chairman <id>]
+  bun bench/src/cli.ts run <prompt-glob-or-all|calibration> [--models id1,id2] [--judge <id>] [--judges id1,id2] [--concurrency <n>] [--repeats <n>] [--dry-run] [--no-judge] [--peer-rank] [--synthesize] [--chairman <id>] [--summary-out <path>]
   bun bench/src/cli.ts synthesize (--batch <run_batch_id> | --latest) [--prompts id1,id2] [--chairman <id>] [--dry-run]
   bun bench/src/cli.ts calibrate [--batch <run_batch_id>] [--all-runs] [--human <file.json>] [--anchors <corpus.json> --evidence <evidence.json>] [--out <path>] [--subset]
   bun bench/src/cli.ts report [--out <path>] [--batch <run_batch_id>] [--all-runs] [--narrative] [--judge <id>] [--calibration-anchors <file> --calibration-evidence <file>]
   bun bench/src/cli.ts report --compare <batchA> --compare <batchB> [--out <path>]
   bun bench/src/cli.ts export --name <slug> (--batch <run_batch_id> | --latest) --calibration-anchors <file> --calibration-evidence <file>
   bun bench/src/cli.ts reproduce --batch <run_batch_id>
+  bun bench/src/cli.ts experiment export --batch <run_batch_id> --model <model_id> [--kind swe|prompt] [--out <path>]
   bun bench/src/cli.ts publish [--out <dir>] [--results-dir <dir>]
   bun bench/src/cli.ts models <list|init|validate|set-judge|add-openai-compatible|add-anthropic|remove>
   bun bench/src/cli.ts list
   bun bench/src/cli.ts swe list
   bun bench/src/cli.ts swe doctor [--harnesses <ids>] [--timeout <ms>]
   bun bench/src/cli.ts swe health [task-or-all]
-  bun bench/src/cli.ts swe run <task-glob-or-all> --harnesses <ids> --models <aliases> [--paired] [--repeats <n>] [--concurrency <n>] [--judge <id>] [--judges id1,id2] [--no-judge] [--keep-workspaces] [--dry-run] [--timeout <ms>]
-  bun bench/src/cli.ts hermes tools --models <ids> [--concurrency <n>] [--dry-run]`);
+  bun bench/src/cli.ts swe run <task-glob-or-all> --harnesses <ids> --models <aliases> [--paired] [--repeats <n>] [--concurrency <n>] [--judge <id>] [--judges id1,id2] [--no-judge] [--keep-workspaces] [--dry-run] [--timeout <ms>] [--summary-out <path>]
+  bun bench/src/cli.ts hermes tools --models <ids> [--concurrency <n>] [--dry-run] [--summary-out <path>]`);
 }
 
 function requireFlag(values: Record<string, unknown>, key: string): string {
@@ -289,6 +292,13 @@ async function cmdRun(positionals: string[], values: Record<string, unknown>): P
           }
         : undefined,
   });
+  if (typeof values["summary-out"] === "string") {
+    await writeRunSummary(values["summary-out"], {
+      schemaVersion: 1,
+      runBatchId: summary.runBatchId,
+      experimentId: summary.experimentId,
+    });
+  }
   if (
     summary.errored > 0 ||
     summary.judgeErrored > 0 ||
@@ -613,6 +623,26 @@ async function cmdReproduce(values: Record<string, unknown>): Promise<void> {
   console.log(JSON.stringify({ id: experiment.id, valid: true, publicationEligible: issues.length === 0, publicationIssues: issues, manifest: experiment.manifest }, null, 2));
 }
 
+async function cmdExperimentExport(values: Record<string, unknown>): Promise<void> {
+  const db = openDb(DB_PATH);
+  const batch = values.batch as string | undefined;
+  const modelId = values.model as string | undefined;
+  const kind = (values.kind as string | undefined) ?? "swe";
+  if (!batch) throw new Error("experiment export requires --batch <run_batch_id>");
+  if (!modelId) throw new Error("experiment export requires --model <model_id>");
+  if (kind !== "swe" && kind !== "prompt" && kind !== "tool-probe") {
+    throw new Error('--kind must be "swe", "prompt", or "tool-probe"');
+  }
+  const contract = buildResultContract(db, batch, modelId, kind);
+  const json = JSON.stringify(contract, null, 2);
+  if (typeof values.out === "string") {
+    await Bun.write(values.out, `${json}\n`);
+    console.log(`Result contract written to ${values.out}`);
+  } else {
+    console.log(json);
+  }
+}
+
 async function cmdModels(rest: string[]): Promise<void> {
   const subcommand = rest[0];
   const args = rest.slice(1);
@@ -811,6 +841,7 @@ async function main(): Promise<void> {
           "peer-rank": { type: "boolean" },
           synthesize: { type: "boolean" },
           chairman: { type: "string" },
+          "summary-out": { type: "string" },
         },
       });
       await cmdRun(positionals, values);
@@ -888,6 +919,27 @@ async function main(): Promise<void> {
       await cmdReproduce(values);
       break;
     }
+    case "experiment": {
+      const experimentSubcommand = rest[0];
+      const experimentRest = rest.slice(1);
+      if (experimentSubcommand === "export") {
+        const { values } = parseArgs({
+          args: experimentRest,
+          allowPositionals: false,
+          options: {
+            batch: { type: "string" },
+            model: { type: "string" },
+            kind: { type: "string" },
+            out: { type: "string" },
+          },
+        });
+        await cmdExperimentExport(values);
+      } else {
+        usage();
+        process.exit(1);
+      }
+      break;
+    }
     case "publish": {
       const { values } = parseArgs({
         args: rest,
@@ -938,6 +990,7 @@ async function main(): Promise<void> {
             "no-judge": { type: "boolean" },
             "keep-workspaces": { type: "boolean" },
             paired: { type: "boolean" },
+            "summary-out": { type: "string" },
           },
         });
         await cmdSweRun(REPO_ROOT, positionals, values);
@@ -958,6 +1011,7 @@ async function main(): Promise<void> {
             models: { type: "string" },
             concurrency: { type: "string" },
             "dry-run": { type: "boolean" },
+            "summary-out": { type: "string" },
           },
         });
         await cmdHermesTools(REPO_ROOT, values);

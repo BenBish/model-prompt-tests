@@ -4,6 +4,7 @@ import { openDb } from "../db/client";
 import { renderToolProbeSection } from "./renderToolProbeSection";
 import { runToolProbe, type ToolProbeCandidate } from "./runToolProbe";
 import { TOOL_PROBE_CASES } from "./toolCases";
+import { writeRunSummary } from "../contract/summaryOut";
 
 export async function cmdHermesTools(
   repoRoot: string,
@@ -52,5 +53,13 @@ export async function cmdHermesTools(
       "\n[gate] one or more candidates scored below 90% well-formed tool calls — treat as disqualifying " +
         "for any tool-calling agent role regardless of prose quality elsewhere.",
     );
+  }
+
+  if (typeof values["summary-out"] === "string") {
+    await writeRunSummary(values["summary-out"], {
+      schemaVersion: 1,
+      runBatchId: summary.runBatchId,
+      experimentId: summary.experimentId,
+    });
   }
 }

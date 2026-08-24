@@ -34,6 +34,7 @@ export interface RunToolProbeOptions {
 
 export interface RunToolProbeSummary {
   runBatchId: string;
+  experimentId: string;
   candidateSummaries: ToolProbeCandidateSummary[];
 }
 
@@ -146,5 +147,5 @@ export async function runToolProbe(options: RunToolProbeOptions): Promise<RunToo
     });
   }
 
-  return { runBatchId, candidateSummaries: summaries };
+  return { runBatchId, experimentId, candidateSummaries: summaries };
 }

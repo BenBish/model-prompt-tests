@@ -64,6 +64,7 @@ export interface RunSweBatchOptions {
 
 export interface RunSweBatchSummary {
   runBatchId: string;
+  experimentId: string;
   ok: number;
   errored: number;
   passed: number;
@@ -506,5 +507,5 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
       `${judgeErrored} judge errors, ${Math.round(wallClockMs)}ms${noJudgeNote}`,
   );
 
-  return { runBatchId, ok, errored, passed, failed, judgeErrored, wallClockMs };
+  return { runBatchId, experimentId, ok, errored, passed, failed, judgeErrored, wallClockMs };
 }
