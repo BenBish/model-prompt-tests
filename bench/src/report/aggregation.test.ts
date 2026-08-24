@@ -12,6 +12,24 @@ function createDb(): Database {
 }
 
 describe("queryReportData kind filtering", () => {
+  test("summarizes prompt infrastructure and candidate failures separately", () => {
+    const db = createDb();
+    for (const [promptId, status, outcomeCategory] of [
+      ["passed", "ok", "passed"],
+      ["bad-output", "error", "candidate_failure"],
+      ["outage", "error", "provider_error"],
+      ["timeout", "error", "timeout"],
+    ] as const) {
+      insertRun(db, {
+        runBatchId: "batch-taxonomy", promptId, providerId: "test", modelId: "test:model",
+        modelName: "model", startedAt: "2026-01-01T00:00:00.000Z", status, outcomeCategory,
+      });
+    }
+    const summary = queryReportData(db, { allRuns: true }).summaries[0]!;
+    expect(summary.infrastructureFailures).toBe(2);
+    expect(summary.candidateFailures).toBe(1);
+    db.close();
+  });
   test("excludes SWE-kind runs from the prompt report entirely", () => {
     const db = createDb();
     insertRun(db, {

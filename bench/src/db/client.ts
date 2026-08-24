@@ -26,6 +26,7 @@ const COLUMN_MIGRATIONS: ColumnMigration[] = [
   { table: "runs", column: "harness_id", ddlType: "TEXT" },
   { table: "runs", column: "stop_reason", ddlType: "TEXT" },
   { table: "runs", column: "cost_usd", ddlType: "REAL" },
+  { table: "runs", column: "outcome_category", ddlType: "TEXT" },
   { table: "swe_results", column: "server_prompt_tokens", ddlType: "INTEGER" },
   { table: "swe_results", column: "server_prompt_seconds", ddlType: "REAL" },
   { table: "swe_results", column: "server_predicted_tokens", ddlType: "INTEGER" },

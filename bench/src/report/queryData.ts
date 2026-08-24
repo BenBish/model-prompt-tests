@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { PROMPT_INFRASTRUCTURE_OUTCOMES, type PromptOutcomeCategory } from "../runner/promptOutcome";
 
 export interface JudgeDimensionReportScore {
   score: number;
@@ -20,6 +21,7 @@ export interface ReportRow {
   outputText?: string;
   error?: string;
   runStatus: "ok" | "error";
+  outcomeCategory?: PromptOutcomeCategory;
   stopReason?: string;
   costUsd?: number;
   judgeResults: JudgeReportRow[];
@@ -52,6 +54,8 @@ export interface ModelSummary {
   modelId: string;
   okRuns: number;
   errorRuns: number;
+  infrastructureFailures: number;
+  candidateFailures: number;
   missingJudgeScores: number;
   /** Headline average: peer judges only (self-judging excluded). */
   avgScore?: number;
@@ -116,6 +120,7 @@ function rowToReportRow(row: any): ReportRow {
     outputText: row.output_text ?? undefined,
     error: row.error ?? undefined,
     runStatus: row.status,
+    outcomeCategory: row.outcome_category ?? undefined,
     stopReason: row.stop_reason ?? undefined,
     costUsd: row.cost_usd ?? undefined,
     judgeResults: [],
@@ -254,6 +259,10 @@ function summarize(modelIds: string[], rows: ReportRow[]): ModelSummary[] {
       modelId,
       okRuns: okRows.length,
       errorRuns: modelRows.length - okRows.length,
+      infrastructureFailures: modelRows.filter(
+        (row) => row.outcomeCategory && PROMPT_INFRASTRUCTURE_OUTCOMES.has(row.outcomeCategory),
+      ).length,
+      candidateFailures: modelRows.filter((row) => row.outcomeCategory === "candidate_failure").length,
       missingJudgeScores,
       avgScore,
       medianScore: median(cellScores),

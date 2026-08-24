@@ -38,8 +38,8 @@ function payload(name: string, generatedAt: string): SitePayload {
     promptCount: 5,
     modelIds: ["model-a", "model-b"],
     summaries: [
-      { modelId: "model-a", okRuns: 5, errorRuns: 0, missingJudgeScores: 0, avgScore: 4.5, truncatedRuns: 0 },
-      { modelId: "model-b", okRuns: 5, errorRuns: 0, missingJudgeScores: 0, avgScore: 3.9, truncatedRuns: 0 },
+      { modelId: "model-a", okRuns: 5, errorRuns: 0, infrastructureFailures: 0, candidateFailures: 0, missingJudgeScores: 0, avgScore: 4.5, truncatedRuns: 0 },
+      { modelId: "model-b", okRuns: 5, errorRuns: 0, infrastructureFailures: 0, candidateFailures: 0, missingJudgeScores: 0, avgScore: 3.9, truncatedRuns: 0 },
     ],
   };
 }

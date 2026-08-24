@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import type { PromptOutcomeCategory } from "../runner/promptOutcome";
 
 export interface RunRecord {
   runBatchId: string;
@@ -14,6 +15,7 @@ export interface RunRecord {
   rawResponse?: string;
   error?: string;
   status: "ok" | "error";
+  outcomeCategory?: PromptOutcomeCategory;
   repeatIndex?: number;
   kind?: "prompt" | "swe";
   harnessId?: string;
@@ -30,11 +32,11 @@ export function insertRun(db: Database, record: RunRecord): number {
   const stmt = db.prepare(`
     INSERT INTO runs (
       run_batch_id, prompt_id, provider_id, model_id, model_name, started_at,
-      latency_ms, input_tokens, output_tokens, output_text, raw_response, error, status,
+      latency_ms, input_tokens, output_tokens, output_text, raw_response, error, status, outcome_category,
       repeat_index, kind, harness_id, stop_reason, cost_usd, experiment_id
     ) VALUES (
       $runBatchId, $promptId, $providerId, $modelId, $modelName, $startedAt,
-      $latencyMs, $inputTokens, $outputTokens, $outputText, $rawResponse, $error, $status,
+      $latencyMs, $inputTokens, $outputTokens, $outputText, $rawResponse, $error, $status, $outcomeCategory,
       $repeatIndex, $kind, $harnessId, $stopReason, $costUsd, $experimentId
     )
   `);
@@ -53,6 +55,7 @@ export function insertRun(db: Database, record: RunRecord): number {
     $rawResponse: record.rawResponse ?? null,
     $error: record.error ?? null,
     $status: record.status,
+    $outcomeCategory: record.outcomeCategory ?? null,
     $repeatIndex: record.repeatIndex ?? 0,
     $kind: record.kind ?? "prompt",
     $harnessId: record.harnessId ?? null,
@@ -94,6 +97,7 @@ function rowToRunRow(row: any): RunRow {
     rawResponse: row.raw_response ?? undefined,
     error: row.error ?? undefined,
     status: row.status,
+    outcomeCategory: row.outcome_category ?? undefined,
     repeatIndex: row.repeat_index ?? 0,
     kind: row.kind ?? "prompt",
     harnessId: row.harness_id ?? undefined,

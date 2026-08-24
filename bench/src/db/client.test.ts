@@ -58,6 +58,7 @@ describe("applyMigrations", () => {
     expect(tableColumns(db, "runs")).not.toContain("harness_id");
     expect(tableColumns(db, "runs")).not.toContain("stop_reason");
     expect(tableColumns(db, "runs")).not.toContain("cost_usd");
+    expect(tableColumns(db, "runs")).not.toContain("outcome_category");
 
     applyMigrations(db);
 
@@ -68,6 +69,7 @@ describe("applyMigrations", () => {
     expect(tableColumns(db, "runs")).toContain("harness_id");
     expect(tableColumns(db, "runs")).toContain("stop_reason");
     expect(tableColumns(db, "runs")).toContain("cost_usd");
+    expect(tableColumns(db, "runs")).toContain("outcome_category");
 
     const tables = (
       db.query(`SELECT name FROM sqlite_master WHERE type='table'`).all() as { name: string }[]
@@ -82,6 +84,7 @@ describe("applyMigrations", () => {
     expect(run.harness_id).toBeNull();
     expect(run.stop_reason).toBeNull();
     expect(run.cost_usd).toBeNull();
+    expect(run.outcome_category).toBeNull();
 
     const score = db.query("SELECT * FROM scores WHERE run_id = $id").get({ $id: runId.id }) as any;
     expect(score.score).toBe(4);

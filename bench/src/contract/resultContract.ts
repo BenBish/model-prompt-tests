@@ -183,7 +183,19 @@ function buildPromptContract(db: Database, batchId: string, modelId: string): Re
     if (summary.avgLatencyMs !== undefined) secondary.avgLatencyMs = summary.avgLatencyMs;
     if (summary.medianScore !== undefined) secondary.medianScore = summary.medianScore;
     secondary.errorRuns = summary.errorRuns;
+    secondary.infrastructureFailures = summary.infrastructureFailures;
+    secondary.candidateFailures = summary.candidateFailures;
   }
+
+  const outcomeRows = db
+    .query<{ outcome_category: string | null; n: number }, [string, string]>(
+      `SELECT outcome_category, COUNT(*) AS n FROM runs
+        WHERE run_batch_id = ? AND model_id = ? AND kind = 'prompt'
+        GROUP BY outcome_category`,
+    )
+    .all(batchId, modelId);
+  const outcomeCounts: Record<string, number> = {};
+  for (const row of outcomeRows) outcomeCounts[row.outcome_category ?? "unknown"] = row.n;
 
   return {
     schemaVersion: RESULT_CONTRACT_VERSION,
@@ -197,7 +209,7 @@ function buildPromptContract(db: Database, batchId: string, modelId: string): Re
     environmentFingerprint: manifest?.environment,
     totalRuns: (summary?.okRuns ?? 0) + (summary?.errorRuns ?? 0),
     okRuns: summary?.okRuns ?? 0,
-    outcomeCounts: {},
+    outcomeCounts,
     health: { status: "not-applicable", comparableRuns: summary?.okRuns ?? 0, quarantinedRuns: 0 },
     metrics: {
       primary: summary?.avgScore !== undefined ? { name: "avgScore", value: summary.avgScore } : undefined,
