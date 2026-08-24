@@ -130,7 +130,9 @@ export async function launchPomodoroPage() {
   let target: { webSocketDebuggerUrl: string } | undefined;
   try {
     const appUrl = "http://127.0.0.1:" + staticServer.port + "/";
-    for (let attempt = 0; attempt < 150; attempt++) {
+    // Cold Chromium startup on shared CI runners can exceed 15 seconds. Keep polling
+    // within the fixture's 120-second outer timeout to avoid runner-load flakes.
+    for (let attempt = 0; attempt < 450; attempt++) {
       try {
         const targetUrl =
           "http://127.0.0.1:" + debugPort + "/json/new?" + encodeURIComponent(appUrl);
