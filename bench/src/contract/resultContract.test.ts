@@ -34,6 +34,34 @@ function manifestFixture(): ExperimentManifest {
 }
 
 describe("buildResultContract", () => {
+  function seedSwe(
+    db: Database,
+    options: { batch: string; task: string; status?: "ok" | "error"; experimentId?: string; publication?: "comparable" | "quarantined"; repeatIndex?: number },
+  ): number {
+    const runId = insertRun(db, {
+      runBatchId: options.batch,
+      promptId: options.task,
+      providerId: "codex-lab",
+      modelId: "codex-lab:candidate",
+      modelName: "candidate",
+      startedAt: `2026-08-23T00:00:0${options.batch.endsWith("2") ? "2" : "1"}.000Z`,
+      status: options.status ?? "ok",
+      kind: "swe",
+      harnessId: "codex-lab",
+      repeatIndex: options.repeatIndex,
+      experimentId: options.experimentId,
+    });
+    insertSweResult(db, {
+      runId,
+      taskType: "fixture",
+      verifyPassed: options.status !== "error",
+      outcomeCategory: options.status === "error" ? "harness_error" : "passed",
+      healthStatus: options.status === "error" ? "infrastructure-failure" : "healthy",
+      publicationStatus: options.publication ?? "comparable",
+    });
+    return runId;
+  }
+
   test("fails closed when the requested batch/model has no evidence", () => {
     const db = createDb();
 
@@ -208,5 +236,112 @@ describe("buildResultContract", () => {
     expect(contract.metrics.primary?.name).toBe("wellFormedPct");
     expect(contract.metrics.primary?.value).toBe(100);
     expect(contract.metrics.secondary.validArgs).toBe(0);
+  });
+
+  test("composes disjoint SWE cells and records every contributing batch", () => {
+    const db = createDb();
+    const experimentId = insertExperiment(db, manifestFixture());
+    seedSwe(db, { batch: "batch-1", task: "task-a", experimentId });
+    seedSwe(db, { batch: "batch-2", task: "task-b", experimentId });
+
+    const contract = buildResultContract(db, ["batch-1", "batch-2"], "codex-lab:candidate", "swe");
+
+    expect(contract.totalRuns).toBe(2);
+    expect(contract.okRuns).toBe(2);
+    expect(contract.outcomeCounts.passed).toBe(2);
+    expect(contract.runBatchIds).toEqual(["batch-1", "batch-2"]);
+    expect(contract.artifacts.runBatchIds).toEqual(["batch-1", "batch-2"]);
+  });
+
+  test("prefers a completed comparable retry over an interrupted cell", () => {
+    const db = createDb();
+    const experimentId = insertExperiment(db, manifestFixture());
+    seedSwe(db, { batch: "batch-1", task: "task-a", status: "error", publication: "quarantined", experimentId });
+    seedSwe(db, { batch: "batch-2", task: "task-a", experimentId });
+
+    const contract = buildResultContract(db, ["batch-1", "batch-2"], "codex-lab:candidate", "swe");
+
+    expect(contract.totalRuns).toBe(1);
+    expect(contract.okRuns).toBe(1);
+    expect(contract.outcomeCounts).toEqual({ passed: 1 });
+    expect(contract.health.comparableRuns).toBe(1);
+  });
+
+  test("rejects duplicate completed cells", () => {
+    const db = createDb();
+    const experimentId = insertExperiment(db, manifestFixture());
+    seedSwe(db, { batch: "batch-1", task: "task-a", experimentId });
+    seedSwe(db, { batch: "batch-2", task: "task-a", experimentId });
+
+    expect(() => buildResultContract(db, ["batch-1", "batch-2"], "codex-lab:candidate", "swe"))
+      .toThrow("duplicate completed swe cell");
+  });
+
+  test("rejects semantically incompatible manifests and names the differing path", () => {
+    const db = createDb();
+    const first = insertExperiment(db, manifestFixture());
+    const changed = manifestFixture();
+    changed.tasks = [{ id: "different-task", sha256: sha256("different") }];
+    const second = insertExperiment(db, changed);
+    seedSwe(db, { batch: "batch-1", task: "task-a", experimentId: first });
+    seedSwe(db, { batch: "batch-2", task: "task-b", experimentId: second });
+
+    expect(() => buildResultContract(db, ["batch-1", "batch-2"], "codex-lab:candidate", "swe"))
+      .toThrow(/incompatible experiment manifests.*tasks/);
+  });
+
+  test("rejects environment-incompatible composition when performance metrics are present", () => {
+    const db = createDb();
+    const first = insertExperiment(db, manifestFixture());
+    const changed = manifestFixture();
+    changed.environment = fingerprintEnvironment({ executionDomain: "different-domain", concurrency: 1 });
+    const second = insertExperiment(db, changed);
+    for (const [batch, promptId, experimentId] of [["batch-1", "prompt-a", first], ["batch-2", "prompt-b", second]] as const) {
+      insertRun(db, {
+        runBatchId: batch, promptId, providerId: "codex-lab", modelId: "codex-lab:candidate",
+        modelName: "candidate", startedAt: "2026-08-23T00:00:00.000Z", status: "ok",
+        kind: "prompt", latencyMs: 100, outcomeCategory: "passed", experimentId,
+      });
+    }
+
+    expect(() => buildResultContract(db, ["batch-1", "batch-2"], "codex-lab:candidate", "prompt"))
+      .toThrow(/environment-incompatible experiment manifests.*environment/);
+  });
+
+  test("allows environment-incompatible composition for a quality-only contract", () => {
+    const db = createDb();
+    const first = insertExperiment(db, manifestFixture());
+    const changed = manifestFixture();
+    changed.environment = fingerprintEnvironment({ executionDomain: "different-domain", concurrency: 1 });
+    const second = insertExperiment(db, changed);
+    for (const [batch, promptId, experimentId] of [["batch-1", "prompt-a", first], ["batch-2", "prompt-b", second]] as const) {
+      insertRun(db, {
+        runBatchId: batch, promptId, providerId: "codex-lab", modelId: "codex-lab:candidate",
+        modelName: "candidate", startedAt: "2026-08-23T00:00:00.000Z", status: "ok",
+        kind: "prompt", outcomeCategory: "passed", experimentId,
+      });
+    }
+
+    const contract = buildResultContract(db, ["batch-1", "batch-2"], "codex-lab:candidate", "prompt");
+    expect(contract.totalRuns).toBe(2);
+    expect(contract.metrics.secondary.avgLatencyMs).toBeUndefined();
+  });
+
+  test("rejects mixing legacy and provenance-bearing batches", () => {
+    const db = createDb();
+    const experimentId = insertExperiment(db, manifestFixture());
+    seedSwe(db, { batch: "batch-1", task: "task-a", experimentId });
+    seedSwe(db, { batch: "batch-2", task: "task-b" });
+
+    expect(() => buildResultContract(db, ["batch-1", "batch-2"], "codex-lab:candidate", "swe"))
+      .toThrow("cannot mix legacy and provenance-bearing batches");
+  });
+
+  test("rejects an unknown id in a multi-batch request", () => {
+    const db = createDb();
+    seedSwe(db, { batch: "batch-1", task: "task-a" });
+
+    expect(() => buildResultContract(db, ["batch-1", "missing"], "codex-lab:candidate", "swe"))
+      .toThrow('no swe evidence found for model "codex-lab:candidate" in batch "missing"');
   });
 });

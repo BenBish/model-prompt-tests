@@ -357,7 +357,7 @@ function summarizeSwe(harnessModelIds: string[], rows: SweReportRow[]): SweSumma
   });
 }
 
-export function querySweReportData(db: Database, options: QuerySweOptions = {}): SweReportData {
+export function querySweReportData(db: Database, options: QuerySweOptions & { runIds?: number[] } = {}): SweReportData {
   let sql = `
     SELECT runs.*, swe_results.task_type, swe_results.workdir, swe_results.baseline_sha, swe_results.diff_patch,
            swe_results.files_changed, swe_results.lines_added, swe_results.lines_removed,
@@ -377,6 +377,10 @@ export function querySweReportData(db: Database, options: QuerySweOptions = {}):
   if (options.runBatchId) {
     sql += " AND runs.run_batch_id = $runBatchId";
     params.$runBatchId = options.runBatchId;
+  }
+  if (options.runIds) {
+    if (options.runIds.length === 0) sql += " AND 0";
+    else sql += ` AND runs.id IN (${options.runIds.map((id) => Number(id)).join(",")})`;
   }
   sql += " ORDER BY runs.prompt_id, runs.model_id, runs.started_at ASC";
 

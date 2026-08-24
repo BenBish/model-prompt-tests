@@ -61,7 +61,7 @@ function usage(): void {
   bun bench/src/cli.ts report --compare <batchA> --compare <batchB> [--out <path>]
   bun bench/src/cli.ts export --name <slug> (--batch <run_batch_id> | --latest) --calibration-anchors <file> --calibration-evidence <file>
   bun bench/src/cli.ts reproduce --batch <run_batch_id>
-  bun bench/src/cli.ts experiment export --batch <run_batch_id> --model <model_id> [--kind swe|prompt] [--out <path>]
+  bun bench/src/cli.ts experiment export --batch <id1> [--batch <id2> ...] --model <model_id> [--kind swe|prompt|tool-probe] [--out <path>]
   bun bench/src/cli.ts publish [--out <dir>] [--results-dir <dir>]
   bun bench/src/cli.ts models <list|init|validate|set-judge|add-openai-compatible|add-anthropic|remove>
   bun bench/src/cli.ts list
@@ -627,15 +627,15 @@ async function cmdReproduce(values: Record<string, unknown>): Promise<void> {
 
 async function cmdExperimentExport(values: Record<string, unknown>): Promise<void> {
   const db = openDb(DB_PATH);
-  const batch = values.batch as string | undefined;
+  const batches = values.batch as string[] | undefined;
   const modelId = values.model as string | undefined;
   const kind = (values.kind as string | undefined) ?? "swe";
-  if (!batch) throw new Error("experiment export requires --batch <run_batch_id>");
+  if (!batches?.length) throw new Error("experiment export requires --batch <run_batch_id>");
   if (!modelId) throw new Error("experiment export requires --model <model_id>");
   if (kind !== "swe" && kind !== "prompt" && kind !== "tool-probe") {
     throw new Error('--kind must be "swe", "prompt", or "tool-probe"');
   }
-  const contract = buildResultContract(db, batch, modelId, kind);
+  const contract = buildResultContract(db, batches, modelId, kind);
   const json = JSON.stringify(contract, null, 2);
   if (typeof values.out === "string") {
     await Bun.write(values.out, `${json}\n`);
@@ -929,7 +929,7 @@ async function main(): Promise<void> {
           args: experimentRest,
           allowPositionals: false,
           options: {
-            batch: { type: "string" },
+            batch: { type: "string", multiple: true },
             model: { type: "string" },
             kind: { type: "string" },
             out: { type: "string" },
