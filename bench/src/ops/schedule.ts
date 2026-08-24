@@ -13,17 +13,28 @@ export function cellKey(cell: CellIdentity): string {
   return createHash("sha256").update(`${cell.taskId}\0${cell.modelId}\0${cell.repeatIndex}`).digest("hex");
 }
 
-export function validateScheduleContract(contract: ScheduleContract, now = new Date()): string[] {
+const domains = new Set<ExecutionDomain>(["generic-ci", "omarchy-laptop", "fedora-production-slot"]);
+const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
+
+export function validateScheduleContract(value: unknown, now = new Date()): string[] {
   const issues: string[] = [];
-  if (!contract.runId.trim()) issues.push("runId is required");
-  if (contract.requiredResources.length === 0) issues.push("requiredResources must be declared");
-  for (const [name, value] of Object.entries(contract.budget)) {
-    if (!Number.isFinite(value) || value <= 0) issues.push(`budget.${name} must be positive`);
+  if (!isRecord(value)) return ["contract must be an object"];
+  if (value.schemaVersion !== 1) issues.push("schemaVersion must be 1");
+  if (typeof value.runId !== "string" || !value.runId.trim()) issues.push("runId is required");
+  if (!Array.isArray(value.requiredResources) || value.requiredResources.length === 0 || value.requiredResources.some((item) => typeof item !== "string" || !item.trim())) issues.push("requiredResources must be non-empty strings");
+  if (typeof value.executionDomain !== "string" || !domains.has(value.executionDomain as ExecutionDomain)) issues.push("executionDomain is invalid");
+  const budget = value.budget;
+  if (!isRecord(budget)) issues.push("budget must be an object");
+  else for (const name of ["maxCalls", "maxTokens", "maxCostUsd", "maxElapsedMs", "maxConcurrency"]) {
+    const amount = budget[name];
+    if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) issues.push(`budget.${name} must be positive`);
   }
-  if (contract.executionDomain === "fedora-production-slot") {
-    if (contract.lease?.owner !== "halo-maxxing" || !contract.lease.token.trim()) issues.push("Fedora execution requires a Halo-owned lease token");
-    else if (new Date(contract.lease.expiresAt).getTime() <= now.getTime()) issues.push("Halo lease is expired");
-  } else if (contract.lease) issues.push("generic/laptop runs must not acquire or consume a Fedora lease");
+  const lease = value.lease;
+  if (value.executionDomain === "fedora-production-slot") {
+    if (!isRecord(lease) || lease.owner !== "halo-maxxing" || typeof lease.token !== "string" || !lease.token.trim()) issues.push("Fedora execution requires a Halo-owned lease token");
+    else if (typeof lease.expiresAt !== "string" || !Number.isFinite(Date.parse(lease.expiresAt))) issues.push("Halo lease expiry is invalid");
+    else if (Date.parse(lease.expiresAt) <= now.getTime()) issues.push("Halo lease is expired");
+  } else if (lease !== undefined) issues.push("generic/laptop runs must not acquire or consume a Fedora lease");
   return issues;
 }
 

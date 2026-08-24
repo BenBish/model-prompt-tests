@@ -22,6 +22,7 @@ export interface RegressionEvidence {
   pairedSamples?: number;
   pairedDelta?: number;
   pairedConfidenceLow?: number;
+  pairedConfidenceHigh?: number;
   graderHealth?: "healthy" | "unhealthy" | "missing";
 }
 
@@ -67,11 +68,11 @@ export function evaluateRegressionPolicy(policy: RegressionPolicy, evidence: Reg
   }
   if (!finite(evidence.pairedSamples) || evidence.pairedSamples < policy.minimumPairedSamples) {
     findings.push({ gate: "paired-delta", status: "inconclusive", detail: `${evidence.pairedSamples ?? 0} paired samples; ${policy.minimumPairedSamples} required` });
-  } else if (!finite(evidence.pairedDelta) || !finite(evidence.pairedConfidenceLow)) {
+  } else if (!finite(evidence.pairedDelta) || !finite(evidence.pairedConfidenceLow) || !finite(evidence.pairedConfidenceHigh)) {
     findings.push({ gate: "paired-delta", status: "inconclusive", detail: "paired delta/uncertainty is missing" });
   } else {
-    const regression = evidence.pairedDelta < -policy.maximumPairedRegression && evidence.pairedConfidenceLow < -policy.maximumPairedRegression;
-    findings.push({ gate: "paired-delta", status: regression ? "fail" : "pass", detail: `delta ${evidence.pairedDelta}; confidence low ${evidence.pairedConfidenceLow}` });
+    const regression = evidence.pairedDelta < -policy.maximumPairedRegression && evidence.pairedConfidenceHigh < -policy.maximumPairedRegression;
+    findings.push({ gate: "paired-delta", status: regression ? "fail" : "pass", detail: `delta ${evidence.pairedDelta}; confidence [${evidence.pairedConfidenceLow}, ${evidence.pairedConfidenceHigh}]` });
   }
   return {
     verdict: findings.some((finding) => finding.status === "fail") ? "regression" : findings.some((finding) => finding.status === "inconclusive") ? "inconclusive" : "pass",

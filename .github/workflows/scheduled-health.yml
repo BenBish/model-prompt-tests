@@ -30,7 +30,7 @@ jobs:
           name: benchmark-health-${{ github.run_id }}
           path: |
             ${{ runner.temp }}/calibration-report.json
-            bench/data/task-health.json
+            bench/task-health/
 
 # Model/network experiments are intentionally absent. Laptop runs are explicit;
 # Fedora runs are launched only by Halo-Maxxing with its lease contract.
