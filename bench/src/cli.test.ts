@@ -87,6 +87,62 @@ afterEach(() => {
 });
 
 describe("bench models CLI", () => {
+  test("experiment export emits the versioned JSON contract through the real CLI dispatcher", () => {
+    const repoRoot = makeTempRepo();
+    createBenchDb(repoRoot);
+    const db = new Database(join(repoRoot, "bench", "data", "bench.sqlite"));
+    db.run(
+      `INSERT INTO runs (run_batch_id, prompt_id, provider_id, model_id, model_name, started_at, status, output_text, kind, outcome_category)
+       VALUES ('contract-batch', 'test-prompt', 'local', 'local:test', 'test-model', '2026-08-23T00:00:00Z', 'ok', 'answer', 'prompt', 'passed')`,
+    );
+    db.close();
+
+    const result = runCli(repoRoot, [
+      "experiment",
+      "export",
+      "--batch",
+      "contract-batch",
+      "--model",
+      "local:test",
+      "--kind",
+      "prompt",
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr.toString()).toBe("");
+    expect(JSON.parse(result.stdout.toString())).toMatchObject({
+      schemaVersion: 1,
+      kind: "prompt",
+      runBatchId: "contract-batch",
+      modelId: "local:test",
+      totalRuns: 1,
+      okRuns: 1,
+      outcomeCounts: { passed: 1 },
+    });
+  });
+
+  test("experiment export rejects a missing batch/model instead of emitting zero evidence", () => {
+    const repoRoot = makeTempRepo();
+    createBenchDb(repoRoot);
+
+    const result = runCli(repoRoot, [
+      "experiment",
+      "export",
+      "--batch",
+      "missing-batch",
+      "--model",
+      "missing-model",
+      "--kind",
+      "prompt",
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout.toString()).toBe("");
+    expect(result.stderr.toString()).toContain(
+      'no prompt evidence found for model "missing-model" in batch "missing-batch"',
+    );
+  });
+
   test("adds OpenAI-compatible extra headers", () => {
     const repoRoot = makeTempRepo();
 

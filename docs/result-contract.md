@@ -22,6 +22,10 @@ bun bench/src/cli.ts experiment export --batch <run_batch_id> --model <model_id>
 
 Prints (or writes to `--out`) a `ResultContract` (see `bench/src/contract/resultContract.ts`):
 
+The command fails with a non-zero exit code when the requested batch/model/kind has no
+matching evidence. Missing coverage is never represented as a successful zero-run contract,
+so consumers cannot mistake a stale identifier or model-id typo for a benchmark result.
+
 | Field | Meaning |
 |---|---|
 | `schemaVersion` | Bump whenever a field is removed or its meaning changes. A consumer must reject a version it does not understand rather than guess. |

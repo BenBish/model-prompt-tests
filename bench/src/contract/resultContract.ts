@@ -270,9 +270,43 @@ export function buildResultContract(
   modelId: string,
   kind: "prompt" | "swe" | "tool-probe",
 ): ResultContract {
-  if (kind === "swe") return buildSweContract(db, batchId, modelId);
-  if (kind === "tool-probe") return buildToolProbeContract(db, batchId, modelId);
-  return buildPromptContract(db, batchId, modelId);
+  // A typo, stale batch id, or mismatched kind must not look like valid zero-coverage evidence
+  // to a cross-repository consumer. Halo treats a successfully parsed contract as the
+  // benchmark's authoritative result, so missing evidence belongs on the CLI error path.
+  const evidenceCount =
+    kind === "tool-probe"
+      ? (
+          db
+            .query<{ n: number }, [string, string]>(
+              `SELECT COUNT(*) AS n
+                 FROM runs r JOIN tool_probe_results t ON t.run_id = r.id
+                WHERE r.run_batch_id = ? AND r.model_id = ?`,
+            )
+            .get(batchId, modelId)?.n ?? 0
+        )
+      : (
+          db
+            .query<{ n: number }, [string, string, string]>(
+              `SELECT COUNT(*) AS n FROM runs r
+                WHERE r.run_batch_id = ? AND r.model_id = ? AND r.kind = ?
+                  ${kind === "prompt" ? "AND NOT EXISTS (SELECT 1 FROM tool_probe_results t WHERE t.run_id = r.id)" : ""}`,
+            )
+            .get(batchId, modelId, kind)?.n ?? 0
+        );
+  if (evidenceCount === 0) {
+    throw new Error(
+      `no ${kind} evidence found for model "${modelId}" in batch "${batchId}"`,
+    );
+  }
+
+  const contract =
+    kind === "swe"
+      ? buildSweContract(db, batchId, modelId)
+      : kind === "tool-probe"
+        ? buildToolProbeContract(db, batchId, modelId)
+        : buildPromptContract(db, batchId, modelId);
+
+  return contract;
 }
 
 /** Rehydrate a contract by experiment id alone, when the batch id has been discarded. */

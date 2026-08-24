@@ -34,6 +34,32 @@ function manifestFixture(): ExperimentManifest {
 }
 
 describe("buildResultContract", () => {
+  test("fails closed when the requested batch/model has no evidence", () => {
+    const db = createDb();
+
+    expect(() => buildResultContract(db, "missing-batch", "missing-model", "prompt")).toThrow(
+      'no prompt evidence found for model "missing-model" in batch "missing-batch"',
+    );
+  });
+
+  test("fails closed when the requested kind does not match the batch evidence", () => {
+    const db = createDb();
+    insertRun(db, {
+      runBatchId: "prompt-batch",
+      promptId: "some-prompt",
+      providerId: "local",
+      modelId: "local:candidate",
+      modelName: "candidate",
+      startedAt: "2026-08-23T00:00:00.000Z",
+      status: "ok",
+      kind: "prompt",
+    });
+
+    expect(() => buildResultContract(db, "prompt-batch", "local:candidate", "swe")).toThrow(
+      'no swe evidence found for model "local:candidate" in batch "prompt-batch"',
+    );
+  });
+
   test("swe contract carries provenance, health, outcome taxonomy, and a primary metric with an interval", () => {
     const db = createDb();
     const experimentId = insertExperiment(db, manifestFixture());
