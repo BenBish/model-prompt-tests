@@ -31,7 +31,15 @@ bun bench/src/cli.ts synthesize --latest --dry-run
 bun bench/src/cli.ts report
 // Validate and print a frozen experiment without model calls:
 bun bench/src/cli.ts reproduce --batch <run_batch_id>
+// Fetch the versioned cross-repo result contract for one model in a batch:
+bun bench/src/cli.ts experiment export --batch <run_batch_id> --model <model_id> --kind swe
 ```
+
+`run`, `swe run`, and `hermes tools` all accept `--summary-out <path>`, writing
+`{ runBatchId, experimentId }` as JSON so a cross-repo caller (e.g. Halo-Maxxing) never has to
+parse the durable batch identity out of stdout. See
+[`docs/result-contract.md`](../docs/result-contract.md) for the full contract shape and
+ownership boundary.
 
 Or via the package script alias: `bun run bench <subcommand> ...`.
 

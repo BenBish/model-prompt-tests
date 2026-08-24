@@ -18,6 +18,7 @@ import {
 import { formatDoctorReport, runSweDoctor } from "./doctor";
 import { runSweBatch, type SweRunnerCell } from "./runSweBatch";
 import { isComparableTask, readTaskHealthRecord, validateTaskHealth, writeTaskHealthRecord } from "./taskHealth";
+import { writeRunSummary } from "../contract/summaryOut";
 
 export function createHarnessInstance(entry: HarnessMatrixEntry, modelsConfig: BenchModelsConfig): SweHarness {
   if (entry.kind === "claude-code") return createClaudeCodeHarness(entry);
@@ -251,6 +252,13 @@ export async function cmdSweRun(
     })),
   });
 
+  if (typeof values["summary-out"] === "string") {
+    await writeRunSummary(values["summary-out"], {
+      schemaVersion: 1,
+      runBatchId: summary.runBatchId,
+      experimentId: summary.experimentId,
+    });
+  }
   if (summary.errored > 0 || summary.judgeErrored > 0) {
     process.exitCode = 1;
   }
