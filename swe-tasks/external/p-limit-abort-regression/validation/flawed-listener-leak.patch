@@ -1,0 +1,1 @@
+# Known bad: races Promise.race with abort but never removes the listener; expected listener-leak signal.

@@ -1,0 +1,7 @@
+diff --git a/test-abort.js b/test-abort.js
+new file mode 100644
+--- /dev/null
++++ b/test-abort.js
+@@ -0,0 +1,2 @@
++// Locked verifier patch: exercises pre-abort, queued abort, start race, counters, FIFO, and listener cleanup.
++// The full assertions are distributed only with the verifier environment.

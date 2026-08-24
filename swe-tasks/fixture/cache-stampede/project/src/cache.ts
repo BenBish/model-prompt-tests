@@ -1,0 +1,1 @@
+export class AsyncCache<T>{private values=new Map<string,{value:T,at:number}>();constructor(private ttlMs:number,private now:()=>number=Date.now){}async get(key:string,loader:()=>Promise<T>){const v=this.values.get(key);if(v&&this.now()-v.at<this.ttlMs)return v.value;const value=await loader();this.values.set(key,{value,at:this.now()});return value}}
