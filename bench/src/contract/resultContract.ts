@@ -10,6 +10,7 @@ import { getExperiment, getExperimentForBatch } from "../db/experimentsRepo";
 import type { EnvironmentFingerprint, ExperimentManifest } from "../experiment/manifest";
 import { queryReportData } from "../report/queryData";
 import type { Interval } from "../report/statistics";
+import type { PromptOutcomeCategory } from "../runner/promptOutcome";
 import { querySweReportData, type SweOutcomeCategory } from "../swe/sweReportData";
 
 export const RESULT_CONTRACT_VERSION = 1 as const;
@@ -48,7 +49,7 @@ export interface ResultContract {
   environmentFingerprint?: EnvironmentFingerprint;
   totalRuns: number;
   okRuns: number;
-  outcomeCounts: Partial<Record<SweOutcomeCategory | "unknown", number>>;
+  outcomeCounts: Partial<Record<SweOutcomeCategory | PromptOutcomeCategory | "unknown", number>>;
   health: ResultContractHealth;
   metrics: ResultContractMetrics;
   artifacts: { runBatchId: string };
@@ -194,8 +195,11 @@ function buildPromptContract(db: Database, batchId: string, modelId: string): Re
         GROUP BY outcome_category`,
     )
     .all(batchId, modelId);
-  const outcomeCounts: Record<string, number> = {};
-  for (const row of outcomeRows) outcomeCounts[row.outcome_category ?? "unknown"] = row.n;
+  const outcomeCounts: Partial<Record<PromptOutcomeCategory | "unknown", number>> = {};
+  for (const row of outcomeRows) {
+    const key = (row.outcome_category ?? "unknown") as PromptOutcomeCategory | "unknown";
+    outcomeCounts[key] = row.n;
+  }
 
   return {
     schemaVersion: RESULT_CONTRACT_VERSION,
