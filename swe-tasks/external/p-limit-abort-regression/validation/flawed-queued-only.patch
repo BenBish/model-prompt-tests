@@ -1,0 +1,15 @@
+diff --git a/index.js b/index.js
+index 5ecd392..bbbbbbb 100644
+--- a/index.js
++++ b/index.js
+@@ -109,4 +109,10 @@ export default function pLimit(concurrency) {
+ 				return Promise.all(promises);
+ 			},
+ 		},
++		withSignal: {
++			value(signal, function_, ...arguments_) {
++				signal.addEventListener('abort', () => generator.clearQueue(), {once: true});
++				return generator(function_, ...arguments_);
++			},
++		},
+ 	});

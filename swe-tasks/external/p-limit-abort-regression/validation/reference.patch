@@ -1,0 +1,50 @@
+diff --git a/index.js b/index.js
+index 5ecd392..31a1852 100644
+--- a/index.js
++++ b/index.js
+@@ -16,10 +16,18 @@ export default function pLimit(concurrency) {
+ 	const queue = new Queue();
+ 	let activeCount = 0;
++	const removeQueuedItem = item => {
++		let removed = false;
++		for (const queued of [...queue.drain()]) {
++			if (!removed && queued === item) { removed = true; continue; }
++			queue.enqueue(queued);
++		}
++		return removed;
++	};
+ 
+ 	const resumeNext = () => {
+ 		// Process the next queued function if we're under the concurrency limit
+ 		if (activeCount < concurrency && queue.size > 0) {
+ 			activeCount++;
+-			queue.dequeue().run();
++			const item = queue.dequeue(); item.cleanup?.(); item.run();
+ 		}
+ 	};
+@@ -63,4 +71,15 @@ export default function pLimit(concurrency) {
+ 		}
+ 	};
++	const enqueueAbortable = (signal, function_, resolve, reject, arguments_) => {
++		if (signal.aborted) { reject(signal.reason); return; }
++		const queueItem = {reject};
++		const onAbort = () => { if (removeQueuedItem(queueItem)) reject(signal.reason); };
++		queueItem.cleanup = () => signal.removeEventListener('abort', onAbort);
++		signal.addEventListener('abort', onAbort, {once: true});
++		new Promise(internalResolve => {
++			queueItem.run = internalResolve; queue.enqueue(queueItem);
++		}).then(run.bind(undefined, function_, resolve, arguments_));
++		if (activeCount < concurrency) resumeNext();
++	};
+ 
+ 	const generator = (function_, ...arguments_) => new Promise((resolve, reject) => {
+@@ -109,4 +128,9 @@ export default function pLimit(concurrency) {
+ 				return Promise.all(promises);
+ 			},
+ 		},
++		withSignal: {
++			value: (signal, function_, ...arguments_) => new Promise((resolve, reject) => {
++				enqueueAbortable(signal, function_, resolve, reject, arguments_);
++			}),
++		},
+ 	});

@@ -1,0 +1,6 @@
+{
+  "scripts": {
+    "test": "bun test"
+  },
+  "type": "module"
+}

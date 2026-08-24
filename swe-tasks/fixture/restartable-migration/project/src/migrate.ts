@@ -1,0 +1,11 @@
+export async function migrateAccounts(db: any, batchSize: number) {
+  db.newReads = true;
+  let after = db.checkpoint ?? "";
+  for (;;) {
+    const rows = await db.list(after, batchSize);
+    if (!rows.length) return;
+    for (const r of rows) await db.update(r.id, { displayName: r.name });
+    after = rows.at(-1).id;
+    db.checkpoint = after;
+  }
+}

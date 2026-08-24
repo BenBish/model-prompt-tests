@@ -1,0 +1,26 @@
+import { test, expect } from "bun:test";
+import { AsyncCache } from "../src/cache";
+test("ttl, coalescing, rejection", async () => {
+  let now = 0,
+    n = 0;
+  const c = new AsyncCache<number>(10, () => now);
+  const load = async () => {
+    n++;
+    await Bun.sleep(5);
+    return n;
+  };
+  expect(await Promise.all([c.get("x", load), c.get("x", load)])).toEqual([
+    1, 1,
+  ]);
+  now = 10;
+  await c.get("x", load);
+  expect(n).toBe(2);
+  let tries = 0;
+  const bad = async () => {
+    tries++;
+    if (tries === 1) throw Error("no");
+    return 7;
+  };
+  await expect(c.get("z", bad)).rejects.toThrow();
+  expect(await c.get("z", bad)).toBe(7);
+});

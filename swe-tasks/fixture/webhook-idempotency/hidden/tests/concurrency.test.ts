@@ -1,0 +1,37 @@
+import { test, expect } from "bun:test";
+import { createWebhookHandler } from "../src/webhook";
+test("coalesces and retries failures", async () => {
+  const s = new Set<string>();
+  let n = 0;
+  const h = createWebhookHandler(
+    {
+      has: async (x) => s.has(x),
+      add: async (x) => {
+        s.add(x);
+      },
+    },
+    async () => {
+      n++;
+      await Bun.sleep(5);
+    },
+  );
+  await Promise.all([h({ id: "x" }), h({ id: "x" }), h({ id: "x" })]);
+  expect(n).toBe(1);
+  let first = true;
+  const f = createWebhookHandler(
+    {
+      has: async (x) => s.has(x),
+      add: async (x) => {
+        s.add(x);
+      },
+    },
+    async () => {
+      if (first) {
+        first = false;
+        throw Error("x");
+      }
+    },
+  );
+  await expect(f({ id: "y" })).rejects.toThrow();
+  expect(await f({ id: "y" })).toBe("processed");
+});
