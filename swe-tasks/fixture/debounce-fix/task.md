@@ -1,7 +1,11 @@
 ---
 type: fixture
-lifecycle: draft
+lifecycle: active
 graderVersion: 1.0.0
+oracleSolution: validation/reference/src
+flawedSolutions: validation/clear-too-late/src
+runtimePrerequisites: bun
+verifierEnvironments: linux-bun-1.3
 verify: bun test
 verifyTimeoutMs: 30000
 agentTimeoutMs: 300000
@@ -28,3 +32,8 @@ test files.
 
 - `correctness` (weight 3): Only the most recent call's arguments trigger `fn`, and only once.
 - `code-quality` (weight 2): Minimal fix that preserves the function's calling contract (`this`/args).
+
+## Validation
+
+Runs under 2 seconds with Bun. The reference solution is exercised five times; `clear-too-late`
+passes the single-call visible test but fails the rapid-call holdout.

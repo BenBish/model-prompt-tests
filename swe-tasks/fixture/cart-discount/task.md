@@ -1,7 +1,11 @@
 ---
 type: fixture
-lifecycle: draft
+lifecycle: active
 graderVersion: 1.0.0
+oracleSolution: validation/reference/src
+flawedSolutions: validation/truncating/src
+runtimePrerequisites: bun
+verifierEnvironments: linux-bun-1.3
 verify: bun test
 verifyTimeoutMs: 30000
 agentTimeoutMs: 300000
@@ -29,3 +33,8 @@ Run the tests to confirm your change. Do not modify the test files.
 
 - `correctness` (weight 3): Validates invalid coupon values and rounds to whole cents.
 - `code-quality` (weight 2): Minimal, typed change that preserves the existing function signature for callers without a coupon.
+
+## Validation
+
+Runs under 2 seconds with Bun. The reference solution is exercised five times; `truncating`
+passes the visible no-coupon case but fails rounding and invalid-percentage holdouts.

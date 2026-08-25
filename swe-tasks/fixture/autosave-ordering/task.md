@@ -1,6 +1,6 @@
 ---
 type: fixture
-lifecycle: draft
+lifecycle: active
 graderVersion: 1.0.0
 oracleSolution: validation/reference/src
 flawedSolutions: validation/flawed-a/src, validation/flawed-b/src
