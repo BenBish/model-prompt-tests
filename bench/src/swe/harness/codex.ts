@@ -77,7 +77,13 @@ export function createCodexHarness(config: CodexHarnessConfig): SweHarness {
         }
 
         const env = buildHarnessEnv({
-          extraKeys: ["OPENAI_API_KEY", "CODEX_API_KEY", "CODEX_HOME", "LOCAL_LLAMACPP_API_KEY"],
+          extraKeys: [
+            "OPENAI_API_KEY",
+            "CODEX_API_KEY",
+            "CODEX_HOME",
+            "LOCAL_LLAMACPP_API_KEY",
+            "OPENROUTER_API_KEY",
+          ],
           stripPrefixes: ["CLAUDE_CODE_", "CLAUDECODE"],
         });
         if (config.isolateCodexHome) {

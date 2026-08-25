@@ -97,6 +97,35 @@ describe("createClaudeCodeHarness", () => {
     expect(result.finalMessage).toBe("bare-mode");
   });
 
+  test("forwards OpenRouter gateway env (ANTHROPIC_BASE_URL and ANTHROPIC_AUTH_TOKEN)", async () => {
+    writeFakeClaude(`
+      if [[ "$ANTHROPIC_BASE_URL" == "https://openrouter.ai/api" && -n "$ANTHROPIC_AUTH_TOKEN" ]]; then
+        echo '{"result":"gateway"}'
+      else
+        echo '{"result":"missing-gateway"}'
+      fi
+    `);
+    const prevBase = process.env.ANTHROPIC_BASE_URL;
+    const prevToken = process.env.ANTHROPIC_AUTH_TOKEN;
+    process.env.ANTHROPIC_BASE_URL = "https://openrouter.ai/api";
+    process.env.ANTHROPIC_AUTH_TOKEN = "or-test-token";
+    try {
+      const harness = createClaudeCodeHarness(baseConfig());
+      const result = await harness.run({
+        taskPrompt: "x",
+        model: "anthropic/claude-opus-5",
+        workDir: process.cwd(),
+        timeoutMs: 5000,
+      });
+      expect(result.finalMessage).toBe("gateway");
+    } finally {
+      if (prevBase === undefined) delete process.env.ANTHROPIC_BASE_URL;
+      else process.env.ANTHROPIC_BASE_URL = prevBase;
+      if (prevToken === undefined) delete process.env.ANTHROPIC_AUTH_TOKEN;
+      else process.env.ANTHROPIC_AUTH_TOKEN = prevToken;
+    }
+  });
+
   test("strips CLAUDE_CODE_/CLAUDECODE env vars from the spawned process", async () => {
     writeFakeClaude(`
       if [[ -n "$CLAUDE_CODE_SESSION_ID" || -n "$CLAUDECODE" ]]; then

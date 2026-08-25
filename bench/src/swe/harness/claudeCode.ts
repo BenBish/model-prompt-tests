@@ -60,7 +60,11 @@ export function createClaudeCodeHarness(config: ClaudeCodeHarnessConfig): SweHar
       if (config.bare) cmd.push("--bare");
 
       const env = buildHarnessEnv({
-        extraKeys: ["ANTHROPIC_API_KEY"],
+        extraKeys: [
+          "ANTHROPIC_API_KEY",
+          "ANTHROPIC_AUTH_TOKEN",
+          "ANTHROPIC_BASE_URL",
+        ],
         stripPrefixes: ["CLAUDE_CODE_", "CLAUDECODE"],
       });
 
