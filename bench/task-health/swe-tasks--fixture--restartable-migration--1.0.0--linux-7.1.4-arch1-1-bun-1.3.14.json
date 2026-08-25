@@ -1,0 +1,13 @@
+{
+  "taskId": "swe-tasks/fixture/restartable-migration",
+  "graderVersion": "1.0.0",
+  "environmentFingerprint": "linux-7.1.4-arch1-1-bun-1.3.14",
+  "status": "healthy",
+  "validatedAt": "2026-08-25T05:22:28.559Z",
+  "repetitions": 5,
+  "runtimePrerequisites": [
+    "bun"
+  ],
+  "testCount": 2,
+  "reasons": []
+}

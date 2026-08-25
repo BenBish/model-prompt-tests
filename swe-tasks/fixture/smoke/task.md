@@ -1,7 +1,11 @@
 ---
 type: fixture
-lifecycle: draft
+lifecycle: active
 graderVersion: 1.0.0
+oracleSolution: validation/reference/src
+flawedSolutions: validation/special-case/src
+runtimePrerequisites: bun
+verifierEnvironments: linux-bun-1.3
 verify: bun test
 verifyTimeoutMs: 30000
 agentTimeoutMs: 120000
@@ -25,3 +29,8 @@ pass. Do not modify the test files.
 
 - `code-quality` (weight 3): Fix is minimal, idiomatic, and confined to src/add.ts.
 - `generality` (weight 2): Fix works for all inputs, not just the values exercised by the visible test.
+
+## Validation
+
+Runs under 2 seconds with Bun. The reference solution is exercised five times; `special-case`
+passes the visible example but fails undisclosed negative and mixed-sign cases.
