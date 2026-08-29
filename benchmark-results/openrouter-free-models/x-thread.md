@@ -8,7 +8,7 @@ The catch: only 214 of 323 responses ever completed.
 
 2. The caveat: this is not a universal model ranking. One repo-local benchmark run with two LLM judges (GPT-5.5, Sonnet 5). Raw outputs, config, and rationales are in the repo.
 
-3. Where the winner looked strongest: nemotron-3-super topped the score table while answering in about 200 ms. dots3-note-preview won 6 of 19 prompts outright, the most of anyone, but burned two full prompts on reasoning that ate the entire token budget and returned nothing.
+3. Where the winner looked strongest: nemotron-3-super topped the score table while answering in about 200 ms. dots3-note-preview tied for the top score on 6 of 19 prompts, but burned two full prompts on reasoning that ate the entire token budget and returned nothing.
 
 4. Where models struggled: the ambiguous "build me a notes app" prompt capped at 2.50 for every model. Nobody asked a clarifying question. On the Pomodoro build, four models scored 1.00: code that does not run.
 

@@ -25,7 +25,7 @@ I benched all 17 models in OpenRouter's free-models collection across 19 practic
 | `openrouter:nemotron-3-nano-omni-free` | 17/19 | 3.85 | 204 | $0.0000 | 18.87 |
 | `openrouter:north-mini-code-free` | 19/19 | 3.76 | 515 | $0.0000 | 7.30 |
 | `openrouter:laguna-s-free` | 18/19 | 3.69 | 916 | $0.0000 | 4.03 |
-| `openrouter:glm-5.2-free` | 1/19 | 3.50 | 244 | $0.0000 | 14.34 |
+| `openrouter:glm-5.2-free` | 1/19 | 3.50 (n=1) | 244 | $0.0000 | 14.34 |
 | `openrouter:lfm-2.5-free` | 17/19 | 3.24 | 539 | $0.0000 | 6.00 |
 | `openrouter:gemma-4-free` | 0/19 | no data | - | - | - |
 | `openrouter:gemma-4-31b-free` | 0/19 | no data | - | - | - |
@@ -37,8 +37,8 @@ Quality/$ is undefined for every row: recorded usage was $0.00 across all 214 co
 ## Where each model looked strong
 
 - `nemotron-3-super-free`: top score and near-top speed. The best all-round free result in the batch.
-- `dots3-note-preview-free`: won 6 of 19 prompts outright (architecture, debugging, writing, two hermes prompts, constrained creativity), the most of any model, with 71% judge agreement.
-- `minimax-m3-free` and `ling-3-flash-fin-free`: the high scorers that actually finished all 19 prompts. MiniMax had the batch's best judge agreement at 79%.
+- `dots3-note-preview-free`: tied for the top score on 6 of 19 prompts (architecture, debugging, writing, two hermes prompts, constrained creativity), with 71% judge agreement.
+- `minimax-m3-free` and `ling-3-flash-fin-free`: the high scorers that actually finished all 19 prompts. MiniMax's 79% judge agreement tied `north-mini-code-free` for the batch's best.
 - `laguna-xs-free`: fastest clock in the batch (193 ms) and a 4.15 average, but only on 13 completed prompts.
 
 ## Failure modes

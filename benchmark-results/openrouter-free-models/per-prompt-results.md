@@ -2,27 +2,27 @@
 
 Average scores are calculated from successful peer-judge rows (self-judging excluded) for each candidate response.
 
-| Prompt | `openrouter:dots3-note-preview-free` score | `openrouter:gemma-4-31b-free` score | `openrouter:gemma-4-free` score | `openrouter:glm-5.2-free` score | `openrouter:inkling-free` score | `openrouter:inkling-small-free` score | `openrouter:laguna-s-free` score | `openrouter:laguna-xs-free` score | `openrouter:lfm-2.5-free` score | `openrouter:ling-3-flash-fin-free` score | `openrouter:minimax-m2.7-free` score | `openrouter:minimax-m3-free` score | `openrouter:nemotron-3-nano-omni-free` score | `openrouter:nemotron-3-super-free` score | `openrouter:nemotron-3-ultra-free` score | `openrouter:nemotron-3.5-lightning-free` score | `openrouter:north-mini-code-free` score | Notes (fill in) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| `ambiguous-requests/team-notes-app` | 2.00 | — | — | — | — | — | 2.00 | — | — | 2.00 | 2.00 | 2.00 | 2.50 | 2.50 | 2.00 | 2.50 | 2.00 |  |
-| `architecture/database-choice` | 5.00 | — | — | — | — | — | 4.00 | 4.50 | — | 5.00 | 5.00 | 5.00 | 5.00 | 5.00 | 5.00 | 5.00 | 5.00 |  |
-| `code-review/senior-pr-review` | 4.50 | — | — | — | — | — | 4.50 | 4.50 | 3.50 | 4.50 | 4.50 | 5.00 | — | 4.50 | 4.50 | 4.50 | 3.50 |  |
-| `coding-build/pomodoro-timer` | 4.00 | — | — | — | — | — | 3.00 | — | 1.50 | 1.00 | 1.00 | 4.50 | 3.00 | 4.00 | 1.00 | 2.00 | 1.00 |  |
-| `creativity-with-constraints/budgeting-app-names` | 4.50 | — | — | — | — | — | 4.00 | 4.50 | 4.00 | 4.00 | 4.00 | 4.00 | 4.50 | 4.00 | 4.50 | 4.00 | 4.00 |  |
-| `data-analysis/business-metrics-diagnosis` | 4.00 | — | — | — | — | — | 4.00 | 4.50 | 3.50 | 4.00 | 5.00 | 5.00 | 4.50 | 5.00 | 4.50 | 4.00 | 4.00 |  |
-| `debugging/javascript-debounce` | 5.00 | — | — | — | — | — | 5.00 | — | 5.00 | 5.00 | 5.00 | 5.00 | 4.00 | 5.00 | 5.00 | 5.00 | 5.00 |  |
-| `hermes/calendar-conflict` | 5.00 | — | — | — | — | — | 4.00 | 4.00 | 4.00 | 5.00 | 4.00 | 4.00 | 4.50 | 4.00 | — | 5.00 | 4.50 |  |
-| `hermes/decline-gracefully` | 3.00 | — | — | — | — | — | 2.00 | — | 4.00 | 3.50 | 2.00 | 2.00 | 2.00 | 3.00 | 4.50 | 4.50 | 4.00 |  |
-| `hermes/draft-reply-tone` | 4.50 | — | — | — | — | — | 5.00 | 5.00 | 2.50 | 5.00 | 5.00 | 5.00 | 5.00 | 5.00 | 5.00 | 5.00 | 5.00 |  |
-| `hermes/inbox-triage` | 3.50 | — | — | 3.50 | — | — | 3.50 | 3.00 | 1.00 | 4.00 | 3.50 | 3.50 | 1.50 | 3.50 | 3.50 | 1.50 | 3.00 |  |
-| `hermes/multi-step-errand` | 4.00 | — | — | — | — | — | — | — | 3.50 | 4.00 | 4.50 | 4.50 | 4.00 | 4.00 | 4.50 | 3.50 | 4.00 |  |
-| `hermes/recall-and-contradict` | 5.00 | — | — | — | — | — | 3.50 | 5.00 | 4.00 | 5.00 | 5.00 | 5.00 | 5.00 | — | 5.00 | 4.50 | 2.00 |  |
-| `instruction-following/five-bullet-summary` | — | — | — | — | — | — | 2.00 | 3.00 | 3.50 | 3.50 | 5.00 | 3.00 | 4.50 | 5.00 | 5.00 | 1.00 | 5.00 |  |
-| `meta-evaluation/evaluation-rubric` | 4.50 | — | — | — | — | — | 4.50 | 5.00 | 4.00 | 5.00 | 4.50 | 5.00 | 4.00 | 4.50 | 5.00 | 5.00 | 5.00 |  |
-| `planning/six-hour-sql-plan` | 4.00 | — | — | — | — | — | 3.50 | 3.50 | 2.50 | 4.50 | 3.00 | 3.50 | — | 4.00 | 3.50 | 4.00 | 4.50 |  |
-| `safety-risk/failed-production-migration` | 4.00 | — | — | — | — | — | 5.00 | 4.00 | 2.50 | 5.00 | 4.00 | 5.00 | 5.00 | 5.00 | 5.00 | 5.00 | 5.00 |  |
-| `travel/san-francisco-city-break` | — | — | — | — | — | — | 3.50 | — | 2.00 | 4.00 | 4.00 | 4.00 | 2.00 | 3.50 | 4.00 | 4.00 | 2.00 |  |
-| `writing/internal-announcement` | 5.00 | — | — | — | — | — | 3.50 | 3.50 | 4.00 | 5.00 | 4.00 | 4.00 | 4.50 | 5.00 | 3.50 | 4.50 | 3.00 |  |
+| Prompt | `openrouter:dots3-note-preview-free` score | `openrouter:gemma-4-31b-free` score | `openrouter:gemma-4-free` score | `openrouter:glm-5.2-free` score | `openrouter:inkling-free` score | `openrouter:inkling-small-free` score | `openrouter:laguna-s-free` score | `openrouter:laguna-xs-free` score | `openrouter:lfm-2.5-free` score | `openrouter:ling-3-flash-fin-free` score | `openrouter:minimax-m2.7-free` score | `openrouter:minimax-m3-free` score | `openrouter:nemotron-3-nano-omni-free` score | `openrouter:nemotron-3-super-free` score | `openrouter:nemotron-3-ultra-free` score | `openrouter:nemotron-3.5-lightning-free` score | `openrouter:north-mini-code-free` score |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `ambiguous-requests/team-notes-app` | 2.00 | — | — | — | — | — | 2.00 | — | — | 2.00 | 2.00 | 2.00 | 2.50 | 2.50 | 2.00 | 2.50 | 2.00 |
+| `architecture/database-choice` | 5.00 | — | — | — | — | — | 4.00 | 4.50 | — | 5.00 | 5.00 | 5.00 | 5.00 | 5.00 | 5.00 | 5.00 | 5.00 |
+| `code-review/senior-pr-review` | 4.50 | — | — | — | — | — | 4.50 | 4.50 | 3.50 | 4.50 | 4.50 | 5.00 | — | 4.50 | 4.50 | 4.50 | 3.50 |
+| `coding-build/pomodoro-timer` | 4.00 | — | — | — | — | — | 3.00 | — | 1.50 | 1.00 | 1.00 | 4.50 | 3.00 | 4.00 | 1.00 | 2.00 | 1.00 |
+| `creativity-with-constraints/budgeting-app-names` | 4.50 | — | — | — | — | — | 4.00 | 4.50 | 4.00 | 4.00 | 4.00 | 4.00 | 4.50 | 4.00 | 4.50 | 4.00 | 4.00 |
+| `data-analysis/business-metrics-diagnosis` | 4.00 | — | — | — | — | — | 4.00 | 4.50 | 3.50 | 4.00 | 5.00 | 5.00 | 4.50 | 5.00 | 4.50 | 4.00 | 4.00 |
+| `debugging/javascript-debounce` | 5.00 | — | — | — | — | — | 5.00 | — | 5.00 | 5.00 | 5.00 | 5.00 | 4.00 | 5.00 | 5.00 | 5.00 | 5.00 |
+| `hermes/calendar-conflict` | 5.00 | — | — | — | — | — | 4.00 | 4.00 | 4.00 | 5.00 | 4.00 | 4.00 | 4.50 | 4.00 | — | 5.00 | 4.50 |
+| `hermes/decline-gracefully` | 3.00 | — | — | — | — | — | 2.00 | — | 4.00 | 3.50 | 2.00 | 2.00 | 2.00 | 3.00 | 4.50 | 4.50 | 4.00 |
+| `hermes/draft-reply-tone` | 4.50 | — | — | — | — | — | 5.00 | 5.00 | 2.50 | 5.00 | 5.00 | 5.00 | 5.00 | 5.00 | 5.00 | 5.00 | 5.00 |
+| `hermes/inbox-triage` | 3.50 | — | — | 3.50 | — | — | 3.50 | 3.00 | 1.00 | 4.00 | 3.50 | 3.50 | 1.50 | 3.50 | 3.50 | 1.50 | 3.00 |
+| `hermes/multi-step-errand` | 4.00 | — | — | — | — | — | — | — | 3.50 | 4.00 | 4.50 | 4.50 | 4.00 | 4.00 | 4.50 | 3.50 | 4.00 |
+| `hermes/recall-and-contradict` | 5.00 | — | — | — | — | — | 3.50 | 5.00 | 4.00 | 5.00 | 5.00 | 5.00 | 5.00 | — | 5.00 | 4.50 | 2.00 |
+| `instruction-following/five-bullet-summary` | — | — | — | — | — | — | 2.00 | 3.00 | 3.50 | 3.50 | 5.00 | 3.00 | 4.50 | 5.00 | 5.00 | 1.00 | 5.00 |
+| `meta-evaluation/evaluation-rubric` | 4.50 | — | — | — | — | — | 4.50 | 5.00 | 4.00 | 5.00 | 4.50 | 5.00 | 4.00 | 4.50 | 5.00 | 5.00 | 5.00 |
+| `planning/six-hour-sql-plan` | 4.00 | — | — | — | — | — | 3.50 | 3.50 | 2.50 | 4.50 | 3.00 | 3.50 | — | 4.00 | 3.50 | 4.00 | 4.50 |
+| `safety-risk/failed-production-migration` | 4.00 | — | — | — | — | — | 5.00 | 4.00 | 2.50 | 5.00 | 4.00 | 5.00 | 5.00 | 5.00 | 5.00 | 5.00 | 5.00 |
+| `travel/san-francisco-city-break` | — | — | — | — | — | — | 3.50 | — | 2.00 | 4.00 | 4.00 | 4.00 | 2.00 | 3.50 | 4.00 | 4.00 | 2.00 |
+| `writing/internal-announcement` | 5.00 | — | — | — | — | — | 3.50 | 3.50 | 4.00 | 5.00 | 4.00 | 4.00 | 4.50 | 5.00 | 3.50 | 4.50 | 3.00 |
 
 ## Aggregate Metrics
 
