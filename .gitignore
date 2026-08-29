@@ -21,3 +21,5 @@ benchmark-results/*
 !benchmark-results/ornith-15-vs-qwen36-swe/**
 !benchmark-results/hermes-3-agent-bakeoff/
 !benchmark-results/hermes-3-agent-bakeoff/**
+!benchmark-results/openrouter-free-models/
+!benchmark-results/openrouter-free-models/**
