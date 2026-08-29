@@ -1,0 +1,265 @@
+{
+  "createdAt": "2026-08-29T01:29:50.390Z",
+  "environment": {
+    "concurrency": 3,
+    "cpu": "AMD Ryzen AI 9 HX PRO 370 w/ Radeon 890M",
+    "executionDomain": "interactive-lab",
+    "memoryBytes": 92401479680,
+    "os": {
+      "distro": "Arch Linux",
+      "kernel": "7.1.4-arch1-1",
+      "platform": "linux"
+    },
+    "productionServices": "unknown",
+    "schemaVersion": 1
+  },
+  "exclusions": [],
+  "harness": {
+    "config": {
+      "concurrency": 3
+    },
+    "id": "prompt-runner",
+    "version": "1"
+  },
+  "judges": [
+    {
+      "id": "judge:openrouter-gpt-5.5",
+      "modelId": "judge:openrouter-gpt-5.5",
+      "sha256": "0b75cb1e729466937b76ab980a721d04c02899facba1836986040341a1ad4a8f"
+    },
+    {
+      "id": "openrouter:sonnet",
+      "modelId": "openrouter:sonnet",
+      "sha256": "0903bc8e36fb6d6f57d8abf80216d52b38cdd34747b87e1b07d8a1299c2ab71e"
+    }
+  ],
+  "limits": {},
+  "models": [
+    {
+      "backend": "openrouter",
+      "generation": {},
+      "id": "openrouter:glm-5.2-free",
+      "immutableRevision": "z-ai/glm-5.2:free",
+      "model": "z-ai/glm-5.2:free",
+      "provider": "openrouter"
+    },
+    {
+      "backend": "openrouter",
+      "generation": {},
+      "id": "openrouter:gemma-4-free",
+      "immutableRevision": "google/gemma-4-26b-a4b-it:free",
+      "model": "google/gemma-4-26b-a4b-it:free",
+      "provider": "openrouter"
+    },
+    {
+      "backend": "openrouter",
+      "generation": {},
+      "id": "openrouter:minimax-m3-free",
+      "immutableRevision": "minimax/minimax-m3:free",
+      "model": "minimax/minimax-m3:free",
+      "provider": "openrouter"
+    },
+    {
+      "backend": "openrouter",
+      "generation": {},
+      "id": "openrouter:ling-3-flash-fin-free",
+      "immutableRevision": "inclusionai/ling-3.0-flash-fin:free",
+      "model": "inclusionai/ling-3.0-flash-fin:free",
+      "provider": "openrouter"
+    },
+    {
+      "backend": "openrouter",
+      "generation": {},
+      "id": "openrouter:dots3-note-preview-free",
+      "immutableRevision": "dots-studio/dots-3-note-preview:free",
+      "model": "dots-studio/dots-3-note-preview:free",
+      "provider": "openrouter"
+    },
+    {
+      "backend": "openrouter",
+      "generation": {},
+      "id": "openrouter:lfm-2.5-free",
+      "immutableRevision": "liquid/lfm-2.5-2.6b:free",
+      "model": "liquid/lfm-2.5-2.6b:free",
+      "provider": "openrouter"
+    },
+    {
+      "backend": "openrouter",
+      "generation": {},
+      "id": "openrouter:nemotron-3.5-lightning-free",
+      "immutableRevision": "nvidia/nemotron-3.5-lightning:free",
+      "model": "nvidia/nemotron-3.5-lightning:free",
+      "provider": "openrouter"
+    },
+    {
+      "backend": "openrouter",
+      "generation": {},
+      "id": "openrouter:inkling-small-free",
+      "immutableRevision": "thinkingmachines/inkling-small:free",
+      "model": "thinkingmachines/inkling-small:free",
+      "provider": "openrouter"
+    },
+    {
+      "backend": "openrouter",
+      "generation": {},
+      "id": "openrouter:laguna-s-free",
+      "immutableRevision": "poolside/laguna-s-2.1:free",
+      "model": "poolside/laguna-s-2.1:free",
+      "provider": "openrouter"
+    },
+    {
+      "backend": "openrouter",
+      "generation": {},
+      "id": "openrouter:inkling-free",
+      "immutableRevision": "thinkingmachines/inkling:free",
+      "model": "thinkingmachines/inkling:free",
+      "provider": "openrouter"
+    },
+    {
+      "backend": "openrouter",
+      "generation": {},
+      "id": "openrouter:laguna-xs-free",
+      "immutableRevision": "poolside/laguna-xs-2.1:free",
+      "model": "poolside/laguna-xs-2.1:free",
+      "provider": "openrouter"
+    },
+    {
+      "backend": "openrouter",
+      "generation": {},
+      "id": "openrouter:north-mini-code-free",
+      "immutableRevision": "cohere/north-mini-code:free",
+      "model": "cohere/north-mini-code:free",
+      "provider": "openrouter"
+    },
+    {
+      "backend": "openrouter",
+      "generation": {},
+      "id": "openrouter:nemotron-3-ultra-free",
+      "immutableRevision": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "provider": "openrouter"
+    },
+    {
+      "backend": "openrouter",
+      "generation": {},
+      "id": "openrouter:nemotron-3-nano-omni-free",
+      "immutableRevision": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+      "model": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+      "provider": "openrouter"
+    },
+    {
+      "backend": "openrouter",
+      "generation": {},
+      "id": "openrouter:gemma-4-31b-free",
+      "immutableRevision": "google/gemma-4-31b-it:free",
+      "model": "google/gemma-4-31b-it:free",
+      "provider": "openrouter"
+    },
+    {
+      "backend": "openrouter",
+      "generation": {},
+      "id": "openrouter:minimax-m2.7-free",
+      "immutableRevision": "minimax/minimax-m2.7:free",
+      "model": "minimax/minimax-m2.7:free",
+      "provider": "openrouter"
+    },
+    {
+      "backend": "openrouter",
+      "generation": {},
+      "id": "openrouter:nemotron-3-super-free",
+      "immutableRevision": "nvidia/nemotron-3-super-120b-a12b:free",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "provider": "openrouter"
+    }
+  ],
+  "plannedRepeats": 1,
+  "prompts": {},
+  "repository": {
+    "dirty": false,
+    "sha": "fe31c1e961fd199cc017192d45ad8bfb64001dfc"
+  },
+  "schemaVersion": 1,
+  "suite": {
+    "id": "model-prompt-tests",
+    "version": "1"
+  },
+  "tasks": [
+    {
+      "id": "ambiguous-requests/team-notes-app",
+      "sha256": "fb2bf6b6c1c620bff356ad69236567d1bba23f5816795a0f6ec08c2e79ceb55a"
+    },
+    {
+      "id": "architecture/database-choice",
+      "sha256": "f7281d20ee72ddf96fa1a088d33b1caf74dae5588e2bd50fca6c8a1370fd16fd"
+    },
+    {
+      "id": "code-review/senior-pr-review",
+      "sha256": "2ce86f406b90c5885018c6fc08733d05df79c7002320bf2f205f4b3cd2a10a84"
+    },
+    {
+      "id": "coding-build/pomodoro-timer",
+      "sha256": "0f6d2aeb96196e09fc2e1d2a642f3ad47959b4426d7e0d15c37cde96264540cd"
+    },
+    {
+      "id": "creativity-with-constraints/budgeting-app-names",
+      "sha256": "0b0af2cab42fd8d37e9a98e10a61d67f13c9e6a3936a2f3234831ff44fd7587b"
+    },
+    {
+      "id": "data-analysis/business-metrics-diagnosis",
+      "sha256": "d044e7757f38376facce438ffaa27be39c56de6ff2895c099325da4c2b848a82"
+    },
+    {
+      "id": "debugging/javascript-debounce",
+      "sha256": "e2b69001e2a10c8e3c603d14e34a30a6666174fa8b95652e5523e9906fc3ac05"
+    },
+    {
+      "id": "hermes/calendar-conflict",
+      "sha256": "1808977e89b4c71a4ce7ccc47cbf87548155ba0e0578e049c952d5d0a092b6eb"
+    },
+    {
+      "id": "hermes/decline-gracefully",
+      "sha256": "2d7aa441a59ac07d850107f9d7aae70ce745a543f23864479e071d2689f603e9"
+    },
+    {
+      "id": "hermes/draft-reply-tone",
+      "sha256": "e9b165deb17b3e15fcdf4a3618bc4c93da682f16beeb236163203c05d98d2200"
+    },
+    {
+      "id": "hermes/inbox-triage",
+      "sha256": "f5715a7a73739978d5929a6f633884bce17597d578d652ba9deb4233d892bdd5"
+    },
+    {
+      "id": "hermes/multi-step-errand",
+      "sha256": "d28cb6fe588b522eb984c1f2cd81171024eb80c4e15eb833cf9a5fad1f29d054"
+    },
+    {
+      "id": "hermes/recall-and-contradict",
+      "sha256": "d65d270a7b0ba3360eba285479d4e8b7397cc56823825215cb950b74b86c39c7"
+    },
+    {
+      "id": "instruction-following/five-bullet-summary",
+      "sha256": "1b9f9b55c23513f0191b5b7b0c5bb60a627cf4143d4cbd8589e53d1f34a2408e"
+    },
+    {
+      "id": "meta-evaluation/evaluation-rubric",
+      "sha256": "35bfcb6ab6d9f33c6b4817461cdbcb987c16da6ddad6eb33632976c7a79403f4"
+    },
+    {
+      "id": "planning/six-hour-sql-plan",
+      "sha256": "360875e08636affd3fcf7f3956235e4584abc9740244ecdf45da33df7e1ae7b4"
+    },
+    {
+      "id": "safety-risk/failed-production-migration",
+      "sha256": "8299410a74fea82aeafad1b73191f9a4fe3746c1096f2fb40b999099645ea531"
+    },
+    {
+      "id": "travel/san-francisco-city-break",
+      "sha256": "ee757f7372f4d811cedd2177f9143b9f76e3b831aed1ed32236ac41d0e3e842e"
+    },
+    {
+      "id": "writing/internal-announcement",
+      "sha256": "7b51eef275ed48993c630e46dba5989c76937d6c433487ce9c521559166e3a9d"
+    }
+  ],
+  "toolPermissions": []
+}
