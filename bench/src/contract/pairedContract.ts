@@ -11,7 +11,6 @@ import type { Database } from "bun:sqlite";
 import { getExperimentForBatch } from "../db/experimentsRepo";
 import { compareExperiments } from "../experiment/compatibility";
 import {
-  DEFAULT_STATISTICAL_CONFIG,
   pairedScoreComparison,
   type PairedComparison,
   type ScoreTrial,
@@ -188,8 +187,7 @@ export function buildPairedContract(
       : { status: "unknown", performanceComparable: false, differences: [] };
 
   const trials = [...toTrials(baseline.modelId, baselineRows), ...toTrials(candidate.modelId, candidateRows)];
-  const config: Partial<StatisticalConfig> = { ...DEFAULT_STATISTICAL_CONFIG, ...options };
-  const comparison = pairedScoreComparison(baseline.modelId, candidate.modelId, trials, config);
+  const comparison = pairedScoreComparison(baseline.modelId, candidate.modelId, trials, options);
   if (compatibility.status !== "compatible") {
     comparison.verdict = "inconclusive";
     comparison.warnings.push(
