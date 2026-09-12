@@ -172,6 +172,13 @@ function buildSweContract(db: Database, batchId: string, modelId: string, runIds
     secondary.infrastructureFailures = summary.infrastructureFailures;
     secondary.candidateFailures = summary.candidateFailures;
   }
+  // Execution/grading coverage (BSH-361): already computed by the statistics layer for every
+  // model with at least one row in this batch, so this is never a coerced zero — a model with
+  // no comparable trials at all genuinely covered 0% of the batch's tasks.
+  if (rate) {
+    secondary.taskCoverage = rate.taskCoverage;
+    secondary.judgeCoverage = rate.judgeCoverage;
+  }
 
   return {
     schemaVersion: RESULT_CONTRACT_VERSION,

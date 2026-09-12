@@ -131,6 +131,8 @@ describe("buildResultContract", () => {
     expect(contract.metrics.secondary.verifyPassed).toBe(1);
     expect(contract.metrics.secondary.verifyFailed).toBe(0);
     expect(contract.metrics.secondary.totalCostUsd).toBe(0);
+    expect(contract.metrics.secondary.taskCoverage).toBe(1);
+    expect(contract.metrics.secondary.judgeCoverage).toBe(0);
   });
 
   test("a batch with no experiment provenance is marked legacy", () => {
