@@ -23,3 +23,5 @@ benchmark-results/*
 !benchmark-results/hermes-3-agent-bakeoff/**
 !benchmark-results/openrouter-free-models/
 !benchmark-results/openrouter-free-models/**
+!benchmark-results/flash-tier-shootout/
+!benchmark-results/flash-tier-shootout/**

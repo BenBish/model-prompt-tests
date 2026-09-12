@@ -110,6 +110,74 @@
       "maxTokens": 32768,
       "pricing": { "inputPerMTok": 0.435, "outputPerMTok": 0.87 },
       "enabled": false
+    },
+    {
+      "id": "openrouter:qwen3.8-flash",
+      "kind": "openai-compatible",
+      "providerId": "openrouter",
+      "modelName": "qwen/qwen3.8-flash",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "apiKeyEnvVar": "OPENROUTER_API_KEY",
+      "extraHeaders": {
+        "HTTP-Referer": "https://github.com/model-prompt-tests",
+        "X-Title": "model-prompt-tests bench"
+      },
+      "maxConcurrent": 1,
+      "timeoutMs": 600000,
+      "maxTokens": 32768,
+      "pricing": { "inputPerMTok": 0.15, "outputPerMTok": 0.47 },
+      "enabled": false
+    },
+    {
+      "id": "openrouter:glm-5.3-flash",
+      "kind": "openai-compatible",
+      "providerId": "openrouter",
+      "modelName": "z-ai/glm-5.3-flash",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "apiKeyEnvVar": "OPENROUTER_API_KEY",
+      "extraHeaders": {
+        "HTTP-Referer": "https://github.com/model-prompt-tests",
+        "X-Title": "model-prompt-tests bench"
+      },
+      "maxConcurrent": 1,
+      "timeoutMs": 600000,
+      "maxTokens": 32768,
+      "pricing": { "inputPerMTok": 0.15, "outputPerMTok": 0.5 },
+      "enabled": false
+    },
+    {
+      "id": "openrouter:gemini-3.8-flash",
+      "kind": "openai-compatible",
+      "providerId": "openrouter",
+      "modelName": "google/gemini-3.8-flash",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "apiKeyEnvVar": "OPENROUTER_API_KEY",
+      "extraHeaders": {
+        "HTTP-Referer": "https://github.com/model-prompt-tests",
+        "X-Title": "model-prompt-tests bench"
+      },
+      "maxConcurrent": 1,
+      "timeoutMs": 600000,
+      "maxTokens": 32768,
+      "pricing": { "inputPerMTok": 0.75, "outputPerMTok": 3.75 },
+      "enabled": false
+    },
+    {
+      "id": "openrouter:deepseek-v4.1-flash",
+      "kind": "openai-compatible",
+      "providerId": "openrouter",
+      "modelName": "deepseek/deepseek-v4.1-flash",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "apiKeyEnvVar": "OPENROUTER_API_KEY",
+      "extraHeaders": {
+        "HTTP-Referer": "https://github.com/model-prompt-tests",
+        "X-Title": "model-prompt-tests bench"
+      },
+      "maxConcurrent": 1,
+      "timeoutMs": 600000,
+      "maxTokens": 32768,
+      "pricing": { "inputPerMTok": 0.15, "outputPerMTok": 0.6 },
+      "enabled": false
     }
   ],
   "judge": {

@@ -1,0 +1,168 @@
+{
+  "createdAt": "2026-09-12T05:38:13.691Z",
+  "environment": {
+    "concurrency": 3,
+    "cpu": "AMD Ryzen AI 9 HX PRO 370 w/ Radeon 890M",
+    "executionDomain": "interactive-lab",
+    "memoryBytes": 92401426432,
+    "os": {
+      "distro": "Omarchy",
+      "kernel": "7.1.9-arch1-2",
+      "platform": "linux"
+    },
+    "productionServices": "unknown",
+    "schemaVersion": 1
+  },
+  "exclusions": [],
+  "harness": {
+    "config": {
+      "concurrency": 3
+    },
+    "id": "prompt-runner",
+    "version": "1"
+  },
+  "judges": [
+    {
+      "id": "judge:openrouter-glm-5.2",
+      "modelId": "judge:openrouter-glm-5.2",
+      "sha256": "5de7c7fc40a7f136bac22a7d766e06ffe2565d1bb55b5dc59d1afe5bb40d5f23"
+    }
+  ],
+  "limits": {},
+  "models": [
+    {
+      "backend": "openrouter",
+      "generation": {
+        "maxTokens": 32768,
+        "timeoutMs": 600000
+      },
+      "id": "openrouter:qwen3.8-flash",
+      "immutableRevision": "qwen/qwen3.8-flash",
+      "model": "qwen/qwen3.8-flash",
+      "provider": "openrouter"
+    },
+    {
+      "backend": "openrouter",
+      "generation": {
+        "maxTokens": 32768,
+        "timeoutMs": 600000
+      },
+      "id": "openrouter:glm-5.3-flash",
+      "immutableRevision": "z-ai/glm-5.3-flash",
+      "model": "z-ai/glm-5.3-flash",
+      "provider": "openrouter"
+    },
+    {
+      "backend": "openrouter",
+      "generation": {
+        "maxTokens": 32768,
+        "timeoutMs": 600000
+      },
+      "id": "openrouter:gemini-3.8-flash",
+      "immutableRevision": "google/gemini-3.8-flash",
+      "model": "google/gemini-3.8-flash",
+      "provider": "openrouter"
+    },
+    {
+      "backend": "openrouter",
+      "generation": {
+        "maxTokens": 32768,
+        "timeoutMs": 600000
+      },
+      "id": "openrouter:deepseek-v4.1-flash",
+      "immutableRevision": "deepseek/deepseek-v4.1-flash",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "openrouter"
+    }
+  ],
+  "plannedRepeats": 1,
+  "prompts": {},
+  "repository": {
+    "dirty": true,
+    "sha": "d41299357f183a5af10dd567e0bac25e256bf80d"
+  },
+  "schemaVersion": 1,
+  "suite": {
+    "id": "model-prompt-tests",
+    "version": "1"
+  },
+  "tasks": [
+    {
+      "id": "ambiguous-requests/team-notes-app",
+      "sha256": "fb2bf6b6c1c620bff356ad69236567d1bba23f5816795a0f6ec08c2e79ceb55a"
+    },
+    {
+      "id": "architecture/database-choice",
+      "sha256": "f7281d20ee72ddf96fa1a088d33b1caf74dae5588e2bd50fca6c8a1370fd16fd"
+    },
+    {
+      "id": "code-review/senior-pr-review",
+      "sha256": "2ce86f406b90c5885018c6fc08733d05df79c7002320bf2f205f4b3cd2a10a84"
+    },
+    {
+      "id": "coding-build/pomodoro-timer",
+      "sha256": "0f6d2aeb96196e09fc2e1d2a642f3ad47959b4426d7e0d15c37cde96264540cd"
+    },
+    {
+      "id": "creativity-with-constraints/budgeting-app-names",
+      "sha256": "0b0af2cab42fd8d37e9a98e10a61d67f13c9e6a3936a2f3234831ff44fd7587b"
+    },
+    {
+      "id": "data-analysis/business-metrics-diagnosis",
+      "sha256": "d044e7757f38376facce438ffaa27be39c56de6ff2895c099325da4c2b848a82"
+    },
+    {
+      "id": "debugging/javascript-debounce",
+      "sha256": "e2b69001e2a10c8e3c603d14e34a30a6666174fa8b95652e5523e9906fc3ac05"
+    },
+    {
+      "id": "hermes/calendar-conflict",
+      "sha256": "1808977e89b4c71a4ce7ccc47cbf87548155ba0e0578e049c952d5d0a092b6eb"
+    },
+    {
+      "id": "hermes/decline-gracefully",
+      "sha256": "2d7aa441a59ac07d850107f9d7aae70ce745a543f23864479e071d2689f603e9"
+    },
+    {
+      "id": "hermes/draft-reply-tone",
+      "sha256": "e9b165deb17b3e15fcdf4a3618bc4c93da682f16beeb236163203c05d98d2200"
+    },
+    {
+      "id": "hermes/inbox-triage",
+      "sha256": "f5715a7a73739978d5929a6f633884bce17597d578d652ba9deb4233d892bdd5"
+    },
+    {
+      "id": "hermes/multi-step-errand",
+      "sha256": "d28cb6fe588b522eb984c1f2cd81171024eb80c4e15eb833cf9a5fad1f29d054"
+    },
+    {
+      "id": "hermes/recall-and-contradict",
+      "sha256": "d65d270a7b0ba3360eba285479d4e8b7397cc56823825215cb950b74b86c39c7"
+    },
+    {
+      "id": "instruction-following/five-bullet-summary",
+      "sha256": "1b9f9b55c23513f0191b5b7b0c5bb60a627cf4143d4cbd8589e53d1f34a2408e"
+    },
+    {
+      "id": "meta-evaluation/evaluation-rubric",
+      "sha256": "35bfcb6ab6d9f33c6b4817461cdbcb987c16da6ddad6eb33632976c7a79403f4"
+    },
+    {
+      "id": "planning/six-hour-sql-plan",
+      "sha256": "360875e08636affd3fcf7f3956235e4584abc9740244ecdf45da33df7e1ae7b4"
+    },
+    {
+      "id": "safety-risk/failed-production-migration",
+      "sha256": "8299410a74fea82aeafad1b73191f9a4fe3746c1096f2fb40b999099645ea531"
+    },
+    {
+      "id": "travel/san-francisco-city-break",
+      "sha256": "ee757f7372f4d811cedd2177f9143b9f76e3b831aed1ed32236ac41d0e3e842e"
+    },
+    {
+      "id": "writing/internal-announcement",
+      "sha256": "7b51eef275ed48993c630e46dba5989c76937d6c433487ce9c521559166e3a9d"
+    }
+  ],
+  "toolPermissions": []
+}
