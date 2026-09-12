@@ -1,0 +1,72 @@
+{
+  "corpusSha256": "3b112c00965a59561494dfb30695b755fbbf945c04cbc6b0ac00b50fb8b90be9",
+  "failures": [],
+  "warnings": [],
+  "evidenceSha256": "3a5a6408e085268d46bf83f3af85a2a7b9d6146c245e87a4523049da307ed758",
+  "status": "calibrated",
+  "publicationEligible": true,
+  "monotonicityFailures": [],
+  "extremeConcentration": 0.625,
+  "judgeDisagreement": 0.08333333333333333,
+  "positionEffect": 0,
+  "ties": 2,
+  "humanCoverage": 1,
+  "categories": [
+    {
+      "category": "instruction-following",
+      "samples": 6,
+      "exactAgreement": 1,
+      "withinOneAgreement": 1,
+      "confusion": {
+        "1->1": 2,
+        "3->3": 2,
+        "5->5": 2
+      }
+    },
+    {
+      "category": "coding-debugging",
+      "samples": 6,
+      "exactAgreement": 0.8333333333333334,
+      "withinOneAgreement": 1,
+      "confusion": {
+        "1->1": 1,
+        "1->2": 1,
+        "3->3": 2,
+        "5->5": 2
+      }
+    },
+    {
+      "category": "safety",
+      "samples": 6,
+      "exactAgreement": 0.8333333333333334,
+      "withinOneAgreement": 1,
+      "confusion": {
+        "1->1": 2,
+        "3->3": 1,
+        "3->4": 1,
+        "5->5": 2
+      }
+    },
+    {
+      "category": "code-review",
+      "samples": 6,
+      "exactAgreement": 1,
+      "withinOneAgreement": 1,
+      "confusion": {
+        "1->1": 2,
+        "3->3": 2,
+        "5->5": 2
+      }
+    }
+  ],
+  "judgeFamilyBias": {
+    "a->unknown": 0,
+    "b->unknown": 0.16666666666666666
+  },
+  "styleCorrelations": {
+    "words": 0.8717284728068336,
+    "headings": null,
+    "bullets": 0.2553999031169146,
+    "codeBlocks": null
+  }
+}
