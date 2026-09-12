@@ -234,6 +234,33 @@ function buildPromptContract(db: Database, batchId: string, modelId: string, run
     secondary.errorRuns = summary.errorRuns;
     secondary.infrastructureFailures = summary.infrastructureFailures;
     secondary.candidateFailures = summary.candidateFailures;
+    // Coverage (BSH-361): never coerced to zero — omitted whenever there is no denominator to
+    // compute it from (no manifest for task coverage; no comparable runs for judge coverage).
+    // `missingJudgeScores` only counts judge calls that were *attempted* and came back bad; it
+    // is silent about a run with zero judge rows at all, so coverage is computed directly here
+    // instead of reusing it.
+    if (summary.okRuns > 0) {
+      const judgedRuns = db
+        .query<{ n: number }, [string, string]>(
+          `SELECT COUNT(DISTINCT r.id) AS n
+             FROM runs r JOIN scores s ON s.run_id = r.id
+            WHERE ${runIds ? `r.id IN (${runIds.join(",")}) AND ? IS NOT NULL AND ? IS NOT NULL` : "r.run_batch_id = ? AND r.model_id = ?"}
+              AND r.kind = 'prompt' AND r.status = 'ok' AND s.status = 'ok' AND s.score IS NOT NULL`,
+        )
+        .get(batchId, modelId)?.n ?? 0;
+      secondary.judgeCoverage = judgedRuns / summary.okRuns;
+    }
+    const intendedTasks = manifest?.tasks.length;
+    if (intendedTasks && intendedTasks > 0) {
+      const distinctPrompts = db
+        .query<{ n: number }, [string, string]>(
+          `SELECT COUNT(DISTINCT prompt_id) AS n FROM runs
+            WHERE ${runIds ? `id IN (${runIds.join(",")}) AND ? IS NOT NULL AND ? IS NOT NULL` : "run_batch_id = ? AND model_id = ?"}
+              AND kind = 'prompt' AND status = 'ok'`,
+        )
+        .get(batchId, modelId)?.n ?? 0;
+      secondary.taskCoverage = distinctPrompts / intendedTasks;
+    }
   }
 
   const outcomeRows = db

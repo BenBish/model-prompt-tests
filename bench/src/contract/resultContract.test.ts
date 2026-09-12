@@ -214,6 +214,36 @@ describe("buildResultContract", () => {
     expect(contract.metrics.secondary.infrastructureFailures).toBe(0);
     expect(contract.metrics.secondary.candidateFailures).toBe(0);
     expect(contract.outcomeCounts.passed).toBe(1);
+    expect(contract.metrics.secondary.judgeCoverage).toBe(0);
+    expect(contract.metrics.secondary.taskCoverage).toBeUndefined();
+  });
+
+  test("prompt contract reports real task/judge coverage when a manifest and a score exist", () => {
+    const db = createDb();
+    const experimentId = insertExperiment(db, manifestFixture());
+    const modelId = "local:candidate";
+    const runId = insertRun(db, {
+      runBatchId: "batch-3b",
+      promptId: "some-prompt",
+      providerId: "local",
+      modelId,
+      modelName: "candidate",
+      startedAt: "2026-08-23T00:00:00.000Z",
+      status: "ok",
+      kind: "prompt",
+      outputText: "a real answer",
+      outcomeCategory: "passed",
+      experimentId,
+    });
+    db.query(
+      `INSERT INTO scores (run_id, judge_model_id, score, scored_at, status) VALUES (?, 'judge:x', 5, '2026-08-23T00:00:01.000Z', 'ok')`,
+    ).run(runId);
+
+    const contract = buildResultContract(db, "batch-3b", modelId, "prompt");
+
+    // manifestFixture() carries 1 task, and one distinct comparable prompt was run against it.
+    expect(contract.metrics.secondary.taskCoverage).toBe(1);
+    expect(contract.metrics.secondary.judgeCoverage).toBe(1);
   });
 
   test("tool-probe contract reports wellFormedPct without task health", () => {
