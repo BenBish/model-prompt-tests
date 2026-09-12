@@ -43,6 +43,7 @@ import { compareExperiments } from "./experiment/compatibility";
 import { manifestId, publicationIssues } from "./experiment/manifest";
 import { writeRunSummary } from "./contract/summaryOut";
 import { buildResultContract } from "./contract/resultContract";
+import { buildPairedContract } from "./contract/pairedContract";
 import { cmdExternal } from "./external/cli";
 
 const REPO_ROOT = process.cwd();
@@ -62,6 +63,7 @@ function usage(): void {
   bun bench/src/cli.ts export --name <slug> (--batch <run_batch_id> | --latest) --calibration-anchors <file> --calibration-evidence <file>
   bun bench/src/cli.ts reproduce --batch <run_batch_id>
   bun bench/src/cli.ts experiment export --batch <id1> [--batch <id2> ...] --model <model_id> [--kind swe|prompt|tool-probe] [--out <path>]
+  bun bench/src/cli.ts experiment compare-paired --batch <id> --model <model_id> --baseline-batch <id> --baseline-model <model_id> [--kind swe|prompt] [--practical-equivalence <n>] [--out <path>]
   bun bench/src/cli.ts publish [--out <dir>] [--results-dir <dir>]
   bun bench/src/cli.ts models <list|init|validate|set-judge|add-openai-compatible|add-anthropic|remove>
   bun bench/src/cli.ts list
@@ -646,6 +648,40 @@ async function cmdExperimentExport(values: Record<string, unknown>): Promise<voi
   }
 }
 
+async function cmdExperimentComparePaired(values: Record<string, unknown>): Promise<void> {
+  const db = openDb(DB_PATH);
+  const batch = values.batch as string | undefined;
+  const modelId = values.model as string | undefined;
+  const baselineBatch = values["baseline-batch"] as string | undefined;
+  const baselineModelId = values["baseline-model"] as string | undefined;
+  const kind = (values.kind as string | undefined) ?? "swe";
+  if (!batch) throw new Error("experiment compare-paired requires --batch <run_batch_id>");
+  if (!modelId) throw new Error("experiment compare-paired requires --model <model_id>");
+  if (!baselineBatch) throw new Error("experiment compare-paired requires --baseline-batch <run_batch_id>");
+  if (!baselineModelId) throw new Error("experiment compare-paired requires --baseline-model <model_id>");
+  if (kind !== "swe" && kind !== "prompt") throw new Error('--kind must be "swe" or "prompt"');
+  const practicalEquivalence =
+    typeof values["practical-equivalence"] === "string" ? Number(values["practical-equivalence"]) : undefined;
+  if (practicalEquivalence !== undefined && !Number.isFinite(practicalEquivalence)) {
+    throw new Error("--practical-equivalence must be a finite number");
+  }
+
+  const contract = buildPairedContract(
+    db,
+    kind,
+    { runBatchId: batch, modelId },
+    { runBatchId: baselineBatch, modelId: baselineModelId },
+    practicalEquivalence !== undefined ? { practicalEquivalence } : {},
+  );
+  const json = JSON.stringify(contract, null, 2);
+  if (typeof values.out === "string") {
+    await Bun.write(values.out, `${json}\n`);
+    console.log(`Paired result contract written to ${values.out}`);
+  } else {
+    console.log(json);
+  }
+}
+
 async function cmdModels(rest: string[]): Promise<void> {
   const subcommand = rest[0];
   const args = rest.slice(1);
@@ -938,6 +974,21 @@ async function main(): Promise<void> {
           },
         });
         await cmdExperimentExport(values);
+      } else if (experimentSubcommand === "compare-paired") {
+        const { values } = parseArgs({
+          args: experimentRest,
+          allowPositionals: false,
+          options: {
+            batch: { type: "string" },
+            model: { type: "string" },
+            "baseline-batch": { type: "string" },
+            "baseline-model": { type: "string" },
+            kind: { type: "string" },
+            "practical-equivalence": { type: "string" },
+            out: { type: "string" },
+          },
+        });
+        await cmdExperimentComparePaired(values);
       } else {
         usage();
         process.exit(1);

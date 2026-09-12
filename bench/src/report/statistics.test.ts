@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { analyzePairedBatchTransitions, analyzePairedPreferences, analyzePairedTrials, hierarchicalBootstrapDelta, wilsonInterval, type StatisticalTrial } from "./statistics";
+import { analyzePairedBatchTransitions, analyzePairedPreferences, analyzePairedTrials, hierarchicalBootstrapDelta, pairedScoreComparison, wilsonInterval, type ScoreTrial, type StatisticalTrial } from "./statistics";
 
 const trial = (taskId: string, modelId: string, outcome: 0 | 1, repeatIndex = 0, extra: Partial<StatisticalTrial> = {}): StatisticalTrial =>
   ({ taskId, modelId, outcome, repeatIndex, ...extra });
@@ -97,5 +97,41 @@ describe("paired statistical analysis", () => {
     const comparison = analyzePairedBatchTransitions(before, after, true, { bootstrapSamples: 200 }).comparisons[0]!;
     expect(comparison).toMatchObject({ baselineId: "model (before)", candidateId: "model (after)", verdict: "win" });
     expect(analyzePairedBatchTransitions(before, after, false, { bootstrapSamples: 100 }).comparisons[0]?.verdict).toBe("inconclusive");
+  });
+});
+
+describe("pairedScoreComparison (BSH-361)", () => {
+  const scoreTrial = (taskId: string, modelId: string, score: number, extra: Partial<ScoreTrial> = {}): ScoreTrial =>
+    ({ taskId, modelId, score, ...extra });
+
+  test("finds a win on matched-task continuous scores, not binarized outcomes", () => {
+    const trials: ScoreTrial[] = [];
+    for (let i = 0; i < 6; i++) {
+      trials.push(scoreTrial(`task-${i}`, "baseline", 4.0));
+      trials.push(scoreTrial(`task-${i}`, "candidate", 4.6));
+    }
+    const comparison = pairedScoreComparison("baseline", "candidate", trials, { bootstrapSamples: 200, minimumMatchedTasks: 5 });
+    expect(comparison.matchedTasks).toBe(6);
+    expect(comparison.delta).toBeCloseTo(0.6, 5);
+    expect(comparison.verdict).toBe("win");
+  });
+
+  test("is inconclusive below the minimum matched-task sample size", () => {
+    const trials: ScoreTrial[] = [
+      scoreTrial("task-1", "baseline", 4.0), scoreTrial("task-1", "candidate", 4.9),
+    ];
+    const comparison = pairedScoreComparison("baseline", "candidate", trials, { bootstrapSamples: 200 });
+    expect(comparison.verdict).toBe("inconclusive");
+    expect(comparison.warnings.some((w) => w.startsWith("low sample size"))).toBe(true);
+  });
+
+  test("excludes infrastructure-failure trials from the comparison", () => {
+    const trials: ScoreTrial[] = Array.from({ length: 6 }, (_, i) => [
+      scoreTrial(`task-${i}`, "baseline", 4.0),
+      scoreTrial(`task-${i}`, "candidate", 4.6),
+    ]).flat();
+    trials.push(scoreTrial("task-infra", "candidate", 1.0, { infrastructureFailure: true }));
+    const comparison = pairedScoreComparison("baseline", "candidate", trials, { bootstrapSamples: 200, minimumMatchedTasks: 5 });
+    expect(comparison.matchedTasks).toBe(6);
   });
 });

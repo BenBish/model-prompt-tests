@@ -176,6 +176,63 @@ export function analyzePairedTrials(trials: StatisticalTrial[], options: Partial
   return { config, rates, comparisons, rankStability: { topModelId: top?.[0], topRankProbability, stable: (topRankProbability ?? 0) >= 0.8, samples: config.bootstrapSamples }, warnings: [...new Set(warnings)] };
 }
 
+export interface ScoreTrial {
+  taskId: string; modelId: string; score: number;
+  infrastructureFailure?: boolean; environmentFingerprint?: string; provenanceId?: string;
+}
+
+/**
+ * Paired hierarchical-bootstrap comparison for continuous judge scores (BSH-361). Reuses the
+ * same `hierarchicalBootstrapDelta` primitive `analyzePairedTrials` uses for binary outcomes,
+ * but operates directly on raw scores instead of binarizing them into 0/1 — a prompt/judged
+ * comparison's practical-equivalence threshold is a score delta, not a pass-rate delta.
+ */
+export function pairedScoreComparison(
+  baselineId: string, candidateId: string, trials: ScoreTrial[], options: Partial<StatisticalConfig> = {},
+): PairedComparison {
+  const config = { ...DEFAULT_STATISTICAL_CONFIG, ...options };
+  const usable = trials.filter((trial) => !trial.infrastructureFailure);
+  const baselineRows = usable.filter((row) => row.modelId === baselineId);
+  const candidateRows = usable.filter((row) => row.modelId === candidateId);
+  const baselineTasks = new Set(baselineRows.map((row) => row.taskId));
+  const candidateTasks = new Set(candidateRows.map((row) => row.taskId));
+  const union = new Set([...baselineTasks, ...candidateTasks]);
+  const matched = [...baselineTasks].filter((task) => candidateTasks.has(task)).sort();
+  const taskEffects = matched.map((taskId) => {
+    const baseline = mean(baselineRows.filter((r) => r.taskId === taskId).map((r) => r.score));
+    const candidate = mean(candidateRows.filter((r) => r.taskId === taskId).map((r) => r.score));
+    return { taskId, baseline, candidate, delta: candidate - baseline };
+  });
+  const pairs = matched.map((task) => ({
+    baseline: baselineRows.filter((r) => r.taskId === task).map((r) => r.score),
+    candidate: candidateRows.filter((r) => r.taskId === task).map((r) => r.score),
+  }));
+  const delta = taskEffects.length ? mean(taskEffects.map((effect) => effect.delta)) : 0;
+  const interval = hierarchicalBootstrapDelta(pairs, config.bootstrapSamples, config.confidence);
+  const coverage = union.size ? matched.length / union.size : 0;
+  const environments = [...new Set([...baselineRows, ...candidateRows].flatMap((row) => row.environmentFingerprint ? [row.environmentFingerprint] : []))].sort();
+  const provenanceIds = [...new Set([...baselineRows, ...candidateRows].flatMap((row) => row.provenanceId ? [row.provenanceId] : []))];
+  const warnings: string[] = [];
+  if (matched.length < config.minimumMatchedTasks) warnings.push(`low sample size: ${matched.length} matched tasks; minimum is ${config.minimumMatchedTasks}`);
+  if (coverage < config.minimumCoverage) warnings.push(`low paired coverage: ${(coverage * 100).toFixed(0)}%; minimum is ${(config.minimumCoverage * 100).toFixed(0)}%`);
+  if (environments.length > 1) warnings.push("cross-domain correctness result is exploratory; performance deltas are not portable");
+  if (provenanceIds.length > 1) warnings.push("incompatible or unverified experiment provenance: verdict requires one compatible experiment");
+  let verdict: StatisticalVerdict = "inconclusive";
+  const pairScheduled = trials.filter((row) => row.modelId === baselineId || row.modelId === candidateId);
+  const infrastructureOnly = matched.length === 0 && pairScheduled.some((row) => row.infrastructureFailure);
+  if (infrastructureOnly) verdict = "invalid-infrastructure";
+  else if (warnings.filter((w) => w.startsWith("low ") || w.startsWith("incompatible ")).length === 0) {
+    if (interval.low > config.practicalEquivalence) verdict = "win";
+    else if (interval.high < -config.practicalEquivalence) verdict = "loss";
+  }
+  return {
+    baselineId, candidateId, matchedTasks: matched.length, unionTasks: union.size, coverage,
+    wins: taskEffects.filter((x) => x.delta > 0).length, losses: taskEffects.filter((x) => x.delta < 0).length,
+    ties: taskEffects.filter((x) => x.delta === 0).length, delta, interval, verdict,
+    environmentFingerprints: environments, exploratory: environments.length > 1, taskEffects, warnings,
+  };
+}
+
 /** Compare the same model across two compatible batches on matched tasks. */
 export function analyzePairedBatchTransitions(
   before: StatisticalTrial[], after: StatisticalTrial[], compatible: boolean,

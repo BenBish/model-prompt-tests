@@ -34,8 +34,8 @@ so consumers cannot mistake a stale identifier or model-id typo for a benchmark 
 | `legacy` | True when the batch predates experiment provenance (BSH-220) and cannot be rehydrated. A legacy batch remains viewable but has no manifest, no environment fingerprint, and no cross-domain safety guarantees. |
 | `health` | Task-health status for `kind: "swe"` (`healthy`, `unhealthy`, `infrastructure-failure`, `unvalidated`, `unknown`), derived from the same `swe_results.health_status` rows the health-gate system (BSH-222) already writes. Always `"not-applicable"` for `kind: "prompt"` — prompt suites have no task-health concept. |
 | `outcomeCounts` | Per-run outcome counts. SWE categories are `passed`, `candidate_failure`, `timeout`, `invalid_output`, `harness_error`, `verifier_error`, and `judge_error`. Prompt categories are `passed`, `candidate_failure`, `timeout`, `rate_limit`, `provider_error`, `connection_error`, and `harness_error`. Prompt `timeout`, `rate_limit`, `provider_error`, `connection_error`, and `harness_error` are infrastructure failures; empty or malformed model-produced responses are `candidate_failure`. Legacy rows without a category appear as `unknown`. A consumer must never fold infrastructure errors into a candidate loss. |
-| `metrics.primary` | The one number a verdict should compare against a baseline's — `intentionToEvaluatePassRate` for SWE (with a Wilson interval from the paired-trial statistics layer), `avgScore` for prompt suites (no interval yet; prompt suites are not wired into the statistics layer — tracked as a follow-up). Undefined when nothing reached evaluation. |
-| `metrics.secondary` | Everything else (latency, throughput, timeouts, infra-failure counts) a report or verdict may want, by name. Prompt contracts include `infrastructureFailures` and `candidateFailures`; these aggregate the prompt categories described above and are zero when the selected model has no failures of that class. |
+| `metrics.primary` | The one number a verdict should compare against a baseline's — `intentionToEvaluatePassRate` for SWE (with a Wilson interval — a *single arm's own* rate, not matched against a specific baseline), `avgScore` for prompt suites (no interval; use the paired contract below for uncertainty against a specific baseline). Undefined when nothing reached evaluation. |
+| `metrics.secondary` | Everything else (latency, throughput, timeouts, infra-failure counts) a report or verdict may want, by name. Prompt contracts include `infrastructureFailures` and `candidateFailures`; these aggregate the prompt categories described above and are zero when the selected model has no failures of that class. `taskCoverage`/`judgeCoverage` (BSH-361) are this model's coverage fractions within the requested batch(es) — for SWE, the statistics layer's own `RateEstimate` values; for prompt, computed directly against the manifest's task count and the `scores` table. Both are undefined, never coerced to zero, when there is no denominator to compute them from (no manifest for `taskCoverage`; `judgeCoverage` needs at least one `ok` run). |
 | `artifacts.runBatchId` | The batch id, for cross-referencing exports/reports produced by other bench commands. |
 | `runBatchIds` / `artifacts.runBatchIds` | Present only for a multi-batch export and lists every contributing batch in command-line order. The singular fields remain the first batch for schema-v1 compatibility. |
 
@@ -59,6 +59,47 @@ batches. Manifest-bearing batches must be semantically compatible according to
 but fail export whenever the resulting contract includes latency or throughput metrics.
 Aggregation is still performed by the normal report/statistics/health code over the selected
 union; the contract layer does not invent missing zeros or duplicate report formulas.
+
+## Paired candidate-vs-baseline comparison (BSH-361)
+
+`experiment export` reports each model's own point estimate in isolation — a Wilson interval on
+*its own* rate, computed independently of whatever it will be compared against. That is not the
+same question as "is this candidate actually better than this specific baseline, accounting for
+the fact both were measured on the same tasks." The latter is a matched-task (paired) question,
+and the statistics layer (`report/statistics.ts`) has computed it with a hierarchical bootstrap
+— resampling tasks, then repeats within each task — since BSH-221. `experiment export` never
+surfaced it. This command does:
+
+```
+bun bench/src/cli.ts experiment compare-paired \
+  --batch <candidate_batch> --model <candidate_model_id> \
+  --baseline-batch <baseline_batch> --baseline-model <baseline_model_id> \
+  [--kind swe|prompt] [--practical-equivalence <n>] [--out <path>]
+```
+
+Prints (or writes to `--out`) a `PairedResultContract` (see `bench/src/contract/pairedContract.ts`):
+
+| Field | Meaning |
+|---|---|
+| `schemaVersion` | `PAIRED_CONTRACT_VERSION`, versioned independently of `RESULT_CONTRACT_VERSION` — this is a different contract, not an extension of the single-arm one. |
+| `candidate` / `baseline` | Each arm's `modelId`, `runBatchId`, `totalRuns`, `okRuns`, and coverage (`taskCoveragePct`/`judgeCoveragePct`, as percentages, `undefined` — never zero — when not computable or not applicable to the kind). |
+| `compatibility.status` | `"compatible"` or `"incompatible"` when both arms have an experiment manifest (via `compareExperiments()` — the same check used for composing one model across batches), `"unknown"` when either arm is a legacy batch. **`"unknown"` is never treated as compatible.** |
+| `compatibility.differences` | The differing manifest paths (`tasks`, `judges`, `harness`, `prompts`, `limits`, `toolPermissions`, `models`, `environment`) when incompatible — this is the baseline-invalidation signal: a task, grader, harness/runtime, template, quant, or serving-setting change shows up here by name. |
+| `comparison` | A `PairedComparison` (see `statistical-analysis.md`): `matchedTasks`, `unionTasks`, `coverage`, `delta`, `interval` (hierarchical-bootstrap, on the metric's own scale — a 0–1 rate delta for SWE, a raw score delta for prompt), `verdict` (`win`/`loss`/`inconclusive`/`invalid-infrastructure`), `taskEffects`, `warnings`. |
+
+Compatibility is enforced before the verdict is trusted: an incompatible or unknown-compatibility
+pair always reports `comparison.verdict: "inconclusive"` regardless of what the bootstrap interval
+says, with a warning naming why. A consumer must never override that suppression.
+
+For `kind: "prompt"`, the comparison runs on raw judge scores (via the new `pairedScoreComparison`
+primitive), not a binarized pass/fail — `--practical-equivalence` should be set to the same
+minimum-meaningful-score-delta a report already uses (it defaults to `0.02`, tuned for 0–1 rates,
+not a 1–5 score scale).
+
+This command intentionally takes exactly one candidate batch/model and one baseline batch/model —
+unlike `experiment export`, it does not compose multiple batches per arm. A candidate whose own
+evidence spans multiple nights should be exported and judged for internal completeness with
+`experiment export` first; pair only a single, already-decided batch against the baseline.
 
 ## Ownership boundary
 
