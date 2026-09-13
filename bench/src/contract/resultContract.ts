@@ -109,6 +109,33 @@ function experimentIdOf(db: Database, batchId: string): string | undefined {
   return row?.experiment_id ?? undefined;
 }
 
+/**
+ * Share (0-100) of calls made under a configured `--deadline-ms` that both succeeded and
+ * finished within it (BSH-381). Undefined — never coerced to 0 — when no run in the selection
+ * was measured against a deadline, matching the taskCoverage/judgeCoverage convention below:
+ * a missing denominator is not the same measurement as "0% made the deadline".
+ */
+function deadlineSuccessPct(
+  db: Database,
+  batchId: string,
+  modelId: string,
+  kind: "prompt" | "swe",
+  runIds?: number[],
+): number | undefined {
+  const rows = db
+    .query<{ status: string; latency_ms: number | null; deadline_ms: number }, [string, string]>(
+      `SELECT status, latency_ms, deadline_ms FROM runs
+        WHERE ${runIds ? `id IN (${runIds.join(",")}) AND ? IS NOT NULL AND ? IS NOT NULL` : "run_batch_id = ? AND model_id = ?"}
+          AND kind = '${kind}' AND deadline_ms IS NOT NULL`,
+    )
+    .all(batchId, modelId);
+  if (rows.length === 0) return undefined;
+  const successes = rows.filter(
+    (row) => row.status === "ok" && row.latency_ms !== null && row.latency_ms <= row.deadline_ms,
+  ).length;
+  return (successes / rows.length) * 100;
+}
+
 function buildSweContract(db: Database, batchId: string, modelId: string, runIds?: number[]): ResultContract {
   const data = querySweReportData(db, runIds ? { runIds, allRuns: true } : { runBatchId: batchId, allRuns: true });
   const summary = data.summaries.find((s) => s.harnessModelId === modelId);
@@ -179,6 +206,8 @@ function buildSweContract(db: Database, batchId: string, modelId: string, runIds
     secondary.taskCoverage = rate.taskCoverage;
     secondary.judgeCoverage = rate.judgeCoverage;
   }
+  const deadlinePct = deadlineSuccessPct(db, batchId, modelId, "swe", runIds);
+  if (deadlinePct !== undefined) secondary.deadlineSuccessPct = deadlinePct;
 
   return {
     schemaVersion: RESULT_CONTRACT_VERSION,
@@ -262,6 +291,8 @@ function buildPromptContract(db: Database, batchId: string, modelId: string, run
       secondary.taskCoverage = distinctPrompts / intendedTasks;
     }
   }
+  const deadlinePct = deadlineSuccessPct(db, batchId, modelId, "prompt", runIds);
+  if (deadlinePct !== undefined) secondary.deadlineSuccessPct = deadlinePct;
 
   const outcomeRows = db
     .query<{ outcome_category: string | null; n: number }, [string, string]>(

@@ -55,7 +55,7 @@ const DEFAULT_CONCURRENCY = 3;
 
 function usage(): void {
   console.log(`Usage:
-  bun bench/src/cli.ts run <prompt-glob-or-all|calibration> [--experiment <id>] [--models id1,id2] [--judge <id>] [--judges id1,id2] [--concurrency <n>] [--repeats <n>] [--dry-run] [--no-judge] [--peer-rank] [--synthesize] [--chairman <id>] [--summary-out <path>]
+  bun bench/src/cli.ts run <prompt-glob-or-all|calibration> [--experiment <id>] [--models id1,id2] [--judge <id>] [--judges id1,id2] [--concurrency <n>] [--repeats <n>] [--deadline-ms <ms>] [--dry-run] [--no-judge] [--peer-rank] [--synthesize] [--chairman <id>] [--summary-out <path>]
   bun bench/src/cli.ts synthesize (--batch <run_batch_id> | --latest) [--prompts id1,id2] [--chairman <id>] [--dry-run]
   bun bench/src/cli.ts calibrate [--batch <run_batch_id>] [--all-runs] [--human <file.json>] [--anchors <corpus.json> --evidence <evidence.json>] [--out <path>] [--subset]
   bun bench/src/cli.ts report [--out <path>] [--batch <run_batch_id>] [--all-runs] [--narrative] [--judge <id>] [--calibration-anchors <file> --calibration-evidence <file>]
@@ -70,7 +70,7 @@ function usage(): void {
   bun bench/src/cli.ts swe list
   bun bench/src/cli.ts swe doctor [--harnesses <ids>] [--timeout <ms>]
   bun bench/src/cli.ts swe health [task-or-all]
-  bun bench/src/cli.ts swe run <task-glob-or-all> --harnesses <ids> --models <aliases> [--experiment <id>] [--paired] [--repeats <n>] [--concurrency <n>] [--judge <id>] [--judges id1,id2] [--no-judge] [--keep-workspaces] [--dry-run] [--timeout <ms>] [--summary-out <path>]
+  bun bench/src/cli.ts swe run <task-glob-or-all> --harnesses <ids> --models <aliases> [--experiment <id>] [--paired] [--repeats <n>] [--concurrency <n>] [--judge <id>] [--judges id1,id2] [--no-judge] [--keep-workspaces] [--dry-run] [--timeout <ms>] [--deadline-ms <ms>] [--summary-out <path>]
   bun bench/src/cli.ts hermes tools --models <ids> [--concurrency <n>] [--dry-run] [--summary-out <path>]
   bun bench/src/cli.ts external <list|plan|run> [--ecosystem inspect|harbor|lm-eval] [--task <id>] [--model <id>] [--out <dir>] [--config <file>]`);
 }
@@ -210,6 +210,7 @@ async function cmdRun(positionals: string[], values: Record<string, unknown>): P
     : [];
 
   const repeats = parsePositiveInteger(values.repeats, "--repeats") ?? 1;
+  const deadlineMs = parsePositiveInteger(values["deadline-ms"], "--deadline-ms");
 
   const peerRank = values["peer-rank"] === true;
   const synthesize = values.synthesize === true;
@@ -269,6 +270,7 @@ async function cmdRun(positionals: string[], values: Record<string, unknown>): P
     runners,
     defaultConcurrency: concurrency,
     repeats,
+    deadlineMs,
     judges: judgeEntries.map((entry) => ({
       adapter: createAdapter(entry),
       modelId: entry.id,
@@ -882,6 +884,7 @@ async function main(): Promise<void> {
           chairman: { type: "string" },
           "summary-out": { type: "string" },
           experiment: { type: "string" },
+          "deadline-ms": { type: "string" },
         },
       });
       await cmdRun(positionals, values);
@@ -1047,6 +1050,7 @@ async function main(): Promise<void> {
             paired: { type: "boolean" },
             "summary-out": { type: "string" },
             experiment: { type: "string" },
+            "deadline-ms": { type: "string" },
           },
         });
         await cmdSweRun(REPO_ROOT, positionals, values);

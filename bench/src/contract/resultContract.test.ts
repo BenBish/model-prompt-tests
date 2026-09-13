@@ -133,6 +133,68 @@ describe("buildResultContract", () => {
     expect(contract.metrics.secondary.totalCostUsd).toBe(0);
     expect(contract.metrics.secondary.taskCoverage).toBe(1);
     expect(contract.metrics.secondary.judgeCoverage).toBe(0);
+    expect(contract.metrics.secondary.deadlineSuccessPct).toBeUndefined();
+  });
+
+  test("swe deadlineSuccessPct (BSH-381) is the share of deadline-measured runs that were ok and within latency_ms <= deadline_ms", () => {
+    const db = createDb();
+    const experimentId = insertExperiment(db, manifestFixture());
+    const modelId = "codex-lab:candidate";
+
+    const withinDeadline = insertRun(db, {
+      runBatchId: "batch-deadline",
+      promptId: "swe-tasks/fixture/smoke",
+      providerId: "codex-lab",
+      modelId,
+      modelName: "candidate",
+      startedAt: "2026-08-23T00:00:00.000Z",
+      status: "ok",
+      kind: "swe",
+      harnessId: "codex-lab",
+      latencyMs: 100,
+      deadlineMs: 200,
+      repeatIndex: 0,
+      experimentId,
+    });
+    insertSweResult(db, { runId: withinDeadline, taskType: "fixture", verifyPassed: true, outcomeCategory: "passed", healthStatus: "healthy", publicationStatus: "comparable" });
+
+    const overDeadline = insertRun(db, {
+      runBatchId: "batch-deadline",
+      promptId: "swe-tasks/fixture/smoke",
+      providerId: "codex-lab",
+      modelId,
+      modelName: "candidate",
+      startedAt: "2026-08-23T00:00:01.000Z",
+      status: "ok",
+      kind: "swe",
+      harnessId: "codex-lab",
+      latencyMs: 300,
+      deadlineMs: 200,
+      repeatIndex: 1,
+      experimentId,
+    });
+    insertSweResult(db, { runId: overDeadline, taskType: "fixture", verifyPassed: true, outcomeCategory: "passed", healthStatus: "healthy", publicationStatus: "comparable" });
+
+    const erroredUnderDeadline = insertRun(db, {
+      runBatchId: "batch-deadline",
+      promptId: "swe-tasks/fixture/smoke",
+      providerId: "codex-lab",
+      modelId,
+      modelName: "candidate",
+      startedAt: "2026-08-23T00:00:02.000Z",
+      status: "error",
+      kind: "swe",
+      harnessId: "codex-lab",
+      deadlineMs: 200,
+      repeatIndex: 2,
+      experimentId,
+    });
+    insertSweResult(db, { runId: erroredUnderDeadline, taskType: "fixture", outcomeCategory: "harness_error", healthStatus: "infrastructure-failure", publicationStatus: "quarantined" });
+
+    const contract = buildResultContract(db, "batch-deadline", modelId, "swe");
+
+    // 1 of 3 deadline-measured runs both succeeded and finished inside the deadline.
+    expect(contract.metrics.secondary.deadlineSuccessPct).toBeCloseTo(100 / 3, 5);
   });
 
   test("a batch with no experiment provenance is marked legacy", () => {
@@ -216,6 +278,45 @@ describe("buildResultContract", () => {
     expect(contract.outcomeCounts.passed).toBe(1);
     expect(contract.metrics.secondary.judgeCoverage).toBe(0);
     expect(contract.metrics.secondary.taskCoverage).toBeUndefined();
+    expect(contract.metrics.secondary.deadlineSuccessPct).toBeUndefined();
+  });
+
+  test("prompt deadlineSuccessPct (BSH-381) is computed the same way as swe, scoped to kind = 'prompt'", () => {
+    const db = createDb();
+    const modelId = "local:candidate";
+    insertRun(db, {
+      runBatchId: "batch-prompt-deadline",
+      promptId: "some-prompt",
+      providerId: "local",
+      modelId,
+      modelName: "candidate",
+      startedAt: "2026-08-23T00:00:00.000Z",
+      status: "ok",
+      kind: "prompt",
+      outputText: "a real answer",
+      outcomeCategory: "passed",
+      latencyMs: 500,
+      deadlineMs: 1000,
+    });
+    insertRun(db, {
+      runBatchId: "batch-prompt-deadline",
+      promptId: "some-prompt",
+      providerId: "local",
+      modelId,
+      modelName: "candidate",
+      startedAt: "2026-08-23T00:00:01.000Z",
+      status: "ok",
+      kind: "prompt",
+      outputText: "a slow answer",
+      outcomeCategory: "passed",
+      latencyMs: 1500,
+      deadlineMs: 1000,
+      repeatIndex: 1,
+    });
+
+    const contract = buildResultContract(db, "batch-prompt-deadline", modelId, "prompt");
+
+    expect(contract.metrics.secondary.deadlineSuccessPct).toBe(50);
   });
 
   test("prompt contract reports real task/judge coverage when a manifest and a score exist", () => {

@@ -223,6 +223,44 @@ describe("bench swe run validation", () => {
     expect(result.stderr.toString()).toContain('duplicate value in --models: "sonnet"');
   });
 
+  test("accepts --deadline-ms without an 'Unknown option' error (BSH-381)", () => {
+    const repoRoot = makeTempRepo();
+    const result = runCli(repoRoot, [
+      "swe",
+      "run",
+      "fixture/smoke",
+      "--harnesses",
+      "claude-code",
+      "--models",
+      "sonnet",
+      "--deadline-ms",
+      "180000",
+      "--dry-run",
+    ]);
+
+    expect(result.stderr.toString()).not.toContain("Unknown option");
+    expect(result.exitCode).toBe(0);
+  });
+
+  test("rejects a non-positive --deadline-ms value", () => {
+    const repoRoot = makeTempRepo();
+    const result = runCli(repoRoot, [
+      "swe",
+      "run",
+      "fixture/smoke",
+      "--harnesses",
+      "claude-code",
+      "--models",
+      "sonnet",
+      "--deadline-ms",
+      "0",
+      "--dry-run",
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr.toString()).toContain("--deadline-ms must be a positive integer");
+  });
+
   test("--dry-run resolves the matrix and spawns nothing", () => {
     const repoRoot = makeTempRepo();
     const result = runCli(repoRoot, [

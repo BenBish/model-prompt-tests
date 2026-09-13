@@ -55,6 +55,8 @@ export interface RunSweBatchOptions {
   repeats?: number;
   defaultConcurrency?: number;
   keepWorkspaces?: boolean;
+  /** Client-observed deadline (ms) each agent call is measured against for deadlineSuccessPct. */
+  deadlineMs?: number;
   judges?: {
     adapter: ModelAdapter;
     modelId: string;
@@ -270,6 +272,7 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
         modelName: nativeModel,
         startedAt,
         latencyMs: Math.round(agentResult.latencyMs),
+        deadlineMs: options.deadlineMs,
         inputTokens: agentResult.inputTokens,
         outputTokens: agentResult.outputTokens,
         outputText: agentResult.finalMessage,
@@ -351,6 +354,7 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
         repeatIndex,
         kind: "swe",
         harnessId: cell.harnessId,
+        deadlineMs: options.deadlineMs,
       });
       insertSweResult(db, {
         runId,
@@ -428,6 +432,7 @@ export async function runSweBatch(options: RunSweBatchOptions): Promise<RunSweBa
       modelName: nativeModel,
       startedAt,
       latencyMs: Math.round(agentResult.latencyMs),
+      deadlineMs: options.deadlineMs,
       inputTokens: agentResult.inputTokens,
       outputTokens: agentResult.outputTokens,
       outputText: agentResult.finalMessage,

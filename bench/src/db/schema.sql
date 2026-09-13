@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS runs (
   model_name    TEXT NOT NULL,
   started_at    TEXT NOT NULL,
   latency_ms    INTEGER,
+  deadline_ms   INTEGER,
   input_tokens  INTEGER,
   output_tokens INTEGER,
   output_text   TEXT,
