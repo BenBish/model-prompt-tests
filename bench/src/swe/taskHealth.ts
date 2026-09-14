@@ -20,14 +20,17 @@ export function verifierEnvironmentName(): string {
   return `${platform()}-bun-${Bun.version.split(".").slice(0, 2).join(".")}`;
 }
 
-function commandAvailable(name: string): boolean {
-  if (Bun.which(name) !== null) return true;
+/** Lookup used by prerequisite checks; tests pass a stub instead of patching `Bun.which`. */
+export type CommandWhich = (name: string, options?: { PATH?: string }) => string | null;
+
+function commandAvailable(name: string, which: CommandWhich): boolean {
+  if (which(name) !== null) return true;
   return name === "bun" && bunRuntimeDir() !== undefined;
 }
 
-export function missingPrerequisites(task: SweTask): string[] {
+export function missingPrerequisites(task: SweTask, which: CommandWhich = Bun.which.bind(Bun)): string[] {
   return (task.runtimePrerequisites ?? []).filter((declaration) =>
-    declaration.split("|").every((name) => !commandAvailable(name.trim())),
+    declaration.split("|").every((name) => !commandAvailable(name.trim(), which)),
   );
 }
 
