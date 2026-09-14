@@ -39,11 +39,20 @@ describe("task health", () => {
 
   test("treats bun as available when this process is bun even if it is not on PATH", () => {
     const previousPath = process.env.PATH;
+    const originalWhich = Bun.which.bind(Bun);
     process.env.PATH = "/tmp/definitely-not-bun-bin";
+    // Bun.which("bun") can still resolve the running binary from default lookup paths.
+    // Stub the no-PATH lookup so this test actually exercises bunRuntimeDir() fallback.
+    Bun.which = ((name: string, options?: { PATH?: string }) => {
+      if (!options?.PATH && name === "bun") return null;
+      return originalWhich(name, options);
+    }) as typeof Bun.which;
     try {
+      expect(Bun.which("bun")).toBeNull();
       const withBun = { ...task, runtimePrerequisites: ["bun"] };
       expect(missingPrerequisites(withBun)).toEqual([]);
     } finally {
+      Bun.which = originalWhich;
       if (previousPath === undefined) delete process.env.PATH;
       else process.env.PATH = previousPath;
     }
