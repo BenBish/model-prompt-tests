@@ -1,0 +1,28 @@
+2026-08-30T02:13:58.910Z [worker] job=sync-41 attempt=1 ok (214ms)
+2026-08-30T02:14:01.001Z [worker] job=sync-42 attempt=1 failed: ECONNRESET (upstream billing-api)
+2026-08-30T02:14:01.003Z [worker] job=sync-42 attempt=2 failed: ECONNRESET (upstream billing-api)
+2026-08-30T02:14:01.004Z [worker] job=sync-42 attempt=3 failed: ECONNRESET (upstream billing-api)
+2026-08-30T02:14:01.005Z [worker] job=sync-42 attempt=4 failed: ECONNRESET (upstream billing-api)
+2026-08-30T02:14:01.006Z [worker] job=sync-42 giving up after 4 attempts
+2026-08-30T02:14:01.006Z [worker] job=sync-42 moved to dead-letter queue
+2026-08-30T02:14:04.220Z [worker] job=sync-43 attempt=1 ok (188ms)
+2026-08-30T02:14:07.512Z [worker] job=sync-44 attempt=1 failed: ETIMEDOUT (upstream billing-api)
+2026-08-30T02:14:07.514Z [worker] job=sync-44 attempt=2 failed: ETIMEDOUT (upstream billing-api)
+2026-08-30T02:14:07.515Z [worker] job=sync-44 attempt=3 failed: ETIMEDOUT (upstream billing-api)
+2026-08-30T02:14:07.516Z [worker] job=sync-44 attempt=4 failed: ETIMEDOUT (upstream billing-api)
+2026-08-30T02:14:07.517Z [worker] job=sync-44 giving up after 4 attempts
+2026-08-30T02:14:07.517Z [worker] job=sync-44 moved to dead-letter queue
+2026-08-30T02:14:07.611Z [alert] billing-api p99 latency spike: 4x normal, 812 req/s from worker retries (baseline 40 req/s)
+
+Incident notes (from #ops-oncall)
+---------------------------------
+- Paged at 02:14 for a latency spike on billing-api. Traffic from the worker pool jumped 20x with
+  no corresponding increase in real job volume.
+- Every failing job in worker.log exhausts all 4 attempts inside about 5-6 milliseconds total.
+  `backoffDelayMs(attempt, baseDelayMs)` computes 20ms / 40ms / 80ms / 160ms for baseDelayMs=10,
+  but the attempts in the log are not spaced anywhere close to that - they're back-to-back.
+- Config confirms `baseDelayMs` really is 10 in production, not 0. Calling `backoffDelayMs`
+  directly in a REPL with those inputs returns the expected 20/40/80/160 values, so the delay
+  calculation itself is not the suspect.
+- Not yet root-caused. Next step is to read src/retry.ts and figure out why the computed delay
+  isn't actually elapsing between attempts.
