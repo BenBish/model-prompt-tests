@@ -1,0 +1,13 @@
+{
+  "taskId": "swe-tasks/multi-file/notification-channel-toggle",
+  "graderVersion": "1.0.0",
+  "environmentFingerprint": "linux-7.1.9-arch1-2-bun-1.3.14",
+  "status": "healthy",
+  "validatedAt": "2026-09-13T06:11:01.491Z",
+  "repetitions": 5,
+  "runtimePrerequisites": [
+    "bun"
+  ],
+  "testCount": 5,
+  "reasons": []
+}
