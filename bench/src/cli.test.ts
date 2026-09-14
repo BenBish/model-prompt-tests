@@ -259,6 +259,40 @@ describe("bench models CLI", () => {
     expect(result.stderr.toString()).toContain("--repeats must be a positive integer");
   });
 
+  test("accepts --deadline-ms without an 'Unknown option' error (BSH-381)", () => {
+    const repoRoot = makeTempRepo();
+
+    const result = runCli(repoRoot, [
+      "run",
+      "test-prompt",
+      "--models",
+      "local:test",
+      "--deadline-ms",
+      "5000",
+      "--dry-run",
+    ]);
+
+    expect(result.stderr.toString()).not.toContain("Unknown option");
+    expect(result.exitCode).toBe(0);
+  });
+
+  test("rejects a non-positive --deadline-ms value", () => {
+    const repoRoot = makeTempRepo();
+
+    const result = runCli(repoRoot, [
+      "run",
+      "test-prompt",
+      "--models",
+      "local:test",
+      "--deadline-ms",
+      "0",
+      "--dry-run",
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr.toString()).toContain("--deadline-ms must be a positive integer");
+  });
+
   test("--narrative failure still writes the deterministic report, summary, and assessment", () => {
     const repoRoot = makeTempRepo();
     createBenchDb(repoRoot);

@@ -9,6 +9,8 @@ export interface RunRecord {
   modelName: string;
   startedAt: string;
   latencyMs?: number;
+  /** Client-observed deadline (BSH-381) this call was measured against, if any. */
+  deadlineMs?: number;
   inputTokens?: number;
   outputTokens?: number;
   outputText?: string;
@@ -32,11 +34,11 @@ export function insertRun(db: Database, record: RunRecord): number {
   const stmt = db.prepare(`
     INSERT INTO runs (
       run_batch_id, prompt_id, provider_id, model_id, model_name, started_at,
-      latency_ms, input_tokens, output_tokens, output_text, raw_response, error, status, outcome_category,
+      latency_ms, deadline_ms, input_tokens, output_tokens, output_text, raw_response, error, status, outcome_category,
       repeat_index, kind, harness_id, stop_reason, cost_usd, experiment_id
     ) VALUES (
       $runBatchId, $promptId, $providerId, $modelId, $modelName, $startedAt,
-      $latencyMs, $inputTokens, $outputTokens, $outputText, $rawResponse, $error, $status, $outcomeCategory,
+      $latencyMs, $deadlineMs, $inputTokens, $outputTokens, $outputText, $rawResponse, $error, $status, $outcomeCategory,
       $repeatIndex, $kind, $harnessId, $stopReason, $costUsd, $experimentId
     )
   `);
@@ -49,6 +51,7 @@ export function insertRun(db: Database, record: RunRecord): number {
     $modelName: record.modelName,
     $startedAt: record.startedAt,
     $latencyMs: record.latencyMs ?? null,
+    $deadlineMs: record.deadlineMs ?? null,
     $inputTokens: record.inputTokens ?? null,
     $outputTokens: record.outputTokens ?? null,
     $outputText: record.outputText ?? null,
@@ -91,6 +94,7 @@ function rowToRunRow(row: any): RunRow {
     modelName: row.model_name,
     startedAt: row.started_at,
     latencyMs: row.latency_ms ?? undefined,
+    deadlineMs: row.deadline_ms ?? undefined,
     inputTokens: row.input_tokens ?? undefined,
     outputTokens: row.output_tokens ?? undefined,
     outputText: row.output_text ?? undefined,

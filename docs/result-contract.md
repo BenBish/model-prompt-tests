@@ -14,6 +14,16 @@ re-deriving them, so a contract consumer never disagrees with `bun bench/src/cli
 completes — in addition to (not instead of) their existing human-readable stdout. A consumer
 that needs the durable identity reads this file, never stdout.
 
+## Measuring calls against a client-observed deadline (BSH-381)
+
+`run` and `swe run` both accept an optional `--deadline-ms <ms>`. When set, every call in that
+invocation records the deadline alongside its own client-observed latency, and `experiment
+export` reports the resulting `deadlineSuccessPct` (see the field table below) — the deadline
+used is whatever was passed to the `run`/`swe run` invocation that produced the batch, not
+something re-specified at export time. Omitting the flag is fully backward compatible: no
+deadline is recorded, and `deadlineSuccessPct` is absent from the contract rather than reported
+as 0%.
+
 ## Fetching the contract
 
 ```
@@ -35,7 +45,7 @@ so consumers cannot mistake a stale identifier or model-id typo for a benchmark 
 | `health` | Task-health status for `kind: "swe"` (`healthy`, `unhealthy`, `infrastructure-failure`, `unvalidated`, `unknown`), derived from the same `swe_results.health_status` rows the health-gate system (BSH-222) already writes. Always `"not-applicable"` for `kind: "prompt"` — prompt suites have no task-health concept. |
 | `outcomeCounts` | Per-run outcome counts. SWE categories are `passed`, `candidate_failure`, `timeout`, `invalid_output`, `harness_error`, `verifier_error`, and `judge_error`. Prompt categories are `passed`, `candidate_failure`, `timeout`, `rate_limit`, `provider_error`, `connection_error`, and `harness_error`. Prompt `timeout`, `rate_limit`, `provider_error`, `connection_error`, and `harness_error` are infrastructure failures; empty or malformed model-produced responses are `candidate_failure`. Legacy rows without a category appear as `unknown`. A consumer must never fold infrastructure errors into a candidate loss. |
 | `metrics.primary` | The one number a verdict should compare against a baseline's — `intentionToEvaluatePassRate` for SWE (with a Wilson interval — a *single arm's own* rate, not matched against a specific baseline), `avgScore` for prompt suites (no interval; use the paired contract below for uncertainty against a specific baseline). Undefined when nothing reached evaluation. |
-| `metrics.secondary` | Everything else (latency, throughput, timeouts, infra-failure counts) a report or verdict may want, by name. Prompt contracts include `infrastructureFailures` and `candidateFailures`; these aggregate the prompt categories described above and are zero when the selected model has no failures of that class. `taskCoverage`/`judgeCoverage` (BSH-361) are this model's coverage fractions within the requested batch(es) — for SWE, the statistics layer's own `RateEstimate` values; for prompt, computed directly against the manifest's task count and the `scores` table. Both are undefined, never coerced to zero, when there is no denominator to compute them from (no manifest for `taskCoverage`; `judgeCoverage` needs at least one `ok` run). |
+| `metrics.secondary` | Everything else (latency, throughput, timeouts, infra-failure counts) a report or verdict may want, by name. Prompt contracts include `infrastructureFailures` and `candidateFailures`; these aggregate the prompt categories described above and are zero when the selected model has no failures of that class. `taskCoverage`/`judgeCoverage` (BSH-361) are this model's coverage fractions within the requested batch(es) — for SWE, the statistics layer's own `RateEstimate` values; for prompt, computed directly against the manifest's task count and the `scores` table. Both are undefined, never coerced to zero, when there is no denominator to compute them from (no manifest for `taskCoverage`; `judgeCoverage` needs at least one `ok` run). `deadlineSuccessPct` (BSH-381, 0-100) is present only when at least one selected run was measured against a `--deadline-ms` passed to `run`/`swe run` — the share of those runs that both succeeded and had client-observed latency (`latencyMs`) at or under that deadline. A call that errored under a configured deadline counts against the denominator (it did not finish in time), never coerced to a 0% batch when no run in the selection recorded a deadline at all. |
 | `artifacts.runBatchId` | The batch id, for cross-referencing exports/reports produced by other bench commands. |
 | `runBatchIds` / `artifacts.runBatchIds` | Present only for a multi-batch export and lists every contributing batch in command-line order. The singular fields remain the first batch for schema-v1 compatibility. |
 

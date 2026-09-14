@@ -61,6 +61,42 @@ describe("runBatch concurrency", () => {
     ]);
     db.close();
   });
+  test("persists deadlineMs on every run and computes deadlineSuccessPct from client-observed latency (BSH-381)", async () => {
+    spyOn(console, "log").mockImplementation(() => {});
+    const db = createDb();
+    const providerError = Object.assign(new Error("provider error 503: unavailable"), { status: 503 });
+    const summary = await runBatch({
+      db,
+      prompts: [prompts[0]!],
+      runners: [
+        candidate("fast-model", "provider", async () => ({ outputText: "ok", raw: {}, latencyMs: 100 })),
+        candidate("slow-model", "provider", async () => ({ outputText: "ok", raw: {}, latencyMs: 300 })),
+        candidate("errored-model", "provider", async () => { throw providerError; }),
+      ],
+      defaultConcurrency: 3,
+      deadlineMs: 200,
+    });
+
+    const rows = db
+      .query<{ model_id: string; deadline_ms: number }, []>("SELECT model_id, deadline_ms FROM runs")
+      .all();
+    expect(rows.every((row) => row.deadline_ms === 200)).toBe(true);
+
+    expect(buildResultContract(db, summary.runBatchId, "fast-model", "prompt").metrics.secondary.deadlineSuccessPct).toBe(100);
+    expect(buildResultContract(db, summary.runBatchId, "slow-model", "prompt").metrics.secondary.deadlineSuccessPct).toBe(0);
+    // An errored call under a configured deadline still counts as "not finished in time".
+    expect(buildResultContract(db, summary.runBatchId, "errored-model", "prompt").metrics.secondary.deadlineSuccessPct).toBe(0);
+
+    // Without --deadline-ms, no run records a deadline and the field stays undefined.
+    const noDeadline = await runBatch({
+      db,
+      prompts: [prompts[1]!],
+      runners: [candidate("no-deadline-model", "provider", async () => ({ outputText: "ok", raw: {}, latencyMs: 100 }))],
+      defaultConcurrency: 1,
+    });
+    expect(buildResultContract(db, noDeadline.runBatchId, "no-deadline-model", "prompt").metrics.secondary.deadlineSuccessPct).toBeUndefined();
+    db.close();
+  });
   test("links every new run to one durable experiment", async () => {
     spyOn(console, "log").mockImplementation(() => {});
     const db = createDb();

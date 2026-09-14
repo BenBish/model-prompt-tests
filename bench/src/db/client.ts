@@ -41,6 +41,7 @@ const COLUMN_MIGRATIONS: ColumnMigration[] = [
   { table: "swe_results", column: "environment_fingerprint", ddlType: "TEXT" },
   { table: "swe_results", column: "health_validated_at", ddlType: "TEXT" },
   { table: "swe_results", column: "publication_status", ddlType: "TEXT NOT NULL DEFAULT 'quarantined' CHECK (publication_status IN ('comparable', 'quarantined'))" },
+  { table: "runs", column: "deadline_ms", ddlType: "INTEGER" },
 ];
 
 /**

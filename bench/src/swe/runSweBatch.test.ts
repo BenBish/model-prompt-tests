@@ -159,6 +159,51 @@ describe("runSweBatch", () => {
     expect(existsSync(sweResult!.workdir!)).toBe(false);
   });
 
+  test("persists deadlineMs and computes deadlineSuccessPct from agent latency (BSH-381)", async () => {
+    spyOn(console, "log").mockImplementation(() => {});
+    const db = createDb();
+    const fastTask = makeFixtureTask({ id: "fixture/fast" });
+    const slowTask = makeFixtureTask({ id: "fixture/slow" });
+    const workspacesRoot = join(makeTempDir(), "workspaces");
+    const harness = fakeHarness("fake-cc", { sonnet: "fake-model" }, async (input) => {
+      writeFileSync(join(input.workDir, "value.txt"), "fixed\n");
+      const latencyMs = input.workDir.includes("fixture-slow") ? 300 : 100;
+      return { finalMessage: "Fixed", exitCode: 0, latencyMs, timedOut: false, raw: {} };
+    });
+    const cells: SweRunnerCell[] = [{ harnessId: "fake-cc", harness, modelAlias: "sonnet" }];
+
+    const summary = await runSweBatch({ db, tasks: [fastTask, slowTask], cells, workspacesRoot, deadlineMs: 200 });
+
+    const rows = db.query<{ prompt_id: string; deadline_ms: number; latency_ms: number }, []>(
+      "SELECT prompt_id, deadline_ms, latency_ms FROM runs",
+    ).all();
+    expect(rows).toHaveLength(2);
+    expect(rows.every((row) => row.deadline_ms === 200)).toBe(true);
+
+    const { buildResultContract } = await import("../contract/resultContract");
+    const contract = buildResultContract(db, summary.runBatchId, "fake-cc:sonnet", "swe");
+    // One of the two runs (100ms) beat the 200ms deadline, the other (300ms) did not.
+    expect(contract.metrics.secondary.deadlineSuccessPct).toBe(50);
+  });
+
+  test("does not record deadlineSuccessPct evidence when --deadline-ms is not set", async () => {
+    spyOn(console, "log").mockImplementation(() => {});
+    const db = createDb();
+    const task = makeFixtureTask();
+    const workspacesRoot = join(makeTempDir(), "workspaces");
+    const harness = fakeHarness("fake-cc", { sonnet: "fake-model" }, async (input) => {
+      writeFileSync(join(input.workDir, "value.txt"), "fixed\n");
+      return { finalMessage: "Fixed", exitCode: 0, latencyMs: 100, timedOut: false, raw: {} };
+    });
+    const cells: SweRunnerCell[] = [{ harnessId: "fake-cc", harness, modelAlias: "sonnet" }];
+
+    const summary = await runSweBatch({ db, tasks: [task], cells, workspacesRoot });
+
+    const { buildResultContract } = await import("../contract/resultContract");
+    const contract = buildResultContract(db, summary.runBatchId, "fake-cc:sonnet", "swe");
+    expect(contract.metrics.secondary.deadlineSuccessPct).toBeUndefined();
+  });
+
   test("hidden test overlay neutralizes an agent tampering with the visible check", async () => {
     spyOn(console, "log").mockImplementation(() => {});
     const db = createDb();

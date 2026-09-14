@@ -190,6 +190,7 @@ export async function cmdSweRun(
   const pairedExperiment = values.paired === true ? validatePairedExperiment(harnessEntries, modelAliases, repeats) : undefined;
   const concurrency = parsePositiveInteger(values.concurrency, "--concurrency");
   const timeoutOverrideMs = parsePositiveInteger(values.timeout, "--timeout");
+  const deadlineMs = parsePositiveInteger(values["deadline-ms"], "--deadline-ms");
   if (timeoutOverrideMs) {
     for (const task of tasks) task.agentTimeoutMs = timeoutOverrideMs;
   }
@@ -254,6 +255,7 @@ export async function cmdSweRun(
     workspacesRoot,
     repeats,
     defaultConcurrency: concurrency,
+    deadlineMs,
     keepWorkspaces: values["keep-workspaces"] === true,
     judges: judgeEntries.map((entry) => ({
       adapter: createAdapter(entry),

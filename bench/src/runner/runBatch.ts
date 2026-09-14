@@ -26,6 +26,8 @@ export interface RunBatchOptions {
   experimentId?: string;
   /** Number of independent runs per (prompt, runner) cell. Defaults to 1. */
   repeats?: number;
+  /** Client-observed deadline (ms) each candidate call is measured against for deadlineSuccessPct. */
+  deadlineMs?: number;
   judge?: {
     adapter: ModelAdapter;
     modelId: string;
@@ -197,6 +199,7 @@ export async function runBatch(options: RunBatchOptions): Promise<RunBatchSummar
         modelName: runner.modelName,
         startedAt,
         latencyMs: Math.round(result.latencyMs),
+        deadlineMs: options.deadlineMs,
         inputTokens: result.inputTokens,
         outputTokens: result.outputTokens,
         outputText: result.outputText,
@@ -231,6 +234,7 @@ export async function runBatch(options: RunBatchOptions): Promise<RunBatchSummar
         outcomeCategory: classifyPromptError(err),
         error: message,
         repeatIndex,
+        deadlineMs: options.deadlineMs,
         experimentId,
       });
       errored++;
