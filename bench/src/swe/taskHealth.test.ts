@@ -36,4 +36,9 @@ describe("task health", () => {
     const withAlternatives = { ...task, runtimePrerequisites: ["definitely-missing-command|bun"] };
     expect(missingPrerequisites(withAlternatives)).toEqual([]);
   });
+
+  test("treats bun as available when this process is bun even if it is not on PATH", () => {
+    const withBun = { ...task, runtimePrerequisites: ["bun"] };
+    expect(missingPrerequisites(withBun)).toEqual([]);
+  });
 });

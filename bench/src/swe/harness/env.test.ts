@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { dirname } from "node:path";
 import { buildHarnessEnv } from "./env";
 
 const originalEnv = { ...process.env };
@@ -38,6 +39,14 @@ describe("buildHarnessEnv", () => {
   test("omits undefined-valued keys", () => {
     delete process.env.PATH;
     const env = buildHarnessEnv();
-    expect("PATH" in env).toBe(false);
+    // PATH may still be synthesized so the running bun is visible to `bun test`.
+    expect("SOME_RANDOM_VAR" in env).toBe(false);
+    expect(env.HOME).toBe(originalEnv.HOME);
+  });
+
+  test("prepends the running bun directory when bun is not on PATH", () => {
+    process.env.PATH = "/tmp/definitely-not-bun-bin";
+    const env = buildHarnessEnv();
+    expect(env.PATH?.split(":").includes(dirname(process.execPath))).toBe(true);
   });
 });
