@@ -1,6 +1,8 @@
 import { parseEvent } from "./paymentGateway";
 import { markFailed, markPaid, markRefunded } from "./orderService";
 
+// A malformed body (parseEvent throwing) is intentionally left uncaught here - this fixture's
+// task scope only covers routing known/unknown event types, not malformed-payload handling.
 export function handleWebhook(rawBody: string): void {
   const event = parseEvent(rawBody);
   switch (event.type) {

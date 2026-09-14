@@ -14,6 +14,11 @@ const DEPTH_TOKENS: Record<Depth, number> = {
   "32k": 32768,
   "64k": 65536,
 };
+// Standard rule-of-thumb for English prose (roughly what cl100k/Qwen-family tokenizers average
+// on this kind of text). This is an approximation, not a measurement: it hasn't been checked
+// against the actual production tokenizer(s) (Qwen/GLM), so treat the four depth bands as
+// close-but-not-exact. Before relying on these fixtures for precise depth-boundary comparisons,
+// spot-check real token counts with the target tokenizer and adjust this constant if needed.
 const CHARS_PER_TOKEN = 4;
 const DEPTHS: Depth[] = ["short", "8k", "32k", "64k"];
 
@@ -594,8 +599,12 @@ function main() {
     const dir = join(REPO_ROOT, "long-context", f.depth, f.subtype);
     mkdirSync(dir, { recursive: true });
     const path = join(dir, `${f.slug}.md`);
-    writeFileSync(path, renderFixture(f));
-    console.log(`wrote ${path.replace(REPO_ROOT + "/", "")} (${renderFixture(f).length} chars)`);
+    const rendered = renderFixture(f);
+    writeFileSync(path, rendered);
+    const estimatedTokens = Math.round(rendered.length / CHARS_PER_TOKEN);
+    console.log(
+      `wrote ${path.replace(REPO_ROOT + "/", "")} (${rendered.length} chars, ~${estimatedTokens} tokens vs ${DEPTH_TOKENS[f.depth]} target - estimate only, see CHARS_PER_TOKEN caveat above)`,
+    );
   }
 }
 
