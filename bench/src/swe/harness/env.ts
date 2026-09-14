@@ -1,12 +1,13 @@
-import { basename, delimiter, dirname } from "node:path";
+import { delimiter, dirname } from "node:path";
 
 const BASE_ENV_KEYS = ["PATH", "HOME", "TMPDIR", "LANG", "LC_ALL"];
 
 /** Directory of the running bun binary, when this process is bun. */
 export function bunRuntimeDir(): string | undefined {
+  if (typeof process.versions.bun !== "string") return undefined;
   const exec = process.execPath;
   if (!exec) return undefined;
-  return basename(exec) === "bun" ? dirname(exec) : undefined;
+  return dirname(exec);
 }
 
 export interface BuildHarnessEnvOptions {

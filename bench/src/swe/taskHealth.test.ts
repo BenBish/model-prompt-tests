@@ -38,7 +38,14 @@ describe("task health", () => {
   });
 
   test("treats bun as available when this process is bun even if it is not on PATH", () => {
-    const withBun = { ...task, runtimePrerequisites: ["bun"] };
-    expect(missingPrerequisites(withBun)).toEqual([]);
+    const previousPath = process.env.PATH;
+    process.env.PATH = "/tmp/definitely-not-bun-bin";
+    try {
+      const withBun = { ...task, runtimePrerequisites: ["bun"] };
+      expect(missingPrerequisites(withBun)).toEqual([]);
+    } finally {
+      if (previousPath === undefined) delete process.env.PATH;
+      else process.env.PATH = previousPath;
+    }
   });
 });

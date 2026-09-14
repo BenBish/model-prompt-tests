@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { dirname } from "node:path";
+import { delimiter, dirname } from "node:path";
 import { buildHarnessEnv } from "./env";
 
 const originalEnv = { ...process.env };
@@ -16,7 +16,14 @@ describe("buildHarnessEnv", () => {
     process.env.SOME_RANDOM_VAR = "leak-me-not";
     const env = buildHarnessEnv();
     expect(env.SOME_RANDOM_VAR).toBeUndefined();
-    expect(env.PATH).toBe(process.env.PATH);
+    const bunDir = dirname(process.execPath);
+    const pathParts = env.PATH?.split(delimiter) ?? [];
+    if (Bun.which("bun", { PATH: process.env.PATH ?? "" }) === null) {
+      expect(pathParts[0]).toBe(bunDir);
+      expect(pathParts.slice(1).join(delimiter)).toBe(process.env.PATH ?? "");
+    } else {
+      expect(env.PATH).toBe(process.env.PATH);
+    }
   });
 
   test("passes through explicitly requested extra keys", () => {
@@ -36,17 +43,22 @@ describe("buildHarnessEnv", () => {
     expect(env.CLAUDECODE).toBeUndefined();
   });
 
-  test("omits undefined-valued keys", () => {
-    delete process.env.PATH;
-    const env = buildHarnessEnv();
-    // PATH may still be synthesized so the running bun is visible to `bun test`.
-    expect("SOME_RANDOM_VAR" in env).toBe(false);
+  test("omits undefined-valued keys and synthesizes PATH when bun is missing", () => {
+    process.env.PATH = undefined;
+    process.env.UNSET_WHITELIST_KEY = undefined;
+    const env = buildHarnessEnv({ extraKeys: ["UNSET_WHITELIST_KEY"] });
+    expect("UNSET_WHITELIST_KEY" in env).toBe(false);
     expect(env.HOME).toBe(originalEnv.HOME);
+    expect(env.PATH).toBe(dirname(process.execPath));
   });
 
   test("prepends the running bun directory when bun is not on PATH", () => {
-    process.env.PATH = "/tmp/definitely-not-bun-bin";
+    const existing = "/tmp/definitely-not-bun-bin";
+    process.env.PATH = existing;
     const env = buildHarnessEnv();
-    expect(env.PATH?.split(":").includes(dirname(process.execPath))).toBe(true);
+    const bunDir = dirname(process.execPath);
+    const parts = env.PATH?.split(delimiter) ?? [];
+    expect(parts[0]).toBe(bunDir);
+    expect(parts).toContain(existing);
   });
 });
