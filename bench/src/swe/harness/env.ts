@@ -1,4 +1,18 @@
+import { delimiter, dirname } from "node:path";
+
 const BASE_ENV_KEYS = ["PATH", "HOME", "TMPDIR", "LANG", "LC_ALL"];
+
+/**
+ * Directory of the running bun binary, when this process is bun and that directory
+ * actually contains an executable named `bun` (verify commands are `bash -c "bun test"`).
+ */
+export function bunRuntimeDir(): string | undefined {
+  if (typeof process.versions.bun !== "string") return undefined;
+  const exec = process.execPath;
+  if (!exec) return undefined;
+  const dir = dirname(exec);
+  return Bun.which("bun", { PATH: dir }) !== null ? dir : undefined;
+}
 
 export interface BuildHarnessEnvOptions {
   /** Additional env var names to pass through (e.g. ANTHROPIC_API_KEY). */
@@ -23,6 +37,13 @@ export function buildHarnessEnv(options: BuildHarnessEnvOptions = {}): Record<st
     if (!keep.has(key)) continue;
     if (stripPrefixes.some((prefix) => key.startsWith(prefix))) continue;
     env[key] = value;
+  }
+
+  // Fedora (and other hosts) may invoke bun by absolute path while PATH does not include it.
+  // Verify commands are `bash -c "bun test"` and must still find the same runtime.
+  const bunDir = bunRuntimeDir();
+  if (bunDir && Bun.which("bun", { PATH: env.PATH ?? "" }) === null) {
+    env.PATH = env.PATH ? `${bunDir}${delimiter}${env.PATH}` : bunDir;
   }
 
   return env;

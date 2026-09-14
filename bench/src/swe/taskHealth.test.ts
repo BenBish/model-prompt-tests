@@ -36,4 +36,25 @@ describe("task health", () => {
     const withAlternatives = { ...task, runtimePrerequisites: ["definitely-missing-command|bun"] };
     expect(missingPrerequisites(withAlternatives)).toEqual([]);
   });
+
+  test("treats bun as available when this process is bun even if it is not on PATH", () => {
+    const previousPath = process.env.PATH;
+    const realWhich = Bun.which.bind(Bun);
+    process.env.PATH = "/tmp/definitely-not-bun-bin";
+    // Host lookup can still resolve bun from default paths after PATH is replaced.
+    // Stub only the no-PATH `"bun"` lookup so this case hits bunRuntimeDir() without
+    // patching the process-global `Bun.which`.
+    const which = ((name: string, options?: { PATH?: string }) => {
+      if (!options?.PATH && name === "bun") return null;
+      return realWhich(name, options);
+    }) as typeof Bun.which;
+    try {
+      expect(which("bun")).toBeNull();
+      const withBun = { ...task, runtimePrerequisites: ["bun"] };
+      expect(missingPrerequisites(withBun, which)).toEqual([]);
+    } finally {
+      if (previousPath === undefined) delete process.env.PATH;
+      else process.env.PATH = previousPath;
+    }
+  });
 });

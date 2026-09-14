@@ -1,6 +1,7 @@
 import { cpSync, mkdirSync, mkdtempSync } from "node:fs";
 import { platform, release, tmpdir } from "node:os";
 import { basename, join } from "node:path";
+import { bunRuntimeDir } from "./harness/env";
 import { cleanupWorkspace, overlayHiddenTests, provisionFixtureWorkspace, runVerify, type VerifyResult } from "./workspace";
 import type { FixtureSweTask, SweTask } from "./taskSpec";
 
@@ -19,9 +20,17 @@ export function verifierEnvironmentName(): string {
   return `${platform()}-bun-${Bun.version.split(".").slice(0, 2).join(".")}`;
 }
 
-export function missingPrerequisites(task: SweTask): string[] {
+/** Lookup used by prerequisite checks; tests pass a stub instead of patching `Bun.which`. */
+export type CommandWhich = (name: string, options?: { PATH?: string }) => string | null;
+
+function commandAvailable(name: string, which: CommandWhich): boolean {
+  if (which(name) !== null) return true;
+  return name === "bun" && bunRuntimeDir() !== undefined;
+}
+
+export function missingPrerequisites(task: SweTask, which: CommandWhich = Bun.which.bind(Bun)): string[] {
   return (task.runtimePrerequisites ?? []).filter((declaration) =>
-    declaration.split("|").every((name) => Bun.which(name) === null),
+    declaration.split("|").every((name) => !commandAvailable(name.trim(), which)),
   );
 }
 
