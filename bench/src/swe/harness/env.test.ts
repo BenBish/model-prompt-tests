@@ -16,12 +16,10 @@ describe("buildHarnessEnv", () => {
     process.env.SOME_RANDOM_VAR = "leak-me-not";
     const env = buildHarnessEnv();
     expect(env.SOME_RANDOM_VAR).toBeUndefined();
-    const bunDir = dirname(process.execPath);
-    const pathParts = env.PATH?.split(delimiter) ?? [];
-    if (Bun.which("bun", { PATH: process.env.PATH ?? "" }) === null) {
-      expect(pathParts[0]).toBe(bunDir);
-      expect(pathParts.slice(1).join(delimiter)).toBe(process.env.PATH ?? "");
-    } else {
+    expect(env.PATH).toBeDefined();
+    // When bun is already on PATH, do not rewrite it. The fedora prepend shape is
+    // asserted in "prepends the running bun directory when bun is not on PATH".
+    if (Bun.which("bun", { PATH: process.env.PATH ?? "" }) !== null) {
       expect(env.PATH).toBe(process.env.PATH);
     }
   });
@@ -44,12 +42,13 @@ describe("buildHarnessEnv", () => {
   });
 
   test("omits undefined-valued keys and synthesizes PATH when bun is missing", () => {
-    process.env.PATH = undefined;
-    process.env.UNSET_WHITELIST_KEY = undefined;
+    delete process.env.PATH;
+    delete process.env.UNSET_WHITELIST_KEY;
     const env = buildHarnessEnv({ extraKeys: ["UNSET_WHITELIST_KEY"] });
     expect("UNSET_WHITELIST_KEY" in env).toBe(false);
     expect(env.HOME).toBe(originalEnv.HOME);
     expect(env.PATH).toBe(dirname(process.execPath));
+    expect(Bun.which("bun", { PATH: env.PATH }) !== null).toBe(true);
   });
 
   test("prepends the running bun directory when bun is not on PATH", () => {
@@ -60,5 +59,6 @@ describe("buildHarnessEnv", () => {
     const parts = env.PATH?.split(delimiter) ?? [];
     expect(parts[0]).toBe(bunDir);
     expect(parts).toContain(existing);
+    expect(Bun.which("bun", { PATH: env.PATH }) !== null).toBe(true);
   });
 });

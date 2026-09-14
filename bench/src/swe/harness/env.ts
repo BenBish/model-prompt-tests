@@ -1,13 +1,18 @@
-import { delimiter, dirname } from "node:path";
+import { existsSync } from "node:fs";
+import { delimiter, dirname, join } from "node:path";
 
 const BASE_ENV_KEYS = ["PATH", "HOME", "TMPDIR", "LANG", "LC_ALL"];
 
-/** Directory of the running bun binary, when this process is bun. */
+/**
+ * Directory of the running bun binary, when this process is bun and that directory
+ * actually contains an executable named `bun` (verify commands are `bash -c "bun test"`).
+ */
 export function bunRuntimeDir(): string | undefined {
   if (typeof process.versions.bun !== "string") return undefined;
   const exec = process.execPath;
   if (!exec) return undefined;
-  return dirname(exec);
+  const dir = dirname(exec);
+  return existsSync(join(dir, "bun")) ? dir : undefined;
 }
 
 export interface BuildHarnessEnvOptions {
