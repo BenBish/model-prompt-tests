@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { delimiter, dirname } from "node:path";
-import { buildHarnessEnv } from "./env";
+import { delimiter } from "node:path";
+import { buildHarnessEnv, bunRuntimeDir } from "./env";
 
 const originalEnv = { ...process.env };
 
@@ -17,10 +17,13 @@ describe("buildHarnessEnv", () => {
     const env = buildHarnessEnv();
     expect(env.SOME_RANDOM_VAR).toBeUndefined();
     expect(env.PATH).toBeDefined();
-    // When bun is already on PATH, do not rewrite it. The fedora prepend shape is
-    // asserted in "prepends the running bun directory when bun is not on PATH".
+    const bunDir = bunRuntimeDir();
     if (Bun.which("bun", { PATH: process.env.PATH ?? "" }) !== null) {
       expect(env.PATH).toBe(process.env.PATH);
+    } else if (bunDir) {
+      const pathParts = env.PATH?.split(delimiter) ?? [];
+      expect(pathParts[0]).toBe(bunDir);
+      expect(pathParts.slice(1).join(delimiter)).toBe(process.env.PATH ?? "");
     }
   });
 
@@ -47,7 +50,9 @@ describe("buildHarnessEnv", () => {
     const env = buildHarnessEnv({ extraKeys: ["UNSET_WHITELIST_KEY"] });
     expect("UNSET_WHITELIST_KEY" in env).toBe(false);
     expect(env.HOME).toBe(originalEnv.HOME);
-    expect(env.PATH).toBe(dirname(process.execPath));
+    const bunDir = bunRuntimeDir();
+    expect(bunDir).toBeDefined();
+    expect(env.PATH).toBe(bunDir);
     expect(Bun.which("bun", { PATH: env.PATH }) !== null).toBe(true);
   });
 
@@ -55,7 +60,8 @@ describe("buildHarnessEnv", () => {
     const existing = "/tmp/definitely-not-bun-bin";
     process.env.PATH = existing;
     const env = buildHarnessEnv();
-    const bunDir = dirname(process.execPath);
+    const bunDir = bunRuntimeDir();
+    expect(bunDir).toBeDefined();
     const parts = env.PATH?.split(delimiter) ?? [];
     expect(parts[0]).toBe(bunDir);
     expect(parts).toContain(existing);

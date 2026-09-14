@@ -1,5 +1,4 @@
-import { existsSync } from "node:fs";
-import { delimiter, dirname, join } from "node:path";
+import { delimiter, dirname } from "node:path";
 
 const BASE_ENV_KEYS = ["PATH", "HOME", "TMPDIR", "LANG", "LC_ALL"];
 
@@ -12,7 +11,7 @@ export function bunRuntimeDir(): string | undefined {
   const exec = process.execPath;
   if (!exec) return undefined;
   const dir = dirname(exec);
-  return existsSync(join(dir, "bun")) ? dir : undefined;
+  return Bun.which("bun", { PATH: dir }) !== null ? dir : undefined;
 }
 
 export interface BuildHarnessEnvOptions {

@@ -22,9 +22,7 @@ export function verifierEnvironmentName(): string {
 
 function commandAvailable(name: string): boolean {
   if (Bun.which(name) !== null) return true;
-  if (name !== "bun") return false;
-  const dir = bunRuntimeDir();
-  return dir !== undefined && Bun.which("bun", { PATH: dir }) !== null;
+  return name === "bun" && bunRuntimeDir() !== undefined;
 }
 
 export function missingPrerequisites(task: SweTask): string[] {
