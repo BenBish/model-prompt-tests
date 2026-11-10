@@ -91,3 +91,9 @@ Good prompts usually test at least one of these:
 - Long-context synthesis
 - Formatting and instruction following
 - Taste and product judgment
+
+## Built with
+
+Developed with help from [Barge](https://getbarge.io/?utm_source=github&utm_medium=referral&utm_campaign=barge&utm_content=BenBish-model-prompt-tests-readme-text), a cloud runtime environment for coding agents.
+
+<a href="https://getbarge.io/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=barge&amp;utm_content=BenBish-model-prompt-tests-readme-badge"><picture><source media="(prefers-color-scheme: dark)" srcset="https://getbarge.io/brand/built-with-barge-dark.svg"><img alt="Built with Barge - visit getbarge.io" height="32" src="https://getbarge.io/brand/built-with-barge-light.svg" width="137"></picture></a>
